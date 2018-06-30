@@ -1221,7 +1221,7 @@ if __name__ == '__main__':
         # sort in order of increasing bias current
         sortKey = np.argsort(iBias)
         # We will need to eventually loop over this by channel but for now hardcode
-        ch = 6
+        ch = 7
         vOut = mWave[ch][cut]
         vOutRMS = mWaveRMS[ch][cut]
         # Make some diagnostic plots
