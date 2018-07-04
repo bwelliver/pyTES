@@ -17,8 +17,10 @@ from scipy import fftpack
 from scipy.signal import flattop
 from scipy.signal import hann
 from scipy.signal import boxcar
-from scipy.interpolate import interp1d
-from scipy.interpolate import InterpolatedUnivariateSpline
+from scipy.optimize import curve_fit
+from scipy.optimize import leastsq
+from scipy.optimize import minimize
+
 
 from readROOT import readROOT
 from writeROOT import writeROOT
@@ -27,6 +29,89 @@ import cloneROOT as cr
 import matplotlib as mp
 from matplotlib import pyplot as plt
 
+
+# Overload
+nsum = np.sum
+ln = np.log
+eps = np.finfo(float).eps
+
+
+def complex_tes_one_block(f, I, a, b, R, g, C, T, Rl, Lin):
+    '''Simple 1 block model for Ztes
+    f = actual frequency data
+    Independent parameters shall be as follows:
+    I = current on TES
+    a = alpha (T/R*dR/dT)
+    b = beta (I/R)*dR/dI
+    R = TES resistance
+    g = TES thermal conductivity
+    C = TES heat capacity
+    T = TES temperature
+    Rl = TES circuit load resistance
+    Lin = TES input branch inductance
+    Also to keep in mind
+    L = TES loop gain
+    t = TES time constant
+    Z(w) = Rl + jwL + Ztes(w)
+    '''
+    
+    P = I**2 * R
+    L = P*a/(g*T)
+    t = C/g
+    ti = t/(1-L)
+    Ztes = R*(1+b) + (R*L/(1-L))*(2+b)/(1+ 1j*2*np.pi*f*ti)
+    Z = Ztes + Rl + 2*np.pi*1j*f*Lin
+    return Z
+
+
+def tes_one_block(f, I, a, b, R, g, C, T, Rl, Lin):
+    '''Simple 1 block model for Ztes
+    f = actual frequency data
+    Independent parameters shall be as follows:
+    I = current on TES
+    a = alpha (T/R*dR/dT)
+    b = beta (I/R)*dR/dI
+    R = TES resistance
+    g = TES thermal conductivity
+    C = TES heat capacity
+    T = TES temperature
+    Also to keep in mind
+    L = TES loop gain
+    t = TES time constant
+    '''
+    
+    P = I**2 * R
+    L = P*a/(g*T)
+    t = C/g
+    ti = t/(1-L)
+    Ztes = R*(1+b) + (R*L/(1-L))*(2+b)/(1+ 1j*2*np.pi*f*ti)
+    Z = Ztes + Rl + 2*np.pi*1j*f*Lin
+    
+    q = np.real(Z)
+    q = np.append(q, np.imag(Z))
+    return q
+
+
+def residuals(params, f, Z):
+    '''Residuals'''
+    P, a, b, R, g, C, T = params
+    diff = tes_one_block(f, P, a, b, R, g, C, T) - Z
+    z1d = diff.real
+    z1d = np.append(z1d, diff.imag)
+    return z1d
+
+
+def nll_tes_one_block(params, f, Z):
+    '''A fit function for the tes one block'''
+    I, a, b, R, g, C, T, Rl, Lin = params
+    if I <= 0 or a <= 0 or b <= 0 or R <= 1e-3 or g <= 0 or C <= 0 or T <= 0 or Rl <= 0 or Lin <= 0:
+        return np.inf
+    model = tes_one_block(f, I, a, b, R, g, C, T, Rl, Lin)
+    # This is complex values so it is a little tricky
+    #lnl = -nsum(ln(model + np.min(model) + eps))
+    lnl = nsum((model - Z)**2)
+    #print("Neg LL: {}".format(lnl))
+    return lnl
 
 
 def get_squid_parameters(channel):
@@ -76,6 +161,50 @@ def gen_plot_points(x, y, xlab, ylab, title, fName, log='log'):
     ax.grid()
     ax.set_title(title)
     fig2.savefig(fName, dpi=100)
+    #plt.show()
+    #plt.draw()
+    plt.close('all')
+    return None
+
+
+def gen_plot_points_fit(z, z_model, result, perr, xlab, ylab, title, fName, log='log'):
+    """Create generic plots that may be semilogx (default)
+    I, a, b, R, g, C, T, Rl, Lin
+    """
+    I, a, b, R, g, C, T, Rl, Lin = result
+    Ierr, aerr, berr, Rerr, gerr, Cerr, Terr, Rlerr, Linerr = perr
+    
+    fig2 = plt.figure(figsize=(16, 16))
+    ax = fig2.add_subplot(111)
+    ax.plot(np.real(z), np.imag(z), marker='o', markersize=4, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0.0, linestyle='None')
+    # Now the fit
+    ax.plot(np.real(z_model), np.imag(z_model), 'r-', marker='None', linewidth=2)
+    ax.set_xscale(log)
+    ax.set_xlabel(xlab)
+    ax.set_ylabel(ylab)
+    ax.set_yscale(log)
+    #ax.set_ylim([-1, 1])
+    #ax.set_xlim([-1, 1])
+    ax.grid()
+    ax.set_title(title)
+    
+    # Set up text strings for my fit
+    tI = r'$I_{0} = %.5f \pm %.5f \mathrm{\mu A}$'%(I*1e6, Ierr*1e6)
+    ta = r'$\alpha = %.5f \pm %.5f$'%(a, aerr)
+    tb = r'$\beta = %.5f \pm %.5f$'%(b, berr)
+    tR = r'$R_{0} = %.5f \pm %.5f \mathrm{m\Omega}$'%(R*1e3, Rerr*1e3)
+    tg = r'$G = %.5f \pm %.5f \mathrm{pW/K}$'%(g*1e12, gerr*1e12)
+    tC = r'$C = %.5f \pm %.5f \mathrm{pJ/K}$'%(C*1e12, Cerr*1e12)
+    tT = r'$T_{0} = %.5f \pm %.5f \mathrm{mK}$'%(T*1e3, Terr*1e3)
+    tRl = r'$R_{L} = %.5f \pm %.5f \mathrm{m\Omega}$'%(Rl*1e3, Rlerr*1e3)
+    tLin = r'$L_{in} = %.5f \pm %.5f \mathrm{nH}$'%(Lin*1e9, Linerr*1e9)
+    text_string = tI + '\n' + ta + '\n' + tb + '\n' + tR + '\n' + tg + '\n' + tC + '\n' + tT + '\n' + tRl + '\n' + tLin
+        
+    props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
+    ax.text(0.7, 0.2, text_string, transform=ax.transAxes, fontsize=14, verticalalignment='top', horizontalalignment='left', bbox=props)
+    
+    
+    fig2.savefig(fName, dpi=200)
     #plt.show()
     #plt.draw()
     plt.close('all')
@@ -221,10 +350,6 @@ def get_frequency_data(inputDirectory):
     return current_dictionary
 
 
-
-
-
-
 def compute_complex_z(fft_data, squid_data):
     '''Compute complex impedence based on fft transformed data and squid parameters'''
     # Zbias = Rb - j/wC
@@ -238,7 +363,7 @@ def compute_complex_z(fft_data, squid_data):
     return z
 
 
-def save_z_to_root(output_directory, f_dictionary, z_dictionary):
+def save_z_to_root(output_directory, f_dictionary, z_dictionary, data_dictionary):
     '''Function to save our frequency and complex impedence data to root file
     Here we will let the bias currents be the name of TTrees
     Each Tree will contain 3 branches: 'Frequency', 'ReZ', 'ImZ'
@@ -263,9 +388,11 @@ def save_z_to_root(output_directory, f_dictionary, z_dictionary):
                 }
             }
     '''
-    data = {'TTree': {}}
+    data = {'TDirectory': {'computed_z': {'TTree': {}}, 'fft': {'TTree': {}}}}
+    #data = {'TTree': {}}
     for current in f_dictionary.keys():
-        data['TTree'][current] = {'TBranch': {'Frequency': f_dictionary[current], 'ReZ': np.real(z_dictionary[current]), 'ImZ': np.imag(z_dictionary[current])}}
+        data['TDirectory']['computed_z']['TTree'][current] = {'TBranch': {'Frequency': f_dictionary[current], 'ReZ': np.real(z_dictionary[current]), 'ImZ': np.imag(z_dictionary[current])}}
+        data['TDirectory']['fft']['TTree'][current] = {'TBranch': {'Frequency': data_dictionary[current]['frequency'], 'ReVin': np.real(data_dictionary[current]['fv_in']), 'ImVin': np.imag(data_dictionary[current]['fv_in']), 'ReVout': np.real(data_dictionary[current]['fv_out']), 'ImVout': np.imag(data_dictionary[current]['fv_out']) }}
     print('data dictionary for root file is: {}'.format(data))
     outFile = output_directory + '/root/complexZ.root'
     writeROOT(outFile, data)
@@ -329,7 +456,58 @@ def do_complex_z(inputDirectory, outputDirectory, makeRoot):
         
         gen_plot_points(np.real(zmean_array), np.imag(zmean_array), 'Re(Z)', 'Im(Z)', 'Z Re vs Im', '/Users/bwelliver/cuore/bolord/complex_z/test/zmeanArray_re_im_' + current_key + 'uA.png', log='linear')
     if makeRoot == True:
-        save_z_to_root(outputDirectory, f_dictionary, z_dictionary)
+        save_z_to_root(outputDirectory, f_dictionary, z_dictionary, data_dictionary)
+    # Do a fit now
+    for current in z_dictionary.keys():
+        #Assumes ydata = f(xdata, *params) + eps
+        #z = tes_one_block(f, P, a, b, R, g, C, T, Rl, Lin)
+        f = f_dictionary[current]
+        z = z_dictionary[current]
+        lbounds = [1e-9, 1, 1e-1, 1e-3, 1e-14, 1e-14, 2e-3, 1e-4, 1e-9]
+        #ubounds = [1, 1e6, 1e6, 1, 1, 1, 40e-3]
+        ubounds = [30e-6, 1e6, 1e1,  1,     700e-12, 20e-12,  1e-1,  1e-1, 1e-7]
+        x0 =      [1e-6,   5e2, 5e-1, 66e-3, 100e-12, 3e-12,   32e-3, 1e-3, 8e-9]
+        
+        ifake = 1e-6
+        afake = 500
+        bfake = 5e-1
+        rfake = 66e-3
+        gfake = 344e-12
+        cfake = 5e-12
+        tfake = 32e-3
+        rlfake = 1e-3
+        linfake = 8e-9
+        #f = np.asarray([i+1 for i in range(int(1e4-1))])
+        #z = complex_tes_one_block(f, ifake, afake, bfake, rfake, gfake, cfake, tfake, rlfake, linfake)
+        zz = np.real(z)
+        zz = np.append(zz, np.imag(z))
+        
+        result, pcov = curve_fit(tes_one_block, f, zz, p0=x0, bounds=(lbounds,ubounds))
+        perr = np.sqrt(np.diag(pcov))
+        #print('The fit results for current {} are {}'.format(current, result))
+        # Try nll
+        #x0 = [1e-6, 1e4, 1e3, 66e-3, 1e-3, 1e-9, 32e-3]
+        #print('The initial guess is {0}'.format(x0))
+        
+        #result = minimize(nll, x0=np.array(x0), args=(Rm,Tm,fDict[func2fit]), method='Nelder-Mead', options={'fatol':1e-11})
+        #result = minimize(nll_tes_one_block, x0=np.array(x0), args=(f,zz), method='Nelder-Mead', options={'fatol': 1e-11, 'xatol': 1e-11, 'adaptive': True})
+        #result = result.x
+        #perr = result/100
+        
+        #params, cov, infodict, mesg, ier = leastsq(residuals, x0, args=(f, z), full_output=True)
+        #result = params
+        print('The fit results for current {} are {}'.format(current, result))
+        print('The fit errors for current {} are {}'.format(current, perr))
+        # Try to plot?
+        z_model = complex_tes_one_block(f, result[0], result[1], result[2], result[3], result[4], result[5], result[6], result[7], result[8])
+        #print('ReZ is {}'.format(np.real(z_model)))
+        xlab = 'Re(Z)'
+        ylab = 'Im(Z)'
+        title = 'Real Z vs Imag Z with fit'
+        
+        gen_plot_points_fit(z, z_model, result, perr, xlab, ylab, title, '/Users/bwelliver/cuore/bolord/complex_z/test/zfit_re_im_' + current + 'uA.png', log='linear')
+        
+        gen_plot_line(f, np.abs(z_model), 'f (Hz)', 'Abs Complex Z Model', 'Complex Z Model', '/Users/bwelliver/cuore/bolord/complex_z/test/zarry_model_abs_fft_' + current + 'uA_log.png', logx='log', logy='log')
     return None
 
 

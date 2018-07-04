@@ -180,7 +180,7 @@ def compute_noise_spectra(input_directory, squid_run):
     # Try the welch method
     for channel in data_array.keys():
         print('Computing using welch')
-        freq, fdata = compute_welch(time_array[channel], data_array[channel], number_segments=50)
+        freq, fdata = compute_welch(time_array[channel], data_array[channel], number_segments=20)
         print('Making plot')
         xlab = 'Frequency (Hz)'
         ylab = 'PSD V^2/Hz'
@@ -198,4 +198,13 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--outputFile', help='Specify output root file. If not a full path, it will be output in the same directory as the input SQUID file')    
     args = parser.parse_args()
     
+    # Need to modify this per use? This will be a dictionary that maps currents to a list of partials
+    # Note that if a current scan has a zombie in it that we must split the range up into separate scans if we want to use
+    # the data otherwise we will get a discontinuity.
+    current_partials = {'30': [i+1 for i in range(9)]+[11], 
+                        '20': [i+13 for i in range(10)], 
+                        '15': [i+24 for i in range(10)], 
+                        '10': [i+35 for i in range(5)],
+                        
+                       }
     compute_noise_spectra(input_directory=args.inputDir, squid_run=args.squidRun)
