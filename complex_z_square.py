@@ -135,7 +135,8 @@ def gen_plot_line(x, y, xlab, ylab, title, fName, logx='log', logy='log'):
     """Create generic plots that may be semilogx (default)"""
     fig2 = plt.figure(figsize=(16, 9))
     ax = fig2.add_subplot(111)
-    ax.plot(x, y, marker='o', markersize=2, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0.0, linestyle='None', linewidth=1)
+    #ax.plot(x, y, marker='o', markersize=2, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0.0, linestyle='None', linewidth=1)
+    ax.plot(x, y, linestyle='-', linewidth=0.5)
     ax.set_xscale(logx)
     ax.set_xlabel(xlab)
     ax.set_ylabel(ylab)
