@@ -8,6 +8,7 @@ from matplotlib import pyplot as plt
 from scipy import fftpack
 from scipy.signal import hann
 from scipy import signal
+from scipy.signal import butter, lfilter, freqz
 
 from readROOT import readROOT
 
@@ -15,6 +16,17 @@ eps = np.finfo(float).eps
 ln = np.log
 mp.rcParams['agg.path.chunksize'] = 10000
 
+
+def butter_lowpass(cutoff, fs, order=5):
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    b, a = butter(order, normal_cutoff, btype='low', analog=False)
+    return b, a
+
+def butter_lowpass_filter(data, cutoff, fs, order=5):
+    b, a = butter_lowpass(cutoff, fs, order=order)
+    y = lfilter(b, a, data)
+    return y
 
 def mkdpaths(dirpath):
     os.makedirs(dirpath, exist_ok=True)
@@ -147,13 +159,13 @@ def make_z_plots(input_directory, current, square_frequency, frequency, z, fVin)
     yLabel = 'Im Z'
     title = 'Imaginary Part of Z vs Frequency for Ib = ' + current + ' uA'
     file_name = input_directory + '/' + 'plots/' + 'ib_' + current + '_uA_imz_log.png'
-    gen_plot_line(frequency, z.imag, xLabel, yLabel, title, file_name, logx='log', logy='log')
+    gen_plot_line(frequency, z.imag, xLabel, yLabel, title, file_name, logx='log', logy='linear')
     
     xLabel = 'Frequency (Hz)'
     yLabel = 'Re Z'
     title = 'Real Part of Z vs Frequency for Ib = ' + current + ' uA'
     file_name = input_directory + '/' + 'plots/' + 'ib_' + current + '_uA_rez_log.png'
-    gen_plot_line(frequency, z.real, xLabel, yLabel, title, file_name, logx='log', logy='log')
+    gen_plot_line(frequency, z.real, xLabel, yLabel, title, file_name, logx='log', logy='linear')
     
     xLabel = 'ReZ'
     yLabel = 'ImZ'
@@ -163,17 +175,27 @@ def make_z_plots(input_directory, current, square_frequency, frequency, z, fVin)
     
     
     # Generate only odd harmonics of square_frequency
-    fMax = 1e4
+    fMax = 1e5
     f0 = float(square_frequency)
     fRange = int(fMax/f0/2)
-    fcut = frequency >= f0
+    fcut = np.zeros(frequency.size, dtype=bool) 
     vcut = np.abs(fVin) > 10
+    mfreq = np.empty(0) #np.zeros(fRange)
+    mz = np.empty(0) #np.zeros(fRange, dtype=complex)
     for index in range(fRange):
         odd_harmonic = (2*index + 1)*f0
-        fcut = np.logical_or(fcut, np.logical_and(frequency >= odd_harmonic - 0.5, frequency <= odd_harmonic + 0.5))
+        lcut = np.logical_and(frequency >= odd_harmonic - 0.001, frequency <= odd_harmonic + 0.001)
+        #print('Number of events passing this cut is: {}'.format(np.sum(lcut)))
+        #mfreq[index] = np.median(frequency[lcut])
+        #mz[index] = np.median(z[lcut])
+        mfreq = np.append(mfreq, np.mean(frequency[lcut]))
+        mz = np.append(mz, np.mean(z[lcut]))
+        fcut = np.logical_or(fcut, lcut)
+    print('The sum of all the fcuts is: {}'.format(np.sum(fcut)))
     fcut = np.logical_and(vcut, fcut)
     harmonics = frequency[fcut]
     z_harmonics = z[fcut]
+    print('The length of z harmonics is {} and mz is {}'.format(z_harmonics.size, mz.size))
     xLabel = 'ReZ'
     yLabel = 'ImZ'
     title = 'Imaginary vs Real parts of Complex Impedence for Ib = ' + current + ' uA'
@@ -191,6 +213,38 @@ def make_z_plots(input_directory, current, square_frequency, frequency, z, fVin)
     title = 'Real Part of Z vs Frequency for Ib = ' + current + ' uA'
     file_name = input_directory + '/' + 'plots/' + 'ib_' + current + '_uA_rez_harmonics_log.png'
     gen_plot_line(harmonics, z_harmonics.real, xLabel, yLabel, title, file_name, logx='log', logy='linear')
+    
+    xLabel = 'Frequency (Hz)'
+    yLabel = 'Z (Ohms)'
+    title = 'Magnitude of Z vs Frequency for Ib = ' + current + ' uA'
+    file_name = input_directory + '/' + 'plots/' + 'ib_' + current + '_uA_z_fft_harmonics_log.png'
+    gen_plot_line(harmonics, np.abs(z_harmonics), xLabel, yLabel, title, file_name, logx='log', logy='linear')
+    
+    # Generate mean plots
+    xLabel = 'ReZ'
+    yLabel = 'ImZ'
+    title = 'Imaginary vs Real parts of Mean Complex Impedence for Ib = ' + current + ' uA'
+    file_name = input_directory + '/' + 'plots/' + 'ib_' + current + '_uA_mean_reZimZ_harmonics.png'
+    gen_plot_points(mz.real, mz.imag, xLabel, yLabel, title, file_name, logx='linear', logy='linear')
+    
+    xLabel = 'Frequency (Hz)'
+    yLabel = 'Im Z'
+    title = 'Imaginary Part of Mean Z vs Frequency for Ib = ' + current + ' uA'
+    file_name = input_directory + '/' + 'plots/' + 'ib_' + current + '_uA_mean_imz_harmonics_log.png'
+    gen_plot_line(mfreq, mz.imag, xLabel, yLabel, title, file_name, logx='log', logy='linear')
+    
+    xLabel = 'Frequency (Hz)'
+    yLabel = 'Re Z'
+    title = 'Real Part of Mean Z vs Frequency for Ib = ' + current + ' uA'
+    file_name = input_directory + '/' + 'plots/' + 'ib_' + current + '_uA_mean_rez_harmonics_log.png'
+    gen_plot_line(mfreq, mz.real, xLabel, yLabel, title, file_name, logx='log', logy='linear')
+    
+    xLabel = 'Frequency (Hz)'
+    yLabel = 'Z (Ohms)'
+    title = 'Magnitude of Mean Z vs Frequency for Ib = ' + current + ' uA'
+    file_name = input_directory + '/' + 'plots/' + 'ib_' + current + '_uA_mean_z_fft_harmonics_log.png'
+    gen_plot_line(mfreq, np.abs(mz), xLabel, yLabel, title, file_name, logx='log', logy='linear')
+    print('The harmonic z is : {} and the median z is : {}'.format(z_harmonics, mz))
     return None
 
 
@@ -323,7 +377,7 @@ def get_fft(time, data, input_channel, output_channel, method='fft'):
     '''Compute fft data from various methods'''
     # Now let's try our hand at fft
     if method == 'fft':
-        freq, data[input_channel] = compute_fft(time[input_channel], data[input_channel])
+        freq, data[input_channel] = compute_fft(time[input_channel], data[input_channel]+(30e-6)*(10e3))
         freq, data[output_channel] = compute_fft(time[output_channel], data[output_channel])
         fcut = freq >= 0
         freq = freq[fcut]
@@ -340,7 +394,7 @@ def get_fft(time, data, input_channel, output_channel, method='fft'):
     return freq, data[input_channel], data[output_channel]
 
 
-def process_from_rootfiles_averageZ(list_of_files, input_directory, current, squid_channel=2):
+def process_from_rootfiles_averageZ(list_of_files, input_directory, current, squid_channel=2, transfer_function=1):
     '''Given list of root files get fft values and compute Z and average the Z'''
     print('Loading data...')
     for index, file in enumerate(list_of_files):
@@ -348,9 +402,9 @@ def process_from_rootfiles_averageZ(list_of_files, input_directory, current, squ
         print('Computing fft...')
         freq, fVin, fVout = get_fft(time_dictionary, data_dictionary, input_channel=5, output_channel=7, method='fft')
         if index == 0:
-            z = compute_z2(fVin, fVout, freq, squid_channel=2)
+            z = compute_z3(fVin, fVout, freq, squid_channel=2, transfer_function=transfer_function)
         else:
-            tz = compute_z2(fVin, fVout, freq, squid_channel=2)
+            tz = compute_z3(fVin, fVout, freq, squid_channel=2, transfer_function=transfer_function)
             z += tz
     # Data is done so divide
     z = z/len(list_of_files)
@@ -399,6 +453,32 @@ def process_from_rootfiles(list_of_files):
     return freq, fVin, fVout
 
 
+def compute_z3(fVin, fVout, frequency, squid_channel=2, transfer_function=1):
+    '''Compute complex impedence based on fft transformed data and squid parameters'''
+    squid_parameters = get_squid_parameters(squid_channel)
+    Rbias = squid_parameters['Rbias']
+    Cbias = squid_parameters['Cbias']
+    Rfb = squid_parameters['Rfb']
+    Lfb = squid_parameters['Lf']
+    Li = squid_parameters['Li']
+    M = squid_parameters['M']
+    Rsh = squid_parameters['Rsh']
+    #Zbias = Rbias
+    Zbias = Rbias - 1j/(2*np.pi*frequency*Cbias)
+    #Zbias = Rbias / (1 + 2*np.pi*frequency*1j*Rbias*Cbias)
+    #Zbias = squid_data['Rbias']
+    Zfb = Rfb #+ 2*np.pi*1j*frequency*Lfb
+    #Zfb = squid_data['Rfb'] + 2*np.pi*1j * fft_data['frequency'] * squid_data['Lf']
+    # M*Rfb/vout = 1/iTES and Rsh/Zbias is ?
+    #z = (fVin/fVout)*(M*Zfb*Rsh)/Zbias
+    zth = Rsh + 1j*2*np.pi*frequency*Li + 14e-3
+    z = ((fVin/fVout)/transfer_function - 1)*zth
+    #z = (fft_data['fv_in']/fft_data['fv_out'])*(squid_data['M']  * Zfb * squid_data['Rsh'])/(Zbias)
+    #z = fft_data['fv_in']/(squid_data['Rbias'] * (fft_data['fv_out']/squid_data['Rfb']/squid_data['M'])) - squid_data['Rsh'] - 1j*2*np.pi*fft_data['frequency']*squid_data['Li']
+    return z
+
+
+
 def compute_z2(fVin, fVout, frequency, squid_channel=2):
     '''Compute complex impedence based on fft transformed data and squid parameters'''
     squid_parameters = get_squid_parameters(squid_channel)
@@ -406,17 +486,20 @@ def compute_z2(fVin, fVout, frequency, squid_channel=2):
     Cbias = squid_parameters['Cbias']
     Rfb = squid_parameters['Rfb']
     Lfb = squid_parameters['Lf']
+    Li = squid_parameters['Li']
     M = squid_parameters['M']
     Rsh = squid_parameters['Rsh']
-    # Zbias = Rb - j/wC
-    #Zbias = squid_data['Rbias'] - 1j/(2*np.pi*fft_data['frequency']*squid_data['Cbias'])
-    Zbias = Rbias / (1 + 2*np.pi*frequency*1j*Rbias*Cbias)
-    #Zbias = squid_data['Rbias'] / (1 + 2*np.pi * fft_data['frequency'] * 1j * squid_data['Rbias'] * squid_data['Cbias'])
+    #Zbias = Rbias
+    Zbias = Rbias - 1j/(2*np.pi*frequency*Cbias)
+    #Zbias = Rbias / (1 + 2*np.pi*frequency*1j*Rbias*Cbias)
     #Zbias = squid_data['Rbias']
-    Zfb = Rfb + 2*np.pi*1j*frequency*Lfb
+    Zfb = Rfb #+ 2*np.pi*1j*frequency*Lfb
     #Zfb = squid_data['Rfb'] + 2*np.pi*1j * fft_data['frequency'] * squid_data['Lf']
     # M*Rfb/vout = 1/iTES and Rsh/Zbias is ?
-    z = (fVin/fVout)*(M*Zfb*Rsh)/Zbias
+    #z = (fVin/fVout)*(M*Zfb*Rsh)/Zbias
+    zth = Rsh + 1j*2*np.pi*frequency*Li
+    T = 1
+    z = (fVin/fVout)*(Rsh*Zfb/Zbias)*M*T - zth
     #z = (fft_data['fv_in']/fft_data['fv_out'])*(squid_data['M']  * Zfb * squid_data['Rsh'])/(Zbias)
     #z = fft_data['fv_in']/(squid_data['Rbias'] * (fft_data['fv_out']/squid_data['Rfb']/squid_data['M'])) - squid_data['Rsh'] - 1j*2*np.pi*fft_data['frequency']*squid_data['Li']
     return z
@@ -437,15 +520,36 @@ def compute_z(fVin, fVout, frequency, squid_channel=2):
     M = squid_parameters['M']
     Rsh = squid_parameters['Rsh']
     
-    Zbias = Rbias + 1/(2*np.pi*1j*frequency*Cbias)
-    Zfb = Rfb #+ 2*np.pi*1j*frequency*Lfb
-    iTES = fVout/(Rfb*M)
+    #Zbias = Rbias + 1/(2*np.pi*1j*frequency*Cbias)
+    Zbias = Rbias / (1 + 2*np.pi*frequency*1j*Rbias*Cbias)
+    Zfb = Rfb + 2*np.pi*1j*frequency*Lfb
+    iTES = fVout/(Zfb*M)
     vTES = Rsh*((fVin/Zbias) - iTES)
     zTES = vTES / iTES
     return zTES
 
 
-def compute_complex_impedance(input_directory, squid_run, partial_dictionary, square_frequency=1):
+def get_superconducting_ratio(input_directory, squid_run, partial_dictionary, square_frequency=1):
+    '''Basically return Vbias / Vout'''
+    for current, partial_list in partial_dictionary.items():
+        list_of_files = get_filenames(input_directory, squid_run, partial_list)
+        # Next we need to process root files in our list
+        print('Starting data processing for current {}'.format(current))
+        #freq, fVin, fVout = process_from_rootfiles(list_of_files)
+        #freq, fVin, fVout = process_from_rootfiles_average(list_of_files, input_directory, current)
+        # Try to average not fft but z
+        # Now make some generic fft plots
+        #print('Making fft plots...')
+        #make_fft_plots(input_directory, current, freq, fVin, fVout)
+        # FFT plots are basic and done now let us obtain SQUID parameters needed for Z
+        # Here we can compute basic quantities: vTES, iTES and then Z or Ztes
+        #z = compute_z2(fVin, fVout, freq, squid_channel=2)
+        z, freq, fVin, fVout = process_from_rootfiles_averageZ(list_of_files, input_directory, current, squid_channel=2)
+        #make_fft_plots(input_directory, current, freq, fVin, fVout)
+        #make_z_plots(input_directory, current, square_frequency, freq, z, fVin)
+    return fVin/fVout
+
+def compute_complex_impedance(input_directory, squid_run, partial_dictionary, square_frequency=1, transfer_function=1):
     '''Main function to compute noise spectra information from'''
     
     # The way this will work is that we will operate on one current at a time the whole way through.
@@ -469,7 +573,8 @@ def compute_complex_impedance(input_directory, squid_run, partial_dictionary, sq
         # FFT plots are basic and done now let us obtain SQUID parameters needed for Z
         # Here we can compute basic quantities: vTES, iTES and then Z or Ztes
         #z = compute_z2(fVin, fVout, freq, squid_channel=2)
-        z, freq, fVin, fVout = process_from_rootfiles_averageZ(list_of_files, input_directory, current, squid_channel=2)
+        z, freq, fVin, fVout = process_from_rootfiles_averageZ(list_of_files, input_directory, current, squid_channel=2, transfer_function=transfer_function)
+        make_fft_plots(input_directory, current, freq, fVin, fVout)
         make_z_plots(input_directory, current, square_frequency, freq, z, fVin)
     return None
 
@@ -500,7 +605,12 @@ if __name__ == '__main__':
                         '0': [i+93 for i in range(10)]
                        }
     
-    current_partials = {'8': [i+47 for i in range(1)]
+    current_partials = {'10': [i+37 for i in range(1)]
                        }
     
-    compute_complex_impedance(input_directory=args.inputDir, squid_run=args.squidRun, partial_dictionary=current_partials, square_frequency=args.squareFrequency)
+    sc_partials = {'0': [i+93 for i in range(1)]
+                       }
+    
+    T = get_superconducting_ratio(input_directory=args.inputDir, squid_run=args.squidRun, partial_dictionary=sc_partials, square_frequency=args.squareFrequency)
+    
+    compute_complex_impedance(input_directory=args.inputDir, squid_run=args.squidRun, partial_dictionary=current_partials, square_frequency=args.squareFrequency, transfer_function=T)
