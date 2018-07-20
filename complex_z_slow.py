@@ -9,12 +9,15 @@ from scipy import fftpack
 from scipy.signal import hann
 from scipy import signal
 from scipy.signal import butter, lfilter, freqz
+from scipy.optimize import curve_fit
+
 
 from readROOT import readROOT
 
 eps = np.finfo(float).eps
 ln = np.log
 mp.rcParams['agg.path.chunksize'] = 10000
+pi = np.pi
 
 
 def butter_lowpass(cutoff, fs, order=5):
@@ -97,6 +100,86 @@ def gen_plot_points(x, y, xlab, ylab, title, fName, logx='linear', logy='linear'
     ax.grid()
     ax.set_title(title)
     fig2.savefig(fName, dpi=100)
+    #plt.show()
+    #plt.draw()
+    plt.close('all')
+    return None
+
+
+def gen_plot_points_fit(z, z_model, result, perr, xlab, ylab, title, fName, logx='log', logy='linear'):
+    """Create generic plots that may be semilogx (default)
+    I, a, b, R, g, C, T, Rl, Lin
+    """
+    Rn, Rl, LinN = result
+    Rnerr, Rlerr, LinerrN = perr
+    
+    fig2 = plt.figure(figsize=(16, 16))
+    ax = fig2.add_subplot(111)
+    ax.plot(np.real(z), np.imag(z), marker='o', markersize=4, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0.0, linestyle='None')
+    # Now the fit
+    ax.plot(np.real(z_model), np.imag(z_model), 'r-', marker='None', linewidth=2)
+    ax.set_xscale(logx)
+    ax.set_yscale(logy)
+    ax.set_xlabel(xlab)
+    ax.set_ylabel(ylab)
+    #ax.set_ylim([-1, 1])
+    #ax.set_xlim([-1, 1])
+    ax.grid()
+    ax.set_title(title)
+    
+    # Set up text strings for my fit
+    tRn = r'$R_{n} = %.5f \pm %.5f \mathrm{m\Omega}$'%(Rn*1e3, Rnerr*1e3)
+    tRl = r'$R_{L} = %.5f \pm %.5f \mathrm{m\Omega}$'%(Rl*1e3, Rlerr*1e3)
+    tLinN = r'$L_{inN} = %.5f \pm %.5f \mathrm{nH}$'%(LinN*1e9, LinerrN*1e9)
+    #tLinS = r'$L_{inS} = %.5f \pm %.5f \mathrm{nH}$'%(LinS*1e9, LinerrS*1e9)
+    #tCin = r'$C_{in} = %.5f \pm %.5f \mathrm{nF}$'%(Cin*1e9, Cinerr*1e9)
+    text_string = tRn + '\n' + tRl + '\n' + tLinN #+ '\n' + tCin #+ '\n' + tCin
+        
+    props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
+    ax.text(0.7, 0.2, text_string, transform=ax.transAxes, fontsize=14, verticalalignment='top', horizontalalignment='left', bbox=props)
+    
+    
+    fig2.savefig(fName, dpi=200)
+    #plt.show()
+    #plt.draw()
+    plt.close('all')
+    return None
+
+
+def gen_plot_points_fit_freq(freq, z, z_model, result, perr, xlab, ylab, title, fName, logx='log', logy='linear'):
+    """Create generic plots that may be semilogx (default)
+    I, a, b, R, g, C, T, Rl, Lin
+    """
+    Rn, Rl, LinN = result
+    Rnerr, Rlerr, LinerrN = perr
+    
+    fig2 = plt.figure(figsize=(16, 16))
+    ax = fig2.add_subplot(111)
+    ax.plot(freq, z, marker='o', markersize=4, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0.0, linestyle='None')
+    # Now the fit
+    ax.plot(freq, z_model, 'r-', marker='None', linewidth=2)
+    ax.set_xscale(logx)
+    ax.set_yscale(logy)
+    ax.set_xlabel(xlab)
+    ax.set_ylabel(ylab)
+    #ax.set_ylim([-1, 1])
+    #ax.set_xlim([-1, 1])
+    ax.grid()
+    ax.set_title(title)
+    
+    # Set up text strings for my fit
+    tRn = r'$R_{n} = %.5f \pm %.5f \mathrm{m\Omega}$'%(Rn*1e3, Rnerr*1e3)
+    tRl = r'$R_{L} = %.5f \pm %.5f \mathrm{m\Omega}$'%(Rl*1e3, Rlerr*1e3)
+    tLinN = r'$L_{inN} = %.5f \pm %.5f \mathrm{nH}$'%(LinN*1e9, LinerrN*1e9)
+    #tLinS = r'$L_{inS} = %.5f \pm %.5f \mathrm{nH}$'%(LinS*1e9, LinerrS*1e9)
+    #tCin = r'$C_{in} = %.5f \pm %.5f \mathrm{nF}$'%(Cin*1e9, Cinerr*1e9)
+    text_string = tRn + '\n' + tRl + '\n' + tLinN  #+ '\n' + tCin #+ '\n' + tCin
+        
+    props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
+    ax.text(0.7, 0.2, text_string, transform=ax.transAxes, fontsize=14, verticalalignment='top', horizontalalignment='left', bbox=props)
+    
+    
+    fig2.savefig(fName, dpi=200)
     #plt.show()
     #plt.draw()
     plt.close('all')
@@ -377,12 +460,12 @@ def get_fft(time, data, input_channel, output_channel, method='fft'):
     '''Compute fft data from various methods'''
     # Now let's try our hand at fft
     if method == 'fft':
-        freq, data[input_channel] = compute_fft(time[input_channel], data[input_channel]+(30e-6)*(10e3))
+        freq, data[input_channel] = compute_fft(time[input_channel], data[input_channel])
         freq, data[output_channel] = compute_fft(time[output_channel], data[output_channel])
-        fcut = freq >= 0
-        freq = freq[fcut]
-        data[input_channel] = data[input_channel][fcut]
-        data[output_channel] = data[output_channel][fcut]
+        #fcut = freq >= 0
+        #freq = freq[fcut]
+        data[input_channel] = data[input_channel]
+        data[output_channel] = data[output_channel]
     elif method == 'welch':
         # TODO: Warning this only gets us the magnitude we lose phase information
         freq, data[input_channel] = compute_welch(time[input_channel], data[input_channel], number_segments=20)
@@ -402,13 +485,57 @@ def process_from_rootfiles_averageZ(list_of_files, input_directory, current, squ
         print('Computing fft...')
         freq, fVin, fVout = get_fft(time_dictionary, data_dictionary, input_channel=5, output_channel=7, method='fft')
         if index == 0:
-            z = compute_z3(fVin, fVout, freq, squid_channel=2, transfer_function=transfer_function)
+            z = compute_z3(fVin, fVout, freq, current, squid_channel=2, transfer_function=transfer_function)
         else:
-            tz = compute_z3(fVin, fVout, freq, squid_channel=2, transfer_function=transfer_function)
+            tz = compute_z3(fVin, fVout, freq, current, squid_channel=2, transfer_function=transfer_function)
             z += tz
     # Data is done so divide
     z = z/len(list_of_files)
-    return z, freq, fVin, fVout
+    # Only return frequency >= 0
+    cut = freq >= 0
+    return z[cut], freq[cut], fVin[cut], fVout[cut]
+
+
+def process_from_rootfiles_averageRatio(list_of_files, input_directory, current, squid_channel=2, transfer_function=1):
+    '''Given list of root files get fft values and compute fVin/fvOut and the average of this thing'''
+    print('Loading data...')
+    squid_parameters = get_squid_parameters(squid_channel)
+    Rbias = squid_parameters['Rbias']
+    Cbias = squid_parameters['Cbias']
+    Rfb = squid_parameters['Rfb']
+    Lfb = squid_parameters['Lf']
+    Li = squid_parameters['Li']
+    M = squid_parameters['M']
+    Rsh = squid_parameters['Rsh']
+    for index, file in enumerate(list_of_files):
+        data_dictionary, time_dictionary = load_data([file])
+        print('Computing fft...')
+        if current == '30':
+            data_dictionary[7] = data_dictionary[7] - (-14e-3)
+        freq, fVin, fVout = get_fft(time_dictionary, data_dictionary, input_channel=5, output_channel=7, method='fft')
+        idc = np.zeros(time_dictionary[5].size) + float(current)*1e-6
+        dcfreq, fidc = compute_fft(time_dictionary[5], idc)
+        if index == 0:
+            Zbias = Rfb - 1j/(2*pi*freq*Cbias)
+            Zbias[0] = Rfb
+            idc = float(current)*1e-6
+            # Force idc to be 0
+            #idc = 0
+            print('idc is: {}'.format(idc))
+            ratio = (fVin/Zbias)/fVout
+            #ratio[0] = (fidc[0] + fVin[0]/Zbias[0])/fVout[0]
+        else:
+            Zbias = Rfb - 1j/(2*pi*freq*Cbias)
+            Zbias[0] = Rfb
+            #idc = float(current)*1e-6
+            #tratio = fVin/Zbias/fVout
+            tratio = (fVin/Zbias)/fVout
+            #tratio[0] = (fidc[0] + fVin[0]/Zbias[0])/fVout[0]
+            ratio += tratio
+    # Data is done so divide
+    ratio = ratio/len(list_of_files)
+    # Only return frequency >= 0
+    return freq, ratio
 
 
 def process_from_rootfiles_average(list_of_files, input_directory, current):
@@ -453,7 +580,7 @@ def process_from_rootfiles(list_of_files):
     return freq, fVin, fVout
 
 
-def compute_z3(fVin, fVout, frequency, squid_channel=2, transfer_function=1):
+def compute_z3(fVin, fVout, frequency, current, squid_channel=2, transfer_function=1):
     '''Compute complex impedence based on fft transformed data and squid parameters'''
     squid_parameters = get_squid_parameters(squid_channel)
     Rbias = squid_parameters['Rbias']
@@ -463,18 +590,12 @@ def compute_z3(fVin, fVout, frequency, squid_channel=2, transfer_function=1):
     Li = squid_parameters['Li']
     M = squid_parameters['M']
     Rsh = squid_parameters['Rsh']
-    #Zbias = Rbias
+    Rp = 12e-3
     Zbias = Rbias - 1j/(2*np.pi*frequency*Cbias)
-    #Zbias = Rbias / (1 + 2*np.pi*frequency*1j*Rbias*Cbias)
-    #Zbias = squid_data['Rbias']
-    Zfb = Rfb #+ 2*np.pi*1j*frequency*Lfb
-    #Zfb = squid_data['Rfb'] + 2*np.pi*1j * fft_data['frequency'] * squid_data['Lf']
-    # M*Rfb/vout = 1/iTES and Rsh/Zbias is ?
-    #z = (fVin/fVout)*(M*Zfb*Rsh)/Zbias
-    zth = Rsh + 1j*2*np.pi*frequency*Li + 14e-3
-    z = ((fVin/fVout)/transfer_function - 1)*zth
-    #z = (fft_data['fv_in']/fft_data['fv_out'])*(squid_data['M']  * Zfb * squid_data['Rsh'])/(Zbias)
-    #z = fft_data['fv_in']/(squid_data['Rbias'] * (fft_data['fv_out']/squid_data['Rfb']/squid_data['M'])) - squid_data['Rsh'] - 1j*2*np.pi*fft_data['frequency']*squid_data['Li']
+    Zbias[0] = Rbias
+    idc = float(current)*1e-6
+    # This is probably incorrect due to not knowing Zth exactly
+    z = M*Rfb*Rsh*transfer_function*(idc + fVin/Zbias)/fVout - Rsh - Rp - 2*pi*1j*frequency*Li
     return z
 
 
@@ -549,6 +670,204 @@ def get_superconducting_ratio(input_directory, squid_run, partial_dictionary, sq
         #make_z_plots(input_directory, current, square_frequency, freq, z, fVin)
     return fVin/fVout
 
+
+def complex_ratio_function_for_L(f, Rn, Rl, L):
+    '''Function to return ratio for several parameters'''
+    w = 2*pi*f
+    # Regular model
+    nRatio = Rn + Rl + 1j*w*L
+    sRatio = Rl + 1j*w*L
+    # C || Zcirc
+    #nRatio = (Rn + Rl + 1j*w*L)/(Rn + Rl + 1j*w*L - 1j/(w*C))
+    #sRatio = (Rl + 1j*w*L)/(Rl + 1j*w*L - 1j/(w*C))
+    # Ztes || C
+    #nRatio = (-1j*Rn/(w*C))/(Rn - 1j/(w*C)) + Rl + 1j*w*L
+    #sRatio = Rl + 1j*w*L
+    ratio = nRatio/sRatio
+    return ratio
+
+
+def ratio_function_for_L(f, Rn, Rl, L):
+    '''Function to return ratio for several parameters
+    f->0 ratio -> (Rn + Rl)/(Rl) = Rn/Rl + 1
+    f->Infinity ratio -> 1
+    '''
+    # Here we assume Rn and Rl are specific values
+    #Rn = 0.5585
+    #Rl = (21 + 10.6)/1000
+    w = 2*pi*f
+    # Regular model
+    nRatio = Rn + Rl + 1j*w*L
+    sRatio = Rl + 1j*w*L
+    # C || Zcirc
+    #nRatio = (Rn + Rl + 1j*w*L)/(Rn + Rl + 1j*w*L - 1j/(w*C))
+    #sRatio = (Rl + 1j*w*L)/(Rl + 1j*w*L - 1j/(w*C))
+    # Ztes || C
+    #nRatio = (-1j*Rn/(w*C))/(Rn - 1j/(w*C)) + Rl + 1j*w*L
+    #sRatio = Rl + 1j*w*L
+    ratio = nRatio/sRatio
+    linear_ratio = ratio.real
+    linear_ratio = np.append(linear_ratio, ratio.imag)
+    #if linear_ratio[0] < 18:
+    #    return linear_ratio*1e5
+    return linear_ratio
+
+
+def imag_ratio_function_for_L(f, Rn, Rl, L):
+    '''Function to return ratio for several parameters
+    f->0 ratio -> (Rn + Rl)/(Rl) = Rn/Rl + 1
+    f->Infinity ratio -> 1
+    '''
+    # Here we assume Rn and Rl are specific values
+    #Rn = 0.5585
+    #Rl = (21 + 10.6)/1000
+    w = 2*pi*f
+    ratio = (Rn + Rl + 1j*w*L) / (Rl + 1j*w*L)
+    linear_ratio = ratio.imag
+    #if linear_ratio[0] < 18:
+    #    return linear_ratio*1e5
+    return linear_ratio
+
+
+def get_L(input_directory, squid_run, superconducting_partial_dictionary, 
+                                   normal_partial_dictionary, square_frequency):
+    '''Functionality to compute best fit L and obtain transfer function T(w)'''
+    for current, partial_list in superconducting_partial_dictionary.items():
+        list_of_files = get_filenames(input_directory, squid_run, partial_list)
+        freqS, ratioS = process_from_rootfiles_averageRatio(list_of_files, input_directory, current, squid_channel=2)
+    for current, partial_list in normal_partial_dictionary.items():
+        list_of_files = get_filenames(input_directory, squid_run, partial_list)
+        freqN, ratioN = process_from_rootfiles_averageRatio(list_of_files, input_directory, current, squid_channel=2)
+    # We now have information for the normal and superconducting branches
+    sc_current = int(list(superconducting_partial_dictionary.keys())[0])
+    normal_current = int(list(normal_partial_dictionary.keys())[0])
+    print('The first frequency is {}'.format(freqN[0]))
+    squid_parameters = get_squid_parameters(2)
+    Rbias = squid_parameters['Rbias']
+    Cbias = squid_parameters['Cbias']
+    Rbias = 1000
+    #Zbias = Rbias - 1j/(2*np.pi*freqN*Cbias)
+    #Zbias[0] = Rbias
+    #normal_ratio = ratioN/Zbias
+    #sc_ratio = ratioS/Zbias #(sc_current/fVoutS[0] + fVinS/(Zbias*fVoutS))
+    # Add in extra DC term
+    #normal_ratio[0] += normal_current/fVoutN[0]
+    #sc_ratio[0] += sc_current/fVoutS[0]
+    normal_ratio = ratioN
+    sc_ratio = ratioS
+    ratio = normal_ratio / sc_ratio
+    
+    # Get only specific harmonics of 17 Hz up to 5 kHz
+    fMax = 1e3
+    nFreqs = int(fMax/int(square_frequency)/2)
+    cut = np.zeros(freqN.size, dtype=bool)
+    for f in range(nFreqs):
+        odd_harmonic = (2*f + 1)*int(square_frequency)
+        selector = np.logical_and(freqN > odd_harmonic - 0.001, freqN < odd_harmonic + 0.001)
+        cut = np.logical_or(cut, selector)
+    # Select the specific frequency points
+    harmonic_ratio = ratio[cut]
+    harmonic_freq = freqN[cut]
+    print('The first harmonic value of f and ratio of ratios are: {} and {}'.format(harmonic_freq[0], harmonic_ratio[0]))
+    # Make plot
+    xLabel = 'Re Ratio'
+    yLabel = 'Im Ratio'
+    title = 'Imaginary vs Real parts of Normal to SC Ratio'
+    file_name = input_directory + '/' + 'plots/' + 'reRatioimRatio.png'
+    gen_plot_points(harmonic_ratio.real, harmonic_ratio.imag, xLabel, yLabel, title, file_name, logx='linear', logy='linear')
+    
+    rratio = np.real(harmonic_ratio)
+    rratio = np.append(rratio, np.imag(harmonic_ratio))
+    x0 = [0.6, 31.6e-3, 6e-9]
+    lbounds = [0.56, 1e-3, 1e-9]
+    ubounds = [1, 1, 1]
+    result, pcov = curve_fit(ratio_function_for_L, harmonic_freq, rratio , p0=x0, bounds=(lbounds,ubounds))
+    perr = np.sqrt(np.diag(pcov))
+    print('The real results are: Rn = {} mOhm, RL = {} mOhm and Ln = {} uH'.format(result[0]*1e3, result[1]*1e3, result[2]*1e6))
+    
+    fit_ratio = complex_ratio_function_for_L(harmonic_freq, result[0], result[1], result[2])
+    xLabel = 'Re Ratio'
+    yLabel = 'Im Ratio'
+    title = 'Imaginary vs Real parts of Normal to SC Ratio'
+    file_name = input_directory + '/' + 'plots/' + 'reRatioimRatio_fit_only.png'
+    gen_plot_points(fit_ratio.real, fit_ratio.imag, xLabel, yLabel, title, file_name, logx='linear', logy='linear')
+    
+    xLabel = 'Re Ratio'
+    yLabel = 'Im Ratio'
+    title = 'Imaginary vs Real parts of Normal to SC Ratio'
+    file_name = input_directory + '/' + 'plots/' + 'reRatioimRatio_fit.png'
+    gen_plot_points_fit(harmonic_ratio, fit_ratio, result, perr, xLabel, yLabel, title, file_name, logx='linear', logy='linear')
+    
+    xLabel = 'Frequency'
+    yLabel = 'Real Part'
+    title = 'Real part vs frequency of Normal to SC Ratio'
+    file_name = input_directory + '/' + 'plots/' + 'realpart_fit_freq.png'
+    gen_plot_points_fit_freq(harmonic_freq, np.real(harmonic_ratio), np.real(fit_ratio), result, perr, xLabel, yLabel, title, file_name, logx='linear', logy='linear')
+    
+    xLabel = 'Frequency'
+    yLabel = 'Imag Part'
+    title = 'Imag part vs frequency of Normal to SC Ratio'
+    file_name = input_directory + '/' + 'plots/' + 'imagpart_fit_freq.png'
+    gen_plot_points_fit_freq(harmonic_freq, np.imag(harmonic_ratio), np.imag(fit_ratio), result, perr, xLabel, yLabel, title, file_name, logx='linear', logy='linear')
+    
+    #gen_plot_points(fit_ratio.real, fit_ratio.imag, xLabel, yLabel, title, file_name, logx='linear', logy='linear')
+    return None
+
+
+def get_transfer_function(input_directory, squid_run, superconducting_partial_dictionary, normal_partial_dictionary, 
+                          square_frequency, normal_resistance, parasitic_resistance):
+    '''Functionality to compute best fit L and obtain transfer function T(w)'''
+    # Here ratio values refer to (idc + Vac/Zb)/Vout
+    for current, partial_list in superconducting_partial_dictionary.items():
+        list_of_files = get_filenames(input_directory, squid_run, partial_list)
+        freqS, ratioS = process_from_rootfiles_averageRatio(list_of_files, input_directory, current, squid_channel=2)
+    for current, partial_list in normal_partial_dictionary.items():
+        list_of_files = get_filenames(input_directory, squid_run, partial_list)
+        freqN, ratioN = process_from_rootfiles_averageRatio(list_of_files, input_directory, current, squid_channel=2)
+    # Now Let's generate transfer function
+    print('The first frequency is {}'.format(freqN[0]))
+    squid_parameters = get_squid_parameters(2)
+    Rbias = squid_parameters['Rbias']
+    Cbias = squid_parameters['Cbias']
+    Rfb = squid_parameters['Rfb']
+    M = squid_parameters['M']
+    Rsh = squid_parameters['Rsh']
+    
+    T = normal_resistance/(M*Rfb*Rsh) * 1/(ratioN - ratioS)
+    # Get only specific harmonics of 17 Hz up to 5 kHz
+    fMax = 1e3
+    nFreqs = int(fMax/int(square_frequency)/2)
+    cut = np.zeros(freqN.size, dtype=bool)
+    for f in range(nFreqs):
+        odd_harmonic = (2*f + 1)*int(square_frequency)
+        selector = np.logical_and(freqN > odd_harmonic - 0.001, freqN < odd_harmonic + 0.001)
+        cut = np.logical_or(cut, selector)
+    # Select the specific frequency points
+    harmonic_T = T[cut]
+    harmonic_freq = freqN[cut]
+    # Make plot
+    xLabel = 'Re T(w)'
+    yLabel = 'Im T(w)'
+    title = 'Imaginary vs Real parts of Transfer Function'
+    file_name = input_directory + '/' + 'plots/' + 'reTimT.png'
+    gen_plot_points(harmonic_T.real, harmonic_T.imag, xLabel, yLabel, title, file_name, logx='linear', logy='linear')
+    
+    
+    xLabel = 'Frequency'
+    yLabel = 'Real T'
+    title = 'Real part vs frequency of Transfer function'
+    file_name = input_directory + '/' + 'plots/' + 'realT_fft.png'
+    gen_plot_points(harmonic_freq, np.real(harmonic_T), xLabel, yLabel, title, file_name, logx='linear', logy='linear')
+    
+    xLabel = 'Frequency'
+    yLabel = 'Imag T'
+    title = 'Imag part vs frequency of Transfer Function'
+    file_name = input_directory + '/' + 'plots/' + 'imT_fft.png'
+    gen_plot_points(harmonic_freq, np.imag(harmonic_T), xLabel, yLabel, title, file_name, logx='linear', logy='linear')
+    
+    return T
+
+
 def compute_complex_impedance(input_directory, squid_run, partial_dictionary, square_frequency=1, transfer_function=1):
     '''Main function to compute noise spectra information from'''
     
@@ -608,9 +927,14 @@ if __name__ == '__main__':
     current_partials = {'10': [i+37 for i in range(1)]
                        }
     
-    sc_partials = {'0': [i+93 for i in range(1)]
+    superconducting_partials = {'0': [i+93 for i in range(1)]
                        }
+    normal_partials = {'30': [i+1 for i in range(1)]}
     
-    T = get_superconducting_ratio(input_directory=args.inputDir, squid_run=args.squidRun, partial_dictionary=sc_partials, square_frequency=args.squareFrequency)
+    get_L(input_directory=args.inputDir, squid_run=args.squidRun, superconducting_partial_dictionary=superconducting_partials, normal_partial_dictionary=normal_partials, square_frequency=args.squareFrequency)
     
-    compute_complex_impedance(input_directory=args.inputDir, squid_run=args.squidRun, partial_dictionary=current_partials, square_frequency=args.squareFrequency, transfer_function=T)
+    #T = get_transfer_function(input_directory=args.inputDir, squid_run=args.squidRun, superconducting_partial_dictionary=superconducting_partials, normal_partial_dictionary=normal_partials, square_frequency=args.squareFrequency, normal_resistance=0.560, parasitic_resistance=0.012)
+    
+    #T = get_superconducting_ratio(input_directory=args.inputDir, squid_run=args.squidRun, partial_dictionary=sc_partials, square_frequency=args.squareFrequency)
+    
+    #compute_complex_impedance(input_directory=args.inputDir, squid_run=args.squidRun, partial_dictionary=current_partials, square_frequency=args.squareFrequency, transfer_function=T)
