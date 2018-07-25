@@ -45,6 +45,35 @@ ln = np.log
 
 #mp.use('agg')
 
+class FitParameters:
+    
+    def __init__(self):
+        self.left = FitResult()
+        self.right = FitResult()
+        self.parasitic = FitResult()
+    def __repr__(self):
+        """return string representation."""
+        s = 'Left Branch:\n' + str(self.left)
+        s = s + '\n' + 'Right Branch:\n' + str(self.right)
+        s = s + '\n' + 'Parasitic:\n' + str(self.parasitic)
+        return(s)
+
+
+class FitResult:
+    
+    def __init__(self):
+        self.result = None
+        self.error = None
+    def set_values(self, result=None, error=None):
+        self.result = result
+        self.error = error
+    def __repr__(self):
+        """return string representation."""
+        s = '\t' + 'Result:\t' + str(self.result)
+        s = s + '\n' + '\t' + 'Error:\t' + str(self.error)
+        return(s)
+
+
 class TESResistance:
     
     def __init__(self, left=None, right=None, parasitic=None):
@@ -63,7 +92,22 @@ class TESResistance:
         s = s + '\n' + 'Right Branch:\t' + str(self.right) + ' Ohms'
         s = s + '\n' + 'Parasitic:\t' + str(self.parasitic) + ' Ohms'
         return(s)
+
+
+class IVData:
     
+    def __init__(self, i=None, iRMS=None, v=None, vRMS=None):
+        self.i = i
+        self.iRMS = iRMS
+        self.v = v
+        self.vRMS = vRMS
+    
+    def compute_resistance(self, left=0, right=-1):
+        '''Compute the resistance in a particular event range. Returns resistance and RMS of resistance'''
+        rRMS = np.sqrt((self.vRMS[left:right]/self.v[left:right])**2 + (self.iRMS[left:right]/self.i[left:right])**2)
+        r = self.v[left:right]/self.i[left:right]
+        return r, rRMS
+
 
 
 class RingBuffer(object):
@@ -643,12 +687,14 @@ def walk_normal(x, y, side, buffer_size=20):
     # Now our buffer is initialized so loop over all events until we find a change
     ev = buffer_size
     dMean = 0
-    while dMean < 5e-1 and ev < dydx.size - 1:
+    dev = 0
+    while dMean < 5e-1 and ev < dydx.size - 1 and dev < 20:
         currentMean = dbuff.get_mean()
         dbuff.append(dydx[ev])
         newMean = dbuff.get_mean()
         dMean = np.abs((currentMean - newMean)/currentMean)
         ev += 1
+        dev += 1
     if side == 'right':
         # Flip event index back the right way
         ev = dydx.size - 1 - ev
@@ -902,15 +948,17 @@ def iv_fitplot(x, y, xerr, yerr, fitParams, xLabel, yLabel, title, fName, sc=Non
     fig = plt.figure(figsize=(16,12))
     ax = fig.add_subplot(111)
     ax.errorbar(x*xScale, y*yScale, marker='o', markersize=2, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0, linestyle='None', xerr=xerr*xScale, yerr=yerr*yScale)
-    if model.left is not None:
-        yFit = lin_sq(x, model.left[0][0], model.left[0][1])
+    if model.left.result is not None:
+        yFit = lin_sq(x, model.left.result[0], model.left.result[1])
         ax.plot(x*xScale, yFit*yScale, 'r-', marker='None', linewidth=2)
-    if model.right is not None:
-        yFit = lin_sq(x, model.right[0][0], model.right[0][1])
+    if model.right.result is not None:
+        yFit = lin_sq(x, model.right.result[0], model.right.result[1])
         ax.plot(x*xScale, yFit*yScale, 'g-', marker='None', linewidth=2)
-    if model.parasitic is not None:
+    if model.parasitic.result is not None:
         sc = (0, -1) if sc is None else sc
-        yFit = lin_sq(x[sc[0]:sc[1]], model.parasitic[0][0], model.parasitic[0][1])
+        if sc[0] > sc[1]:
+            sc = (sc[1], sc[0])
+        yFit = lin_sq(x[sc[0]:sc[1]], model.parasitic.result[0], model.parasitic.result[1])
         ax.plot(x[sc[0]:sc[1]]*xScale, yFit*yScale, 'b-', marker='None', linewidth=2)
     ax.set_xscale(logx)
     ax.set_yscale(logy)
@@ -924,13 +972,13 @@ def iv_fitplot(x, y, xerr, yerr, fitParams, xLabel, yLabel, title, fName, sc=Non
     # Now generate text strings
     # model values are [results, perr] --> [[m, b], [merr, berr]]
     lR = r'$\mathrm{Left R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.left*1e3, Rerr.left*1e3)
-    lOff = r'$\mathrm{Left V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.left[0][1]*1e3, model.left[1][1]*1e3)
+    lOff = r'$\mathrm{Left V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.left.result[1]*1e3, model.left.error[1]*1e3)
     
     sR = r'$\mathrm{SC R_{p}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.parasitic*1e3, Rerr.parasitic*1e3)
-    sOff = r'$\mathrm{SC V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.parasitic[0][1]*1e3, model.parasitic[1][1]*1e3)
+    sOff = r'$\mathrm{SC V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.parasitic.result[1]*1e3, model.parasitic.error[1]*1e3)
     
     rR = r'$\mathrm{Right R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.right*1e3, Rerr.right*1e3)
-    rOff = r'$\mathrm{Right V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.right[0][1]*1e3, model.right[1][1]*1e3)
+    rOff = r'$\mathrm{Right V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.right.result[1]*1e3, model.right.error[1]*1e3)
     
     textStr = lR + '\n' + lOff + '\n' + sR + '\n' + sOff + '\n' + rR + '\n' + rOff
     # these are matplotlib.patch.Patch properties
@@ -1245,6 +1293,7 @@ def save_to_root(output_directory, iv_dictionary):
     print(data)
     # We should also make an object that tells us what the other tree values are
     #data['TDirectory']['iv']['TTree']['names']['TBranch'] = 
+    mkdpaths(output_directory + '/root')
     outFile = output_directory + '/root/iv_data.root'
     writeROOT(outFile, data)
     return None
@@ -1438,20 +1487,25 @@ def get_rTES_rms(iBias, iBiasRMS, vOut, vOutRMS, Rfb, M, Rsh):
 def get_vTES(iBias, vOut, Rfb, M, Rsh, Rp):
     '''computes the TES voltage in Volts
     vTES = vSh - vPara
+    vTES = Rsh*(iSh) - Rp*iTES
+    vTES = Rsh*(iBias - iTES) - Rp*iTES = Rsh*iBias - iTES*(Rp+Rsh)
     '''
-    vTES = Rsh*(iBias - vOut/Rfb/M) - (vOut/Rfb/M)*Rp
+    #vTES = Rsh*iBias - (Rp + Rsh)*(vOut/(M*Rfb))
+    # Simple model
+    vTES = Rsh*(iBias - vOut/M/Rfb)
     return vTES
 
 
-def get_vTES_rms(iBias, iBiasRMS, vOut, vOutRMS, Rfb, M, Rsh, iTES_rms):
+def get_vTES_rms(iBias_rms, vOut, vOut_rms, Rfb, M, Rsh, Rp, Rp_err):
     '''compute the RMS on the TES voltage in Volts'''
-    # Fundamentally this is V = a*iBias - b*vOut
+    # Fundamentally this is V = Rsh*iBias - Rp/(MRfb)*vOut - Rsh/(MRfb)*vOut
+    # errV**2 = (dV/diBias * erriBias)**2 + (dV/dvOut * errvOut)**2 + (dV/dRp * errRp)**2
     # a = Rsh
     # b = Rsh/Rf/M
     # dV/diBias = a
     # dV/dVout = -b
     # So this does as dV = sqrt((dV/dIbias * iBiasRMS)^2 + (dV/dVout * vOutRMS)^2)
-    dV = np.sqrt(np.power(Rsh * iBiasRMS, 2) + np.power(-Rsh/Rfb/M * vOutRMS, 2))
+    dV = np.sqrt( (Rsh*iBias_rms)**2 + (-(Rp/(M*Rfb) + Rsh/(M*Rfb))*vOut_rms)**2 + (Rp_err * vOut/(M*Rfb))**2 )
     return dV
 
 
@@ -1693,32 +1747,119 @@ def get_pyIV_data(input_path, output_path, squid_run, bias_channel):
     return time_values, temperatures, mean_waveforms, rms_waveforms, timeList
 
 
-def fit_sc_branch(iv_data):
+def fit_sc_branch(iv_data, key_current, key_currentRMS, key_voltage, key_voltageRMS, fittype='iv'):
     '''Walk and fit the superconducting branch in the vOut vs iBias plane'''
-    (evLeft, evRight) = walk_sc(iv_data['iBias'], iv_data['vOut'])
-    # From here let us make a fit of the form y = m*x+b
-    result, pcov = curve_fit(lin_sq, iv_data['iBias'][evLeft:evRight], iv_data['vOut'][evLeft:evRight], sigma=iv_data['vOut_rms'][evLeft:evRight], absolute_sigma=True)
-    perr = np.sqrt(np.diag(pcov))
-    index_y_min = np.argmin(iv_data['vOut'])
-    index_y_max = np.argmax(iv_data['vOut'])
+    if fittype == 'iv':
+        # dv/di
+        (evLeft, evRight) = walk_sc(iv_data[key_current], iv_data[key_voltage])
+        # From here let us make a fit of the form y = m*x+b
+        result, pcov = curve_fit(lin_sq, iv_data[key_current][evLeft:evRight], iv_data[key_voltage][evLeft:evRight], sigma=iv_data[key_voltageRMS][evLeft:evRight], absolute_sigma=True)
+        perr = np.sqrt(np.diag(pcov))
+        index_y_min = np.argmin(iv_data[key_voltage])
+        index_y_max = np.argmax(iv_data[key_voltage])
+    elif fittype == 'tes':
+        # di/dv
+        (evLeft, evRight) = walk_sc(iv_data[key_voltage], iv_data[key_current])
+        # From here let us make a fit of the form y = m*x+b
+        result, pcov = curve_fit(lin_sq, iv_data[key_voltage][evLeft:evRight], iv_data[key_current][evLeft:evRight], sigma=iv_data[key_currentRMS][evLeft:evRight], absolute_sigma=True)
+        perr = np.sqrt(np.diag(pcov))
+        index_y_min = np.argmin(iv_data[key_current])
+        index_y_max = np.argmax(iv_data[key_current])
     return result, perr, (index_y_max, index_y_min)
 
 
-def fit_normal_branches(iv_data):
+def fit_normal_branches(iv_data, key_current, key_currentRMS, key_voltage, key_voltageRMS, fittype='iv'):
     '''Walk and fit the normal branches in the vOut vs iBias plane.'''
     # Get the left side normal branch first
-    iBias = iv_data['iBias']
-    vOut = iv_data['vOut']
-    vOut_rms = iv_data['vOut_rms']
-    lev = walk_normal(iBias, vOut, 'left')
-    # Model is y = mx+b
-    left_result, pcov = curve_fit(lin_sq, iBias[0:lev], vOut[0:lev], sigma=vOut_rms[0:lev], absolute_sigma=True)
-    left_perr = np.sqrt(np.diag(pcov))
-    # Now get the other branch
-    rev = walk_normal(iBias, vOut, 'right')
-    right_result, pcov = curve_fit(lin_sq, iBias[rev:], vOut[rev:], sigma=vOut[rev:], absolute_sigma=True)
-    right_perr = np.sqrt(np.diag(pcov))
+    iBias = iv_data[key_current]
+    iBias_rms = iv_data[key_currentRMS]
+    vOut = iv_data[key_voltage]
+    vOut_rms = iv_data[key_voltageRMS]
+    if fittype == 'iv':
+        lev = walk_normal(iBias, vOut, 'left')
+        # Model is y = mx+b
+        left_result, pcov = curve_fit(lin_sq, iBias[0:lev], vOut[0:lev], sigma=vOut_rms[0:lev], absolute_sigma=True)
+        left_perr = np.sqrt(np.diag(pcov))
+        # Now get the other branch
+        rev = walk_normal(iBias, vOut, 'right')
+        right_result, pcov = curve_fit(lin_sq, iBias[rev:], vOut[rev:], sigma=vOut_rms[rev:], absolute_sigma=True)
+        right_perr = np.sqrt(np.diag(pcov))
+    elif fittype == 'tes':
+        lev = walk_normal(vOut, iBias, 'left')
+        # Model is y = mx+b
+        left_result, pcov = curve_fit(lin_sq, vOut[0:lev], iBias[0:lev], sigma=iBias_rms[0:lev], absolute_sigma=True)
+        left_perr = np.sqrt(np.diag(pcov))
+        # Now get the other branch
+        rev = walk_normal(vOut, iBias, 'right')
+        right_result, pcov = curve_fit(lin_sq, vOut[rev:], iBias[rev:], sigma=iBias_rms[rev:], absolute_sigma=True)
+        right_perr = np.sqrt(np.diag(pcov))
     return left_result, left_perr, right_result, right_perr
+
+
+def correct_offsets(fitParams):
+    ''' Based on the fit parameters for the normal and superconduting branch correct the offset'''
+    # Adjust data based on intersection of SC and Normal data
+    # V = Rn*I + Bn
+    # V = Rs*I + Bs
+    # Rn*I + Bn = Rs*I + Bs --> I = (Bs - Bn)/(Rn - Rs)
+    current_intersection = (fitParams.parasitic.result[1] - fitParams.right.result[1])/(fitParams.right.result[0] - fitParams.parasitic.result[0])
+    voltage_intersection = fitParams.parasitic.result[0]*current_intersection + fitParams.parasitic.result[1]
+    return current_intersection, voltage_intersection
+
+
+def fit_iv_regions(iv_data, keys, fittype='iv'):
+    '''Fit the iv data regions and extract fit parameters'''
+    key_current, key_currentRMS, key_voltage, key_voltageRMS = keys
+    squid_parameters = get_squid_parameters(2)
+    Rsh = squid_parameters['Rsh']
+    M = squid_parameters['M']
+    Rfb = squid_parameters['Rfb']
+    
+    R = TESResistance()
+    Rerr = TESResistance()
+    fitParams = FitParameters()
+    # We need to walk and fit the superconducting region first since there RTES = 0
+    result, perr, sc_bounds = fit_sc_branch(iv_data, key_current, key_currentRMS, key_voltage, key_voltageRMS, fittype=fittype)
+    
+    if fittype == 'iv':
+        # Now we fit something of the form vOut = m*iBias + b
+        R.parasitic = Rsh*(M*Rfb/result[0] - 1)
+        # R = A/m - B, so delR = dR/dm * delm == -A/m^2 * delm --> delR = -A/m * delm/m. Note -A/m is not R, it is -R-B
+        Rerr.parasitic = (Rsh*M*Rfb * 1/result[0]) * (1/result[0] * perr[0])
+    elif fittype == 'tes':
+        # Here we fit something of the form iTES = m*vTES + b
+        # Remap to vTES = 1/m * iTES - b/m
+        print('TES fit result on the SC is: {}'.format(result))
+        R.parasitic = 1/result[0]
+        Rerr.parasitic = 1/result[0] * (1/result[0] * perr[0])
+    fitParams.parasitic.set_values(result, perr)
+    
+    # Now we can fit the rest
+    left_result, left_perr, right_result, right_perr = fit_normal_branches(iv_data, key_current, key_currentRMS, key_voltage, key_voltageRMS, fittype=fittype)
+    
+    if fittype == 'iv':
+        print('The IV left result and error are {} and {}'.format(left_result, left_perr))
+        print('The IV right result and error are {} and {}'.format(right_result, right_perr))
+        # Now the fits are something of the form vOut = m*iBias + b
+        # R = A/m -C - B
+        R.left = Rsh*(M*Rfb/left_result[0] - 1) - R.parasitic
+        Rerr.left = np.sqrt( (Rsh*M*Rfb * 1/left_result[0] * 1/left_result[0] * left_perr[0])**2 + (-R.parasitic)**2 )
+        R.right = Rsh*(M*Rfb/right_result[0] - 1) - R.parasitic
+        Rerr.right = np.sqrt( (Rsh*M*Rfb * 1/right_result[0] * 1/right_result[0] * right_perr[0])**2 + (-R.parasitic)**2 )
+    elif fittype == 'tes':
+        # Now the fits are something of the form iTES = m*vTES + b
+        # result[0] and perr[0] map to 1/result[0] and 1/result[0] * perr[0]/result[0]
+        # Ultimately R = 1/m - Rp and delR**2 = (dR/dm * delm)**2 + (dR/dRp * delRp)**2
+        print('TES fit result on the left is: {}'.format(left_result))
+        R.left = 1/left_result[0] - R.parasitic
+        Rerr.left = np.sqrt( (1/left_result[0] * 1/left_result[0] * left_perr[0])**2 + (-Rerr.parasitic)**2 )
+        R.right = 1/right_result[0] - R.parasitic
+        Rerr.right = np.sqrt( (1/right_result[0] * 1/right_result[0] * right_perr[0])**2 + (-Rerr.parasitic)**2 )
+    #TODO: Make sure everything is right here with the equations and error prop.
+    fitParams.left.set_values(left_result, left_perr)
+    fitParams.right.set_values(right_result, right_perr)
+
+    return R, Rerr, fitParams, sc_bounds
 
 
 def process_iv_curves(outPath, data_channel, iv_dictionary):
@@ -1727,39 +1868,85 @@ def process_iv_curves(outPath, data_channel, iv_dictionary):
     Rsh = squid_parameters['Rsh']
     M = squid_parameters['M']
     Rfb = squid_parameters['Rfb']
+    keys = ['iBias', 'iBias_rms', 'vOut', 'vOut_rms']
     for temperature, iv_data in iv_dictionary.items():
-        R = TESResistance()
-        Rerr = TESResistance()
-        fitParams = TESResistance()
-        
-        mean_temperature = float(temperature)/1e3
-        # We need to walk and fit the superconducting region first since there RTES = 0
-        result, perr, sc_bounds = fit_sc_branch(iv_data)
-        # Now we fit something of the form vOut = m*iBias + b
-        R.parasitic = Rsh*(M*Rfb/result[0] - 1)
-        Rerr.parasitic = R.parasitic*(perr[0]/result[0])
-        
-        # Now we can fit the rest
-        left_result, left_perr, right_result, right_perr = fit_normal_branches(iv_data)
-        print('For T = {} the Left results are: {} and {}'.format(temperature, left_result, left_perr))
-        # Now the fits are something of the form vOut = m*iBias + b
-        R.left = Rsh*(M*Rfb/left_result[0] - 1) - R.parasitic
-        Rerr.left = R.left * np.sqrt( (left_perr[0]/left_result[0])**2 + (Rerr.parasitic/R.parasitic)**2 )
-        R.right = Rsh*(M*Rfb/left_result[0] - 1) - R.parasitic
-        Rerr.right = R.right * np.sqrt( (left_perr[0]/left_result[0])**2 + (Rerr.parasitic/R.parasitic)**2 )
-        fitParams.left = [left_result, left_perr]
-        fitParams.right = [right_result, right_perr]
-        fitParams.parasitic = [result, perr]
+        R, Rerr, fitParams, sc_bounds = fit_iv_regions(iv_data, keys, fittype='iv')
+        # Next we should center the IV data...it should pass through (0,0)
+        # Adjust data based on intersection of SC and Normal data
+        # V = Rn*I + Bn
+        # V = Rs*I + Bs
+        # Rn*I + Bn = Rs*I + Bs --> I = (Bs - Bn)/(Rn - Rs)
+        current_intersection, voltage_intersection = correct_offsets(fitParams)
+        iv_data['iBias'] = iv_data['iBias'] - current_intersection
+        iv_data['vOut'] = iv_data['vOut'] - voltage_intersection
+        # Re-walk on shifted data
+        R, Rerr, fitParams, sc_bounds = fit_iv_regions(iv_data, keys, fittype='iv')
+        iv_data['R'] = R
+        iv_data['Rerr'] = Rerr
         # Make I-V plot
         xLabel = 'Bias Current [uA]'
         yLabel = 'Output Voltage [mV]'
-        titleStr = 'Channel {} TES Current vs TES Voltage for T = {} mK'.format(data_channel, temperature)
+        titleStr = 'Channel {} Output Voltage vs Bias Current for T = {} mK'.format(data_channel, temperature)
         fName = outPath + '/' + 'vOut_vs_iBias_ch_' + str(data_channel) + '_' + temperature + 'mK'
-        print('SC bound are {}'.format(sc_bounds))
         iv_fitplot(iv_data['iBias'], iv_data['vOut'], iv_data['iBias_rms'], iv_data['vOut_rms'], 
                    [R, Rerr, fitParams], xLabel, yLabel, titleStr, fName, sc=sc_bounds, xScale=1e6, yScale=1e3, logx='linear', logy='linear')
-    return None
+    return iv_dictionary
 
+
+def process_tes_curves(outPath, data_channel, iv_dictionary):
+    '''Take TES data and find Rp and Rn values.'''
+    squid_parameters = get_squid_parameters(2)
+    Rsh = squid_parameters['Rsh']
+    M = squid_parameters['M']
+    Rfb = squid_parameters['Rfb']
+    keys = ['iTES', 'iTES_rms', 'vTES', 'vTES_rms']
+    for temperature, iv_data in iv_dictionary.items():
+        R, Rerr, fitParams, sc_bounds = fit_iv_regions(iv_data, keys, fittype='tes')
+        # Next we should center the IV data...it should pass through (0,0)
+        # Adjust data based on intersection of SC and Normal data
+        # V = Rn*I + Bn
+        # V = Rs*I + Bs
+        # Rn*I + Bn = Rs*I + Bs --> I = (Bs - Bn)/(Rn - Rs)
+        #current_intersection, voltage_intersection = correct_offsets(fitParams)
+        #iv_data['iBias'] = iv_data['iBias'] - current_intersection
+        #iv_data['vOut'] = iv_data['vOut'] - voltage_intersection
+        # Re-walk on shifted data
+        #R, Rerr, fitParams, sc_bounds = fit_iv_regions(iv_data, keys)
+        #iv_data['R'] = R
+        #iv_data['Rerr'] = Rerr
+        # Make I-V plot
+        xLabel = 'TES Voltage [uV]'
+        yLabel = 'TES Current [uA]'
+        titleStr = 'Channel {} TES Current vs TES Voltage for T = {} mK'.format(data_channel, temperature)
+        fName = outPath + '/' + 'iTES_vs_vTES_ch_' + str(data_channel) + '_' + temperature + 'mK'
+        iv_fitplot(iv_data['vTES'], iv_data['iTES'], iv_data['vTES_rms'], iv_data['iTES_rms'], 
+                   [R, Rerr, fitParams], xLabel, yLabel, titleStr, fName, sc=sc_bounds, xScale=1e6, yScale=1e6, logx='linear', logy='linear')
+    return iv_dictionary
+
+
+def get_TES_values(outPath, data_channel, iv_dictionary):
+    '''From I-V data values compute the TES values for iTES and vTES, ultimately yielding rTES'''
+    squid_parameters = get_squid_parameters(2)
+    Rsh = squid_parameters['Rsh']
+    M = squid_parameters['M']
+    Rfb = squid_parameters['Rfb']
+    tes_dictionary = {}
+    for temperature, iv_data in iv_dictionary.items():
+        tes_dictionary[temperature] = {}
+        Rfb = squid_parameters['Rfb']
+        M = squid_parameters['M']
+        Rsh = squid_parameters['Rsh']
+        
+        iTES = get_iTES(iv_data['vOut'], Rfb, M)
+        iTES_rms = get_iTES(iv_data['vOut_rms'], Rfb, M)
+        
+        vTES = get_vTES(iv_data['iBias'], iv_data['vOut'], Rfb, M, Rsh, iv_data['R'].parasitic)
+        vTES_rms = get_vTES_rms(iv_data['iBias_rms'], iv_data['vOut'], iv_data['vOut_rms'], Rfb, M, Rsh, iv_data['R'].parasitic, iv_data['Rerr'].parasitic)
+        iv_data['iTES'] = iTES
+        iv_data['iTES_rms'] = iTES_rms
+        iv_data['vTES'] = vTES
+        iv_data['vTES_rms'] = vTES_rms
+    return iv_dictionary
 
 #@obsolete
 #def process_iv_curves(outPath, data_channel, iv_dictionary):
@@ -1906,5 +2093,7 @@ if __name__ == '__main__':
         # If we saved the root file and want to load it do so here
         iv_dictionary = read_from_ivroot(outPath + '/root/iv_data.root')
     # Next we can process the IV curves to get Rn and Rp values. Once we have Rp we can obtain vTES and go onward
-    process_iv_curves(outPath, args.dataChannel, iv_dictionary)
+    iv_dictionary = process_iv_curves(outPath, args.dataChannel, iv_dictionary)
+    get_TES_values(outPath, args.dataChannel, iv_dictionary)
+    iv_dictionary = process_tes_curves(outPath, args.dataChannel, iv_dictionary)
     print('done')
