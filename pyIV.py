@@ -14,6 +14,7 @@ from numpy import sum as nsum
 from scipy.optimize import minimize
 from scipy.optimize import curve_fit
 from scipy.odr import ODR, Model, Data, RealData
+from scipy.signal import detrend
 
 import matplotlib as mp
 from matplotlib import pyplot as plt
@@ -37,12 +38,12 @@ class FitParameters:
     def __init__(self):
         self.left = FitResult()
         self.right = FitResult()
-        self.parasitic = FitResult()
+        self.sc = FitResult()
     def __repr__(self):
         """return string representation."""
         s = 'Left Branch:\n' + str(self.left)
         s = s + '\n' + 'Right Branch:\n' + str(self.right)
-        s = s + '\n' + 'Parasitic:\n' + str(self.parasitic)
+        s = s + '\n' + 'Superconducting:\n' + str(self.sc)
         return(s)
 
 
@@ -67,11 +68,13 @@ class TESResistance:
         self.left = Resistance()
         self.right = Resistance()
         self.parasitic = Resistance()
+        self.sc = Resistance()
     def __repr__(self):
         '''Return string representation'''
         s = 'Left Branch:\n' + str(self.left)
         s += '\n' + 'Right Branch:\n' + str(self.right)
         s += '\n' + 'Parasitic:\n' + str(self.parasitic)
+        s += '\n' + 'Superconducting:\n' + str(self.sc)
         return(s)
 
 class Resistance:
@@ -475,6 +478,7 @@ def walk_sc(x, y, buffer_size=4, plane='iv'):
         
     # First let us compute the gradient (i.e. dy/dx)
     dydx = np.gradient(y, x, edge_order=2)
+    
     # In the sc region the gradient should be constant
     # So we will walk along and compute the average of N elements at a time. 
     # If the new average differs from the previous by some amount mark that as the end.
@@ -486,12 +490,17 @@ def walk_sc(x, y, buffer_size=4, plane='iv'):
         # Occasionally we may have a shifted curve that is not near 0 for some reason (SQUID jump)
         # So find the min and max iTES and then find the central point
     elif plane == 'iv':
-        index_max_y = np.argmax(y)
-        index_min_y = np.argmin(y)
-        mean_x = (x[index_max_y] + x[index_min_y])/2
+        # Try a new approach based on the behavior of dy/dx --> SC region will be fundamentally a lower dy/dx than normal
+        #index_max_y = np.argmin(dydx[x < 0])
+        #index_min_y = np.argmin(dydx[x > 0])
+        #index_max_y = np.argmax(y)
+        #index_min_y = np.argmin(y)
+        #mean_x = (x[index_max_y] + x[index_min_y])/2
         # Find the index of x nearest this mean value
-        index_min_x = np.argmin(np.abs(x-mean_x))
-        # NOTE: The above will fail for small SC regions where iTES normal > iTES sc!!!!
+        #index_min_x = np.argmin(np.abs(x-mean_x))
+        # wait...if we plot iBias as x, then by def iBias = 0 is 0 since we control it...
+        index_min_x = np.argmin(np.abs(x))
+        # NOTE: The above will fail for small SC regions where vOut normal > vOut sc!!!!
     # First go from index_min_x and increase
     # Create ring buffer of to store signal
     buffer_size = 4
@@ -715,8 +724,8 @@ def add_model_fits(ax, x, y, model, xScale=1, yScale=1, model_function=lin_sq):
     if model.right.result is not None:
         yFit = model_function(x, *model.right.result)
         ax.plot(x*xScale, yFit*yScale, 'g-', marker='None', linewidth=2)
-    if model.parasitic.result is not None:
-        yFit = model_function(x, *model.parasitic.result)
+    if model.sc.result is not None:
+        yFit = model_function(x, *model.sc.result)
         cut = np.logical_and(yFit < y.max(), yFit > y.min())
         ax.plot(x[cut]*xScale, yFit[cut]*yScale, 'b-', marker='None', linewidth=2)
     for label in (ax.get_xticklabels() + ax.get_yticklabels()):
@@ -731,7 +740,7 @@ def add_fit_textbox(ax, R, model):
     lOff = r'$\mathrm{Left V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.left.result[1]*1e3, model.left.error[1]*1e3)
     
     sR = r'$\mathrm{SC R_{p}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.parasitic.value*1e3, R.parasitic.rms*1e3)
-    sOff = r'$\mathrm{SC V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.parasitic.result[1]*1e3, model.parasitic.error[1]*1e3)
+    sOff = r'$\mathrm{SC V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.sc.result[1]*1e3, model.sc.error[1]*1e3)
     
     rR = r'$\mathrm{Right R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.right.value*1e3, R.right.rms*1e3)
     rOff = r'$\mathrm{Right V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.right.result[1]*1e3, model.right.error[1]*1e3)
@@ -770,11 +779,12 @@ def save_plot(fig, ax, fName):
     return None
     
 
-def iv_fitplot(x, y, xerr, yerr, model, xLabel, yLabel, title, fName, xScale=1, yScale=1, logx='linear', logy='linear'):
+def iv_fitplot(x, y, xerr, yerr, model, Rp, xLabel, yLabel, title, fName, xScale=1, yScale=1, logx='linear', logy='linear'):
     '''Wrapper for plotting an iv curve with fit parameters'''
     fName = fName + '.png' if fName.split('.png') != 2 else fName
     fig = plt.figure(figsize=(16,12))
     ax = fig.add_subplot(111)
+    yFit1 = lin_sq(x, *model.right.result)
     ax.errorbar(x*xScale, y*yScale, marker='o', markersize=2, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0, linestyle='None', xerr=xerr*xScale, yerr=yerr*yScale)
     if model.left.result is not None:
         yFit = lin_sq(x, *model.left.result)
@@ -782,9 +792,9 @@ def iv_fitplot(x, y, xerr, yerr, model, xLabel, yLabel, title, fName, xScale=1, 
     if model.right.result is not None:
         yFit = lin_sq(x, *model.right.result)
         ax.plot(x*xScale, yFit*yScale, 'g-', marker='None', linewidth=2)
-    if model.parasitic.result is not None:
+    if model.sc.result is not None:
         # Need to plot only a subset of data
-        yFit = lin_sq(x, *model.parasitic.result)
+        yFit = lin_sq(x, *model.sc.result)
         cut = np.logical_and(yFit < y.max(), yFit > y.min())
         ax.plot(x[cut]*xScale, yFit[cut]*yScale, 'b-', marker='None', linewidth=2)
     ax.set_xscale(logx)
@@ -798,17 +808,19 @@ def iv_fitplot(x, y, xerr, yerr, model, xLabel, yLabel, title, fName, xScale=1, 
         label.set_fontsize(18)
     # Now generate text strings
     # model values are [results, perr] --> [[m, b], [merr, berr]]
-    R = fit_to_resistance(model, fit_type='iv')
-    lR = r'$\mathrm{Left R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.left.value*1e3, R.left.rms*1e3)
-    lOff = r'$\mathrm{Left V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.left.result[1]*1e3, model.left.error[1]*1e3)
+    R = fit_to_resistance(model, fit_type='iv', Rp=Rp.value, Rp_rms=Rp.rms)
+    lR = r'$\mathrm{Left \ R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.left.value*1e3, R.left.rms*1e3)
+    lOff = r'$\mathrm{Left \ V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.left.result[1]*1e3, model.left.error[1]*1e3)
     
-    sR = r'$\mathrm{SC R_{p}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.parasitic.value*1e3, R.parasitic.rms*1e3)
-    sOff = r'$\mathrm{SC V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.parasitic.result[1]*1e3, model.parasitic.error[1]*1e3)
+    sR = r'$\mathrm{R_{sc} - R_{p}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.sc.value*1e3, R.sc.rms*1e3)
+    sOff = r'$\mathrm{V_{sc,off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.sc.result[1]*1e3, model.sc.error[1]*1e3)
     
-    rR = r'$\mathrm{Right R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.right.value*1e3, R.right.rms*1e3)
-    rOff = r'$\mathrm{Right V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.right.result[1]*1e3, model.right.error[1]*1e3)
+    rR = r'$\mathrm{Right \ R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.right.value*1e3, R.right.rms*1e3)
+    rOff = r'$\mathrm{Right \ V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.right.result[1]*1e3, model.right.error[1]*1e3)
     
-    textStr = lR + '\n' + lOff + '\n' + sR + '\n' + sOff + '\n' + rR + '\n' + rOff
+    pR = r'$\mathrm{R_{p}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(Rp.value*1e3, Rp.rms*1e3)
+    
+    textStr = lR + '\n' + lOff + '\n' + pR + '\n' + sR + '\n' + sOff + '\n' + rR + '\n' + rOff
     # these are matplotlib.patch.Patch properties
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
     #anchored_text = AnchoredText(textstr, loc=4)
@@ -933,11 +945,39 @@ def save_to_root(output_directory, iv_dictionary):
     return None
 
 
+def make_tes_multiplot(output_path, data_channel, iv_dictionary, fit_parameters):
+    '''Make a plot of all temperatures at once
+    rTES vs iBias
+    
+    '''
+    # Convert fit parameters to R values
+    #R = fit_to_resistance(fit_parameters, fit_type='tes')
+    # Current vs Voltage
+    fig = plt.figure(figsize=(16,12))
+    ax = fig.add_subplot(111)
+    xScale = 1e6
+    yScale = 1e3
+    for temperature, data in iv_dictionary.items():
+        params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': None}
+        labels = {'xlabel': 'Bias Current [uA]', 'ylabel': 'TES Resistance [m \Omega]', 'title': 'Channel {} TES Resistance vs Bias Current'.format(data_channel)}
+        ax = generic_fitplot_with_errors(ax=ax, x=data['iBias'], y=data['rTES'], labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
+        #ax = add_model_fits(ax=ax, x=data['vTES'], y=data['iTES'], model=fit_parameters, xScale=xScale, yScale=yScale, model_function=lin_sq)
+        #ax = add_fit_textbox(ax=ax, R=R, model=fit_parameters)
+    ax.set_ylim((0*yScale, 1*yScale))
+    ax.set_xlim((-20, 20))
+    fName = output_path + '/' + 'rTES_vs_iBias_ch_' + str(data_channel)
+    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+        label.set_fontsize(18)
+    save_plot(fig, ax, fName)
+    return None
+
+
 def make_tes_plots(output_path, data_channel, temperature, data, fit_parameters):
     '''Helper function to generate standard TES plots
     iTES vs vTES
     rTES vs iTES
     rTES vs vTES
+    rTES vs iBias
     pTES vs rTES
     pTES vs vTES
     '''
@@ -981,6 +1021,17 @@ def make_tes_plots(output_path, data_channel, temperature, data, fit_parameters)
     labels = {'xlabel': 'TES Voltage [uV]', 'ylabel': 'TES Resistance [mOhm]', 'title': 'Channel {} TES Resistance vs TES Voltage for T = {} mK'.format(data_channel, temperature)}
     ax = generic_fitplot_with_errors(ax=ax, x=data['vTES'], y=data['rTES'], labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
     fName = output_path + '/' + 'rTES_vs_vTES_ch_' + str(data_channel) + '_' + temperature + 'mK'
+    save_plot(fig, ax, fName)
+    
+    # Resistance vs Bias Current
+    fig = plt.figure(figsize=(16,12))
+    ax = fig.add_subplot(111)
+    xScale = 1e6
+    yScale = 1e3
+    params = {'marker': 'o', 'markersize': 2, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': data['iBias_rms']*xScale, 'yerr': data['rTES_rms']*yScale}
+    labels = {'xlabel': 'Bias Current [uA]', 'ylabel': 'TES Resistance [mOhm]', 'title': 'Channel {} TES Resistance vs Bias Current for T = {} mK'.format(data_channel, temperature)}
+    ax = generic_fitplot_with_errors(ax=ax, x=data['iBias'], y=data['rTES'], labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
+    fName = output_path + '/' + 'rTES_vs_iBias_ch_' + str(data_channel) + '_' + temperature + 'mK'
     save_plot(fig, ax, fName)
     
     # Power vs rTES
@@ -1422,8 +1473,16 @@ def correct_offsets(fitParams):
     return current_intersection, voltage_intersection
 
 
-def fit_to_resistance(fit_parameters, fit_type='iv'):
-    '''Given a FitParameters object convert to Resistance and Resistance error TESResistance objects'''
+def fit_to_resistance(fit_parameters, fit_type='iv', Rp=None, Rp_rms=None):
+    '''Given a FitParameters object convert to Resistance and Resistance error TESResistance objects
+    
+    If a parasitic resistance is provided subtract it from the normal and superconducting branches and assign it
+    to the parasitic property.
+    
+    If no parasitic resistance is provided assume that the superconducting region values are purely parasitic
+    and assign the resulting value to both properties.
+    
+    '''
     squid_parameters = get_squid_parameters(2)
     Rsh = squid_parameters['Rsh']
     M = squid_parameters['M']
@@ -1433,24 +1492,53 @@ def fit_to_resistance(fit_parameters, fit_type='iv'):
     # The interpretation of the fit parameters depends on what plane we are in
     if fit_type == 'iv':
         # We fit something of the form vOut = a*iBias + b
-        Rp = Rsh * ((M*Rfb)/fit_parameters.parasitic.result[0] - 1)
-        Rp_rms = np.abs( (-1*M*Rfb*Rsh)/pow2(fit_parameters.parasitic.result[0]) * fit_parameters.parasitic.error[0] )
-        Rl = (M*Rfb*Rsh)/fit_parameters.left.result[0] - Rsh - Rp
-        Rl_rms = sqrt(pow2(fit_parameters.left.error[0] * (-1*M*Rfb*Rsh)/pow2(fit_parameters.left.result[0])) + pow2(-1*Rp_rms))
-        Rr = (M*Rfb*Rsh)/fit_parameters.right.result[0] - Rsh - Rp
-        Rr_rms = sqrt(pow2(fit_parameters.right.error[0] * (-1*M*Rfb*Rsh)/pow2(fit_parameters.right.result[0])) + pow2(-1*Rp_rms))
+        Rsc = Rsh * ((M*Rfb)/fit_parameters.sc.result[0] - 1)
+        if Rp is None:
+            Rp = Rsc
+        else:
+            Rsc = Rsc - Rp
+        Rsc_rms = np.abs( (-1*M*Rfb*Rsh)/pow2(fit_parameters.sc.result[0]) * fit_parameters.sc.error[0] )
+        if Rp_rms is None:
+            Rp_rms = Rsc_rms
+        else:
+            Rsc_rms = sqrt(pow2(Rsc_rms) + pow2(Rp_rms))
+        if fit_parameters.left.result is None:
+            Rl, Rl_rms = None, None
+        else:
+            Rl = (M*Rfb*Rsh)/fit_parameters.left.result[0] - Rsh - Rp
+            Rl_rms = sqrt(pow2(fit_parameters.left.error[0] * (-1*M*Rfb*Rsh)/pow2(fit_parameters.left.result[0])) + pow2(-1*Rp_rms))
+        if fit_parameters.right.result is None:
+            Rr, Rr_rms = None, None
+        else:
+            Rr = (M*Rfb*Rsh)/fit_parameters.right.result[0] - Rsh - Rp
+            Rr_rms = sqrt(pow2(fit_parameters.right.error[0] * (-1*M*Rfb*Rsh)/pow2(fit_parameters.right.result[0])) + pow2(-1*Rp_rms))
     elif fit_type == 'tes':
         # Here we fit something of the form iTES = a*vTES + b
         # Fundamentally iTES = vTES/rTES ...
-        Rp = 1/fit_parameters.parasitic.result[0]
-        Rp_rms = np.abs((-1*fit_parameters.parasitic.error[0])/pow2(fit_parameters.parasitic.result[0]))
-        Rl = 1/fit_parameters.left.result[0]
-        Rl_rms = np.abs((-1*fit_parameters.left.error[0])/pow2(fit_parameters.left.result[0]))
-        Rr = 1/fit_parameters.right.result[0]
-        Rr_rms = np.abs((-1*fit_parameters.right.error[0])/pow2(fit_parameters.right.result[0]))
+        Rsc = 1/fit_parameters.sc.result[0]
+        if Rp is None:
+            Rp = Rsc
+        else:
+            Rsc = Rsc - Rp
+        Rsc_rms = np.abs((-1*fit_parameters.sc.error[0])/pow2(fit_parameters.sc.result[0]))
+        if Rp_rms is None:
+            Rp_rms = Rsc_rms
+        else:
+            Rsc_rms = sqrt(pow2(Rsc_rms) + pow2(Rp_rms))
+        if fit_parameters.left.result is None:
+            Rl, Rl_rms = None, None
+        else:
+            Rl = 1/fit_parameters.left.result[0]
+            Rl_rms = np.abs((-1*fit_parameters.left.error[0])/pow2(fit_parameters.left.result[0]))
+        if fit_parameters.right.result is None:
+            Rr, Rr_rms = None, None
+        else:
+            Rr = 1/fit_parameters.right.result[0]
+            Rr_rms = np.abs((-1*fit_parameters.right.error[0])/pow2(fit_parameters.right.result[0]))
     R.parasitic.set_values(Rp, Rp_rms)
     R.left.set_values(Rl, Rl_rms)
     R.right.set_values(Rr, Rr_rms)
+    R.sc.set_values(Rsc, Rsc_rms)
     return R
 
 
@@ -1487,45 +1575,71 @@ def fit_iv_regions(x, y, sigmaY, fittype='iv', plane='iv'):
 #    R.parasitic.set_values(Rp, Rp_rms)
 #    R.left.set_values(Rl, Rl_rms)
 #    R.right.set_values(Rr, Rr_rms)
-    fitParams.parasitic.set_values(result, perr)
+    fitParams.sc.set_values(result, perr)
     fitParams.left.set_values(left_result, left_perr)
     fitParams.right.set_values(right_result, right_perr)
     #TODO: Make sure everything is right here with the equations and error prop.
     return fitParams
 
 
+def get_parasitic_resistances(iv_dictionary):
+    '''Loop through IV data to obtain parasitic series resistance'''
+    parasitic_dictionary = {}
+    fitParams = FitParameters()
+    minT = list(iv_dictionary.keys())[np.argmin([float(T) for T in iv_dictionary.keys()])]
+    for temperature, iv_data in iv_dictionary.items():
+        result, perr = fit_sc_branch(iv_data['iBias'], iv_data['vOut'], iv_data['vOut_rms'], plane='iv')
+        fitParams.sc.set_values(result, perr)
+        R = fit_to_resistance(fitParams, fit_type='iv')
+        parasitic_dictionary[temperature] = R.parasitic
+    return parasitic_dictionary, minT
+
+
 def process_iv_curves(outPath, data_channel, iv_dictionary):
-    '''Take I-V data and find Rp and Rn values. We need Rp in particular ot get vTES'''
+    '''Processes the IV data to obtain electrical parameters
+    The IV curve has 3 regions -- normal, biased, superconducting
+    When the temperature becomes warm enough the superconducting 
+    and biased regions will vanish leaving just a normal resistance line
+    
+    In an ideal circuit the slope of the superconducting region will be infinity
+    denoting 0 resistance. There is actually some parasitic resistance in series with the TES
+    and so there is a slope in the superconducting region. This slope will gradually align with the normal
+    region slope as temperature increases due to the TES becoming partially normal.
+    
+    At the coldest temperature we can assume the TES resistance = 0 and so the slope is purely parasitic.
+    This fitted parasitic resistance will be subtracted from resistances in the normal region to give a proper
+    estimate of the normal resistance and an estimate of the residual TES resistance in the 'superconducting' region.
+    
+    Additionally the IV curve must be corrected so that iBias = 0 corresponds to vOut = 0.
+    '''
+    
     squid_parameters = get_squid_parameters(2)
     Rsh = squid_parameters['Rsh']
     M = squid_parameters['M']
     Rfb = squid_parameters['Rfb']
     keys = ['iBias', 'iBias_rms', 'vOut', 'vOut_rms']
-    fit_parameters = {}
-    for temperature, iv_data in iv_dictionary.items():
-        # First order correction: Assume symmetric iBias sweep on either side of 0
-        iv_data['iBias'] = iv_data['iBias'] - np.mean(iv_data['iBias'])
-        fitParams = fit_iv_regions(x=iv_data['iBias'], y=iv_data['vOut'], sigmaY=iv_data['vOut_rms'], fittype='iv', plane='iv')
-        # Next we should center the IV data...it should pass through (0,0)
-        # Adjust data based on intersection of SC and Normal data
-        # V = Rn*I + Bn
-        # V = Rs*I + Bs
-        # Rn*I + Bn = Rs*I + Bs --> I = (Bs - Bn)/(Rn - Rs)
-        current_intersection, voltage_intersection = correct_offsets(fitParams)
-        iv_data['iBias'] = iv_data['iBias'] - current_intersection
-        iv_data['vOut'] = iv_data['vOut'] - voltage_intersection
-        # Re-walk on shifted data
-        fit_parameters[temperature] = fit_iv_regions(x=iv_data['iBias'], y=iv_data['vOut'], sigmaY=iv_data['vOut_rms'], fittype='iv', plane='iv')
-    # In principle now we can force Rparasitic to be a value fixed from the purely SC cases so we don't subtract the normal resistance from itself
+    fit_parameters_dictionary = {}
     
+    # First we should try to obtain a measure of the parasitic series resistance. This value will be subtracted from
+    # subsequent fitted values of the TES resistance
+    parasitic_dictionary, minT = get_parasitic_resistances(iv_dictionary)
+    Rp, Rp_rms = parasitic_dictionary[minT].value, parasitic_dictionary[minT].rms
+    
+    # Loop through the iv data now and obtain fit parameters and correct alignment
+    for temperature, iv_data in iv_dictionary.items():
+        fit_parameters_dictionary[temperature] = fit_iv_regions(x=iv_data['iBias'], y=iv_data['vOut'], sigmaY=iv_data['vOut_rms'], fittype='iv', plane='iv')
+        iv_data['vOut'] -= fit_parameters_dictionary[temperature].sc.result[1]
+        # Re-walk on shifted data
+        fit_parameters_dictionary[temperature] = fit_iv_regions(x=iv_data['iBias'], y=iv_data['vOut'], sigmaY=iv_data['vOut_rms'], fittype='iv', plane='iv')
+    # Next loop through to generate plots
     for temperature, iv_data in iv_dictionary.items():
         # Make I-V plot
         xLabel = 'Bias Current [uA]'
         yLabel = 'Output Voltage [mV]'
         titleStr = 'Channel {} Output Voltage vs Bias Current for T = {} mK'.format(data_channel, temperature)
         fName = outPath + '/' + 'vOut_vs_iBias_ch_' + str(data_channel) + '_' + temperature + 'mK'
-        iv_fitplot(iv_data['iBias'], iv_data['vOut'], iv_data['iBias_rms'], iv_data['vOut_rms'], fit_parameters[temperature], xLabel, yLabel, titleStr, fName, xScale=1e6, yScale=1e3, logx='linear', logy='linear')
-    return iv_dictionary, fit_parameters
+        iv_fitplot(iv_data['iBias'], iv_data['vOut'], iv_data['iBias_rms'], iv_data['vOut_rms'], fit_parameters_dictionary[temperature], parasitic_dictionary[minT], xLabel, yLabel, titleStr, fName, xScale=1e6, yScale=1e3, logx='linear', logy='linear')
+    return iv_dictionary, fit_parameters_dictionary, parasitic_dictionary
 
 
 def get_RT_curves(output_path, data_channel, iv_dictionary):
@@ -1534,7 +1648,7 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     T = np.empty(0)
     R = np.empty(0)
     for temperature, iv_data in iv_dictionary.items():
-        cut = np.logical_and(iv_data['vTES'] > 0.01e-6, iv_data['vTES'] < 0.1e-6)
+        cut = np.logical_and(iv_data['iBias'] > 7.5e-6, iv_data['iBias'] < 7.7e-6)
         if nsum(cut) > 0:
             T = np.append(T, float(temperature)*1e-3) # T in K
             R = np.append(R, np.mean(iv_data['rTES'][cut]))
@@ -1583,28 +1697,27 @@ def process_tes_curves(outPath, data_channel, iv_dictionary):
         # Obtain R and P values
         
         # Make TES Plots
-        make_tes_plots(output_path=outPath, data_channel=data_channel, temperature=temperature, data=iv_data, fit_parameters=fitParams)
+        #make_tes_plots(output_path=outPath, data_channel=data_channel, temperature=temperature, data=iv_data, fit_parameters=fitParams)
         xLabel = 'TES Voltage [uV]'
         yLabel = 'TES Current [uA]'
         titleStr = 'Channel {} TES Current vs TES Voltage for T = {} mK'.format(data_channel, temperature)
         fName = outPath + '/' + 'iTES_vs_vTES_ch_' + str(data_channel) + '_' + temperature + 'mK'
         #iv_fitplot(iv_data['vTES'], iv_data['iTES'], iv_data['vTES_rms'], iv_data['iTES_rms'], [R, Rerr, fitParams], xLabel, yLabel, titleStr, fName, sc=sc_bounds, xScale=1e6, yScale=1e6, logx='linear', logy='linear')
+    # Make a for all temperatures here
+    make_tes_multiplot(output_path=outPath, data_channel=data_channel, iv_dictionary=iv_dictionary, fit_parameters=fitParams)
     return iv_dictionary
 
 
-def get_TES_values(outPath, data_channel, iv_dictionary, fit_parameters_dictionary):
+def get_TES_values(outPath, data_channel, iv_dictionary, parasitic_dictionary):
     '''From I-V data values compute the TES values for iTES and vTES, ultimately yielding rTES'''
     squid_parameters = get_squid_parameters(2)
     Rsh = squid_parameters['Rsh']
     M = squid_parameters['M']
     Rfb = squid_parameters['Rfb']
     # Test: Select the parasitic resistance from the lowest temperature fit to use for everything
-    minT = list(fit_parameters_dictionary.keys())[np.argmin([float(T) for T in fit_parameters_dictionary.keys()])]
-    Rmin = fit_to_resistance(fit_parameters_dictionary[minT], fit_type='iv')
-    Rp = Rmin.parasitic.value
-    Rp_rms = Rmin.parasitic.rms
+    minT = list(parasitic_dictionary.keys())[np.argmin([float(T) for T in parasitic_dictionary.keys()])]
+    Rp, Rp_rms = parasitic_dictionary[minT].value, parasitic_dictionary[minT].rms
     for temperature, iv_data in iv_dictionary.items():
-        R = fit_to_resistance(fit_parameters_dictionary[temperature], fit_type='iv')
         iv_data['iTES'] = get_iTES(iv_data['vOut'], Rfb, M)
         iv_data['iTES_rms'] = get_iTES(iv_data['vOut_rms'], Rfb, M)
         
@@ -1684,8 +1797,8 @@ if __name__ == '__main__':
 
     # Next we can process the IV curves to get Rn and Rp values. Once we have Rp we can obtain vTES and go onward
     if args.readTESROOT is False:
-        iv_dictionary, fit_parameters_dictionary = process_iv_curves(outPath, args.dataChannel, iv_dictionary)
-        iv_dictionary = get_TES_values(outPath, args.dataChannel, iv_dictionary, fit_parameters_dictionary)
+        iv_dictionary, fit_parameters_dictionary, parasitic_dictionary = process_iv_curves(outPath, args.dataChannel, iv_dictionary)
+        iv_dictionary = get_TES_values(outPath, args.dataChannel, iv_dictionary, parasitic_dictionary)
         save_to_root(outPath, iv_dictionary)
     if args.readTESROOT is True:
         iv_dictionary = read_from_ivroot(outPath + '/root/iv_data.root', branches=['iBias', 'iBias_rms', 'vOut', 'vOut_rms', 'iTES', 'iTES_rms', 'vTES', 'vTES_rms', 'rTES', 'rTES_rms', 'pTES', 'pTES_rms'])
