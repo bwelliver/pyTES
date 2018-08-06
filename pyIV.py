@@ -8,6 +8,7 @@ import numpy as np
 from numpy import exp as exp
 from numpy import log as ln
 from numpy import square as pow2
+from numpy import power as power
 from numpy import sqrt as sqrt
 from numpy import sum as nsum
 
@@ -223,6 +224,13 @@ def quad_sq(x, a, b, c):
     y = a*x*x + b*x + c
     return y
 
+
+def tes_power_polynomial(T, k, n, Tb):
+    '''General TES power equation
+    P = k*(T^n - Tb^n)
+    '''
+    P = k*(power(Tb, n) - power(T, n))
+    return P
 
 def get_squid_parameters(channel):
     '''Return SQUID Parameters based on a given channel'''
@@ -539,108 +547,6 @@ def walk_sc(x, y, buffer_size=4, plane='iv'):
     return (evLeft, evRight)
 
 
-# Plot root files
-def make_gen_plot(x, y, xlab, ylab, titleStr, fName, logx='linear', logy='linear'):
-    '''General error plotting function'''
-    fName = fName + '.png' if fName.split('.png') != 2 else fName
-    fig = plt.figure(figsize=(16, 12))
-    ax = fig.add_subplot(111)
-    ax.plot(x, y, marker='o', markersize=4, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0.0, linestyle='None')
-    ax.set_xscale(logx)
-    ax.set_yscale(logy)
-    ax.set_xlabel(xlab, fontsize=18)
-    ax.set_ylabel(ylab, fontsize=18)
-    ax.set_title(titleStr, fontsize=18)
-    ax.set_ylim((0.95*y.min(), 1.05*y.max()))
-    if x.min() > 0:
-        ax.set_xlim((0.95*x.min(), 1.05*x.max()))
-    else:
-        ax.set_xlim((1.05*x.min(), 1.05*x.max()))
-    ax.grid()
-    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
-        label.set_fontsize(18)
-    fig.savefig(fName, dpi=150, bbox_inches='tight')
-    plt.close('all')
-    return True
-
-
-def make_gen_fitplot(x, y, xfit, yfit, xlab, ylab, titleStr, fName, logx='linear', logy='linear', y0=False):
-    '''General error plotting function'''
-    fName = fName + '.png' if fName.split('.png') != 2 else fName
-    fig = plt.figure(figsize=(16, 12))
-    ax = fig.add_subplot(111)
-    ax.plot(x, y, marker='o', markersize=4, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0.0, linestyle='None')
-    for xf, yf in zip(xfit, yfit):
-        ax.plot(xf, yf, '-', marker='None', linewidth=2)
-    ax.set_xscale(logx)
-    ax.set_yscale(logy)
-    ax.set_xlabel(xlab, fontsize=18)
-    ax.set_ylabel(ylab, fontsize=18)
-    ax.set_title(titleStr, fontsize=18)
-    if y.min() > 0:
-        ax.set_ylim(0.95*y.min(), 1.05*y.max())
-    else:
-        ax.set_ylim((1.05*y.min(), 1.05*y.max()))
-    if y0 is True:
-        ax.set_ylim((0, 1.05*y.max()))
-
-    if x.min() > 0:
-        ax.set_xlim((0.95*x.min(), 1.05*x.max()))
-    else:
-        ax.set_xlim((1.05*x.min(), 1.05*x.max()))
-    ax.grid()
-    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
-        label.set_fontsize(18)
-    fig.savefig(fName, dpi=150, bbox_inches='tight')
-    plt.close('all')
-    return True
-
-
-def make_power_voltage_fit(x, y, xf, yf, fitResults, xLabel, yLabel, titleStr, fName, xErr=None, yErr=None, logx='linear', logy='linear', y0=False):
-    '''Generate power vs voltage with fit'''
-    [[R,iL,p], [Rerr, iLerr, perr]] = fitResults
-    fName = fName + '.png' if fName.split('.png') != 2 else fName
-    fig = plt.figure(figsize=(16, 12))
-    ax = fig.add_subplot(111)
-    if xErr is not None or yErr is not None:
-        ax.errorbar(x, y, marker='o', markersize=2, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0.0, linestyle='None', xerr=xErr, yerr=yErr)
-    else:
-        ax.plot(x, y, marker='o', markersize=4, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0.0, linestyle='None')
-    
-    ax.plot(xf, yf, '-', marker='None', linewidth=2)
-    ax.set_xscale(logx)
-    ax.set_yscale(logy)
-    ax.set_xlabel(xLabel, fontsize=18)
-    ax.set_ylabel(yLabel, fontsize=18)
-    ax.set_title(titleStr, fontsize=18)
-    if y.min() > 0:
-        ax.set_ylim(0.95*y.min(), 1.05*y.max())
-    else:
-        ax.set_ylim((1.05*y.min(), 1.05*y.max()))
-    if y0 is True:
-        ax.set_ylim((0, 1.05*y.max()))
-
-    if x.min() > 0:
-        ax.set_xlim((0.95*x.min(), 1.05*x.max()))
-    else:
-        ax.set_xlim((1.05*x.min(), 1.05*x.max()))
-    ax.grid()
-    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
-        label.set_fontsize(18)
-    tR = r'$\mathrm{R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R*1e3, Rerr*1e3)
-    tI = r'$\mathrm{i_{p}} = %.5f \pm %.5f \mathrm{nA}$'%(iL*1e9, iLerr*1e9)
-    tP = r'$\mathrm{P_{p}} = %.5f \pm %.5f \mathrm{fW}$'%(p*1e15, perr*1e15)
-    textStr = tR + '\n' + tI + '\n' + tP
-    # these are matplotlib.patch.Patch properties
-    props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
-    #anchored_text = AnchoredText(textstr, loc=4)
-    #ax.add_artist(anchored_text)
-    # place a text box in upper left in axes coords
-    ax.text(0.65, 0.9, textStr, transform=ax.transAxes, fontsize=14, verticalalignment='top', bbox=props)
-    fig.savefig(fName, dpi=150, bbox_inches='tight')
-    plt.close('all')
-    return True
-    
 def test_plot(x, y, xlab, ylab, fName):
     """Create generic plots that may be semilogx (default)"""
     fName = fName + '.png' if fName.split('.png') != 2 else fName
@@ -656,29 +562,7 @@ def test_plot(x, y, xlab, ylab, fName):
     plt.close('all')
     #plt.draw()
     #plt.show()
-
-
-def make_gen_errplot(x, xerr, y, yerr, xlab, ylab, titleStr, fName, log='linear'):
-    '''General error plotting function'''
-    fName = fName + '.png' if fName.split('.png') != 2 else fName
-    fig = plt.figure(figsize=(16, 12))
-    ax = fig.add_subplot(111)
-    ax.errorbar(x, y, marker='o', markersize=2, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0.0, linestyle='None', xerr=xerr, yerr=yerr)
-    ax.set_xscale(log)
-    ax.set_xlabel(xlab, fontsize=18)
-    ax.set_ylabel(ylab, fontsize=18)
-    ax.set_title(titleStr, fontsize=18)
-    ax.set_ylim((0.95*y.min(), 1.05*y.max()))
-    if x.min() > 0:
-        ax.set_xlim((0.95*x.min(), 1.05*x.max()))
-    else:
-        ax.set_xlim((1.05*x.min(), 1.05*x.max()))
-    ax.grid()
-    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
-        label.set_fontsize(18)
-    fig.savefig(fName, dpi=150, bbox_inches='tight')
-    plt.close('all')
-    return True
+    return None
 
 
 def test_steps(x, y, v, t0, xlab, ylab, fName):
@@ -709,8 +593,10 @@ def generic_fitplot_with_errors(ax, x, y, labels, params, xScale=1, yScale=1, lo
     ax.set_yscale(logy)
     ax.set_xlabel(labels['xlabel'])
     ax.set_ylabel(labels['ylabel'])
-    ax.set_title(labels['title'])
-    ax.grid()
+    ax.yaxis.label.set_size(18)
+    ax.xaxis.label.set_size(18)
+    ax.set_title(labels['title'], fontsize=18)
+    ax.grid(True)
     for label in (ax.get_xticklabels() + ax.get_yticklabels()):
         label.set_fontsize(18)
     return ax
@@ -757,13 +643,23 @@ def add_fit_textbox(ax, R, model):
     return ax
 
 
-def add_power_textbox(ax, model):
+def add_power_voltage_textbox(ax, model):
     '''Add dectoration textbox for a power vs resistance fit'''
     lR = r'$\mathrm{R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(1/model.left.result[0]*1e3, model.left.error[0]/pow2(model.left.result[0])*1e3)
     lI = r'$\mathrm{I_{para}} = %.5f \pm %.5f \mathrm{uA}$'%(model.left.result[1]*1e6, model.left.error[1]*1e6)
     lP = r'$\mathrm{P_{para}} = %.5f \pm %.5f \mathrm{fW}$'%(model.left.result[2]*1e15, model.left.error[2]*1e15)
     
     textStr = lR + '\n' + lI + '\n' + lP
+    props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
+    ax.text(0.65, 0.9, textStr, transform=ax.transAxes, fontsize=14, verticalalignment='top', bbox=props)
+    return ax
+
+def add_power_temperature_textbox(ax, model):
+    '''Add decoration textbox for a power vs temperature fit'''
+    lk = r'$k = %.5f \pm %.5f \mathrm{W/K^{%.5f}}$'%(model.left.result[0], model.left.error[0], model.left.result[1])
+    ln = r'n = %.5f \pm %.5f$'%(model.left.result[1], model.left.error[1])
+    lTt = r'T_{TES} = %.5f \pm %.5f \mathrm{mK}'%(model.left.result[2]*1e3, model.left.error[2]*1e3)
+    textStr = lk + '\n' + ln + '\n' + lTt
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
     ax.text(0.65, 0.9, textStr, transform=ax.transAxes, fontsize=14, verticalalignment='top', bbox=props)
     return ax
@@ -1067,7 +963,7 @@ def make_tes_plots(output_path, data_channel, temperature, data, fit_parameters)
     
     ax = generic_fitplot_with_errors(ax=ax, x=data['vTES'], y=data['pTES'], labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
     ax = add_model_fits(ax=ax, x=data['vTES'], y=data['pTES'], model=fitResult, xScale=xScale, yScale=yScale, model_function=quad_sq)
-    ax = add_power_textbox(ax=ax, model=fitResult)
+    ax = add_power_voltage_textbox(ax=ax, model=fitResult)
     
     fName = output_path + '/' + 'pTES_vs_vTES_ch_' + str(data_channel) + '_' + temperature + 'mK'
     save_plot(fig, ax, fName)
@@ -1642,13 +1538,55 @@ def process_iv_curves(outPath, data_channel, iv_dictionary):
     return iv_dictionary, fit_parameters_dictionary, parasitic_dictionary
 
 
+def get_PT_curves(output_path, data_channel, iv_dictionary):
+    '''Generate a power vs temperature curve for a TES'''
+    # Need to select power in the biased region, i.e. where P(R) ~ constant
+    # Try something at 0.5*Rn
+    T = np.empty(0)
+    P = np.empty(0)
+    P_rms = np.empty(0)
+    for temperature, iv_data in iv_dictionary.items():
+        cut = np.logical_and(iv_data['rTES'] > 0.2*0.540 - 20e-3, iv_data['rTES'] < 0.2*0.540 + 20e-3)
+        if nsum(cut) > 0:
+            T = np.append(T, float(temperature)*1e-3)
+            P = np.append(P, np.mean(iv_data['pTES'][cut]))
+            P_rms = np.append(P_rms, np.mean(iv_data['pTES_rms'][cut]))
+    # Attempt to fit it to a power function
+    lBounds = [0, 5, 0]
+    uBounds = [10, 10, 10]
+    cutT = T < 36e-3
+    results, pcov = curve_fit(tes_power_polynomial, T[cutT], P[cutT], sigma=P_rms[cutT], bounds=(lBounds, uBounds), absolute_sigma=True, method='trf')
+    perr = np.sqrt(np.diag(pcov))
+    fitResult = FitParameters()
+    fitResult.left.set_values(results, perr)
+    # Next make a P-T plot
+    fig = plt.figure(figsize=(16,12))
+    ax = fig.add_subplot(111)
+    xScale = 1e3
+    yScale = 1e15
+    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': P_rms*yScale}
+    labels = {'xlabel': 'Temperature [mK]', 'ylabel': 'TES Power [fW]', 'title': 'Channel {} TES Power vs Temperature'.format(data_channel)}
+    
+    ax = generic_fitplot_with_errors(ax=ax, x=T, y=P, labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
+    #ax.set_ylim((-1,1))
+    ax = add_model_fits(ax=ax, x=T, y=P, model=fitResult, xScale=xScale, yScale=yScale, model_function=tes_power_polynomial)
+    ax = add_power_temperature_textbox(ax=ax, model=fitResult)
+    
+    fName = output_path + '/' + 'pTES_vs_T_ch_' + str(data_channel)
+    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+        label.set_fontsize(18)
+    save_plot(fig, ax, fName)
+    print('Results: k = {}, n = {}, Tb = {}'.format(*results))
+    return None
+    
+
 def get_RT_curves(output_path, data_channel, iv_dictionary):
     '''Generate a resistance vs temperature curve for a TES'''
     # Rtes = R(i,T) really so select a fixed i and across multiple temperatures obtain values for R and then plot
     T = np.empty(0)
     R = np.empty(0)
     for temperature, iv_data in iv_dictionary.items():
-        cut = np.logical_and(iv_data['iBias'] > 7.5e-6, iv_data['iBias'] < 7.7e-6)
+        cut = np.logical_and(iv_data['iBias'] > 7.4e-6, iv_data['iBias'] < 7.8e-6)
         if nsum(cut) > 0:
             T = np.append(T, float(temperature)*1e-3) # T in K
             R = np.append(R, np.mean(iv_data['rTES'][cut]))
@@ -1659,7 +1597,7 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     xScale = 1e3
     yScale = 1e3
     params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': None}
-    labels = {'xlabel': 'Temperature [mK]', 'ylabel': 'TES Resistance [m\Omega]', 'title': 'Channel {} TES Resistance vs Temperature'.format(data_channel)}
+    labels = {'xlabel': 'Temperature [mK]', 'ylabel': 'TES Resistance [m' + r'$\Omega$' +']', 'title': 'Channel {} TES Resistance vs Temperature'.format(data_channel)}
     
     ax = generic_fitplot_with_errors(ax=ax, x=T, y=R, labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
     #ax.set_ylim((-1,1))
@@ -1670,6 +1608,67 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     for label in (ax.get_xticklabels() + ax.get_yticklabels()):
         label.set_fontsize(18)
     save_plot(fig, ax, fName)
+    
+    # We can try to plot alpha vs R as well why not
+    # alpha = To/Ro * dR/dT
+    alpha = (T/R)*np.gradient(R, T, edge_order=1)
+    fig = plt.figure(figsize=(16,12))
+    ax = fig.add_subplot(111)
+    xScale = 1e3
+    yScale = 1
+    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': None}
+    labels = {'xlabel': 'TES Resistance [m' + 'r$\Omega$' + ']', 'ylabel': r'$\alpha$', 'title': 'Channel {} TES '.format(data_channel) + r'$\alpha$' +' vs Resistance'}
+    
+    ax = generic_fitplot_with_errors(ax=ax, x=R, y=alpha, labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
+    #ax.set_ylim((-1,1))
+    #ax = add_model_fits(ax=ax, x=data['vTES'], y=data['iTES'], model=fit_parameters, sc_bounds=sc_bounds, xScale=xScale, yScale=yScale, model_function=lin_sq)
+    #ax = add_fit_textbox(ax=ax, R=data['R'], Rerr=data['Rerr'], model=fit_parameters)
+    fName = output_path + '/' + 'alpha_vs_rTES_ch_' + str(data_channel)
+    ax.set_ylim((0,150))
+    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+        label.set_fontsize(18)
+    save_plot(fig, ax, fName)
+    
+    # alpha vs T
+    fig = plt.figure(figsize=(16,12))
+    ax = fig.add_subplot(111)
+    xScale = 1e3
+    yScale = 1
+    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': None}
+    labels = {'xlabel': 'Temperature [mK]', 'ylabel': r'$\alpha$', 'title': 'Channel {} TES '.format(data_channel) + r'$\alpha$' +' vs Temperature'}
+    
+    ax = generic_fitplot_with_errors(ax=ax, x=T, y=alpha, labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
+    #ax.set_ylim((-1,1))
+    #ax = add_model_fits(ax=ax, x=data['vTES'], y=data['iTES'], model=fit_parameters, sc_bounds=sc_bounds, xScale=xScale, yScale=yScale, model_function=lin_sq)
+    #ax = add_fit_textbox(ax=ax, R=data['R'], Rerr=data['Rerr'], model=fit_parameters)
+    fName = output_path + '/' + 'alpha_vs_T_ch_' + str(data_channel)
+    ax.set_ylim((0,150))
+    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+        label.set_fontsize(18)
+    save_plot(fig, ax, fName)
+    
+    # We can get R-T curves for multiple current selections as well :)
+    # Proceed to do 0-1, 1-2, 2-3, up to 9-10
+    fig = plt.figure(figsize=(16,12))
+    ax = fig.add_subplot(111)
+    xScale = 1e3
+    yScale = 1e3
+    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': '-', 'xerr': None, 'yerr': None}
+    labels = {'xlabel': 'Temperature [mK]', 'ylabel': 'TES Resistance [m' + r'$\Omega$' + ']', 'title': 'Channel {} TES Resistance vs Temperature'.format(data_channel)}
+    for i in range(10):
+        T = np.empty(0)
+        R = np.empty(0)
+        for temperature, iv_data in iv_dictionary.items():
+            cut = np.logical_and(iv_data['iBias'] > i*1e-6, iv_data['iBias'] < (i+1)*1e-6)
+            if nsum(cut) > 0:
+                T = np.append(T, float(temperature)*1e-3)
+                R = np.append(R, np.mean(iv_data['rTES'][cut]))
+        ax = generic_fitplot_with_errors(ax=ax, x=T, y=R, labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
+    fName = output_path + '/' + 'rTES_vs_T_multi_ch_' + str(data_channel)
+    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+        label.set_fontsize(18)
+    save_plot(fig, ax, fName)
+    
     return None
 
 
@@ -1808,4 +1807,5 @@ if __name__ == '__main__':
     iv_dictionary = process_tes_curves(outPath, args.dataChannel, iv_dictionary)
     # Next let's do some special processing...R vs T, P vs T type of thing
     get_RT_curves(outPath, args.dataChannel, iv_dictionary)
+    get_PT_curves(outPath, args.dataChannel, iv_dictionary)
     print('done')
