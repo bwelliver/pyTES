@@ -656,9 +656,9 @@ def add_power_voltage_textbox(ax, model):
 
 def add_power_temperature_textbox(ax, model):
     '''Add decoration textbox for a power vs temperature fit'''
-    lk = r'$k = %.5f \pm %.5f \mathrm{W/K^{%.5f}}$'%(model.left.result[0], model.left.error[0], model.left.result[1])
-    ln = r'n = %.5f \pm %.5f$'%(model.left.result[1], model.left.error[1])
-    lTt = r'T_{TES} = %.5f \pm %.5f \mathrm{mK}'%(model.left.result[2]*1e3, model.left.error[2]*1e3)
+    lk = r'$k = %.5f \pm %.5f \mathrm{\mu W/K^{%.5f}}$'%(model.left.result[0]*1e6, model.left.error[0]*1e6, model.left.result[1])
+    ln = r'$n = %.5f \pm %.5f$'%(model.left.result[1], model.left.error[1])
+    lTt = r'$T_{TES} = %.5f \pm %.5f \mathrm{mK}$'%(model.left.result[2]*1e3, model.left.error[2]*1e3)
     textStr = lk + '\n' + ln + '\n' + lTt
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
     ax.text(0.65, 0.9, textStr, transform=ax.transAxes, fontsize=14, verticalalignment='top', bbox=props)
@@ -868,7 +868,7 @@ def make_tes_multiplot(output_path, data_channel, iv_dictionary, fit_parameters)
     return None
 
 
-def make_tes_plots(output_path, data_channel, temperature, data, fit_parameters):
+def tes_plots(output_path, data_channel, temperature, data, fit_parameters):
     '''Helper function to generate standard TES plots
     iTES vs vTES
     rTES vs iTES
@@ -970,7 +970,17 @@ def make_tes_plots(output_path, data_channel, temperature, data, fit_parameters)
     
     #iv_fitplot(data['vTES'], data['iTES'], data['vTES_rms'], data['iTES_rms'], [data['rTES'], data['rTES_err'], fit_parameters], xLabel, yLabel, titleStr, fName, sc=sc_bounds, xScale=1e6, yScale=1e6, logx='linear', logy='linear')
     return None
-        
+
+
+def make_tes_plots(output_path, data_channel, iv_dictionary, fit_dictionary):
+    '''Loop through data to generate TES specific plots'''
+    
+    for temperature, data in iv_dictionary.items():
+        tes_plots(output_path, data_channel, temperature, data, fit_dictionary[temperature])
+    # Make a for all temperatures here
+    make_tes_multiplot(output_path=outPath, data_channel=data_channel, iv_dictionary=iv_dictionary, fit_parameters=fit_dictionary)
+    return None
+
 
 #@obsolete
 #def make_TES_plots(outPath, data_channel, mean_temperature, tes_values, vF_left, vF_sc, vF_right):
@@ -1678,6 +1688,7 @@ def process_tes_curves(outPath, data_channel, iv_dictionary):
     Rsh = squid_parameters['Rsh']
     M = squid_parameters['M']
     Rfb = squid_parameters['Rfb']
+    fit_dictionary = {}
     for temperature, iv_data in iv_dictionary.items():
         print('Processing TES for T = {} mK'.format(temperature))
         fitParams = fit_iv_regions(x=iv_data['vTES'], y=iv_data['iTES'], sigmaY=iv_data['iTES_rms'], fittype='tes', plane='tes')
@@ -1694,17 +1705,8 @@ def process_tes_curves(outPath, data_channel, iv_dictionary):
         #iv_data['R'] = R
         #iv_data['Rerr'] = Rerr
         # Obtain R and P values
-        
-        # Make TES Plots
-        #make_tes_plots(output_path=outPath, data_channel=data_channel, temperature=temperature, data=iv_data, fit_parameters=fitParams)
-        xLabel = 'TES Voltage [uV]'
-        yLabel = 'TES Current [uA]'
-        titleStr = 'Channel {} TES Current vs TES Voltage for T = {} mK'.format(data_channel, temperature)
-        fName = outPath + '/' + 'iTES_vs_vTES_ch_' + str(data_channel) + '_' + temperature + 'mK'
-        #iv_fitplot(iv_data['vTES'], iv_data['iTES'], iv_data['vTES_rms'], iv_data['iTES_rms'], [R, Rerr, fitParams], xLabel, yLabel, titleStr, fName, sc=sc_bounds, xScale=1e6, yScale=1e6, logx='linear', logy='linear')
-    # Make a for all temperatures here
-    make_tes_multiplot(output_path=outPath, data_channel=data_channel, iv_dictionary=iv_dictionary, fit_parameters=fitParams)
-    return iv_dictionary
+        fit_dictionary[temperature] = fitParams
+    return iv_dictionary, fit_dictionary
 
 
 def get_TES_values(outPath, data_channel, iv_dictionary, parasitic_dictionary):
@@ -1804,7 +1806,10 @@ if __name__ == '__main__':
         # Note: We would need to also save or re-generate the fit_parameters dictionary?
     
     # This step onwards assumes iv_dictionary contains TES values
-    iv_dictionary = process_tes_curves(outPath, args.dataChannel, iv_dictionary)
+    iv_dictionary, fit_dictionary = process_tes_curves(outPath, args.dataChannel, iv_dictionary)
+    # Make TES Plots
+    make_tes_plots(output_path=outPath, data_channel=args.dataChannel, iv_dictionary=iv_dictionary, fit_dictionary=fit_dictionary)
+    
     # Next let's do some special processing...R vs T, P vs T type of thing
     get_RT_curves(outPath, args.dataChannel, iv_dictionary)
     get_PT_curves(outPath, args.dataChannel, iv_dictionary)
