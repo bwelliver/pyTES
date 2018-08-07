@@ -20,6 +20,8 @@ from scipy.signal import detrend
 import matplotlib as mp
 from matplotlib import pyplot as plt
 
+from RingBuffer import RingBuffer
+
 import ROOT as rt
 
 from readROOT import readROOT
@@ -31,6 +33,9 @@ ln = np.log
 #mp.use('agg')
 
 class ArrayIsUnsortedException(Exception):
+    pass
+
+class InvalidChannelNumberException(Exception):
     pass
 
 
@@ -92,34 +97,144 @@ class Resistance:
         s += '\n' + '\t' + 'RMS:\t' + str(self.rms)
         return(s)
 
-#@old
-#class TESResistance:
-#    
-#    def __init__(self, left=None, right=None, parasitic=None):
-#        self.left = left
-#        self.right = right
-#        self.parasitic = parasitic
-#        
-#    def get_all(self):
-#        """return a list of elements from the newest to the oldest (left to
-#        right)"""
-#        return(self)
-#    
-#    def __repr__(self):
-#        """return string representation."""
-#        s = 'Left Branch:\t' + str(self.left) + ' Ohms'
-#        s = s + '\n' + 'Right Branch:\t' + str(self.right) + ' Ohms'
-#        s = s + '\n' + 'Parasitic:\t' + str(self.parasitic) + ' Ohms'
-#        return(s)
-
-
-class IVData:
     
-    def __init__(self, i=None, iRMS=None, v=None, vRMS=None):
-        self.i = i
-        self.iRMS = iRMS
-        self.v = v
-        self.vRMS = vRMS
+class SQUIDParameters:
+    '''Simple object class to store SQUID parameters'''
+    
+    def __init__(self, channel):
+        self.squid = self.get_squid_parameters(channel)
+    
+    def get_SQUID_parameters(self, channel):
+        '''Based on the channel number obtain SQUID parameters'''
+        if channel == 2:
+            self.serial = 'S0121'
+            self.Li = 6e-9
+            self.Mi = 1/26.062
+            self.Mfb = 1/33.27
+            self.Rfb = 10000.0
+            self.Rsh = 21.0e-3
+            self.Rb = 10000.0
+            self.Cb = 100e-12
+        elif channel == 3:
+            self.serial = 'S0094'
+            self.Li = 6e-9
+            self.Mi = 1/23.99
+            self.Mfb = 1/32.9
+            self.Rfb = 10000.0
+            self.Rsh = 22.8e-3
+            self.Rb = 10000.0
+            self.Cb = 100e-12
+        else:
+            raise InvalidChannelNumberException('Requested channel: {} is invalid. Please select 2 or 3'.format(channel))
+        # Compute auxillary SQUID parameters based on ratios
+        self.M = -self.Mi/self.Mf
+        self.Lf = (self.M**2)*self.Li
+        return None
+
+
+class IV:
+    '''A Class to contain IV data and some methods in a compact form. This class can contain all current, voltage,
+    resistance and power values as well as the appropriate RMS quantities
+    '''
+
+    def __init__(self, channel=2):
+        self.iBias = IVData()
+        self.vOut = IVData()
+        self.iTES = IVData()
+        self.vTES = IVData()
+        self.squid = SQUIDParameters(channel)
+        return None
+    
+    
+    @staticmethod
+    def compute_iTES(v, Rfb, M):
+        '''Computes the TES current and TES current RMS in Amps'''
+        i = v/(Rfb*M)
+        return i
+    
+    
+    @staticmethod
+    def compute_vTES(iBias, vOut, Rfb, M, Rsh, Rp=0):
+        '''Computes the TES voltage in V'''
+        vTES = iBias*Rsh - (vOut/(M*Rfb))*Rsh - (vOut/(M*Rfb))*Rp
+        return vTES
+    
+    
+    @staticmethod
+    def get_vTES_rms(iBias_rms, vOut, vOut_rms, Rp, Rp_rms, Rfb, M, Rsh):
+        '''Computes the TES voltage RMS in V'''
+        
+        dV = sqrt(pow2(Rsh*iBias_rms) + pow2(((Rp + Rsh)/(M*Rfb))*vOut_rms) + pow2((vOut/(M*Rfb))*Rp_rms))
+        return dV
+    
+    
+    def get_iTES(self):
+        '''Assign iTES data values and RMS values'''
+        iTES = self.compute_iTES(self.vOut.data, self.squid.Rfb, self.squid.M)
+        iTES_rms = self.compute_iTES(self.vOut.rms, self.Rfb, self.M)
+        self.iTES.set_values(iTES, iTES_rms)
+        return None
+    
+    def get_vTES():
+        '''Assign vTES data values and vTES rms values'''
+        vTES = self.compute_vTES(self.iBias.rms, self.vOut.data, self.vOut.rms, self.Rp.data, self.Rp.rms, self.squid.Rfb, self.squid.M, self.squid.Rsh)
+        vTES_rms = self.compute_vTES_rms()
+        self.vTES.set_values(vTES, vTES_rms)
+
+
+def get_rTES(iTES, vTES):
+    '''Computes the TES resistance in Ohms'''
+    rTES = vTES/iTES
+    return rTES
+
+
+def get_rTES_rms(iTES, iTES_rms, vTES, vTES_rms):
+    '''Comptues the RMS on the TES resistance in Ohms'''
+    # Fundamentally this is R = a*iBias/vOut - b
+    # a = Rsh*Rfb*M
+    # b = Rsh
+    # dR/diBias = a/vOut
+    # dR/dVout = -a*iBias/vOut^2
+    # rTES_rms = sqrt( (dR/diBias * iBiasRms)^2 + (dR/dVout * vOutRms)^2 )
+    dR = sqrt(pow2(vTES_rms/iTES) + pow2(-1*vTES*iTES_rms/pow2(iTES)))
+    return dR
+
+
+def get_pTES(iTES, vTES):
+    '''Compute the TES power dissipation (Joule)'''
+    pTES = iTES*vTES
+    return pTES
+
+
+def get_pTES_rms(iTES, iTES_rms, vTES, vTES_rms):
+    '''Computes the RMS on the TES (Joule) power dissipation'''
+    dP = sqrt(pow2(iTES*vTES_rms) + pow2(vTES*iTES_rms))
+    return dP
+
+
+def get_vTES(iBias, vOut, Rfb, M, Rsh, Rp):
+    '''computes the TES voltage in Volts
+    vTES = vSh - vPara
+    vTES = Rsh*(iSh) - Rp*iTES
+    vTES = Rsh*(iBias - iTES) - Rp*iTES = Rsh*iBias - iTES*(Rp+Rsh)
+    '''
+    vTES = iBias*Rsh - (vOut/(M*Rfb))*Rsh - (vOut/(M*Rfb))*Rp
+    # Simple model
+    #vTES = Rsh*(iBias - vOut/M/Rfb)
+    return vTES
+
+
+def get_vTES_rms(iBias_rms, vOut, vOut_rms, Rfb, M, Rsh, Rp, Rp_err):
+    '''compute the RMS on the TES voltage in Volts'''
+    # Fundamentally this is V = Rsh*iBias - Rp/(MRfb)*vOut - Rsh/(MRfb)*vOut
+    # errV**2 = (dV/diBias * erriBias)**2 + (dV/dvOut * errvOut)**2 + (dV/dRp * errRp)**2
+    # a = Rsh
+    # b = Rsh/Rf/M
+    # dV/diBias = a
+    # dV/dVout = -b
+    # So this does as dV = sqrt((dV/dIbias * iBiasRMS)^2 + (dV/dVout * vOutRMS)^2)
+    dV = sqrt(pow2(Rsh*iBias_rms) + pow2(((Rp+Rsh)/(M*Rfb))*vOut_rms) + pow2((vOut/(M*Rfb))*Rp_err))
+    return dV
     
     def compute_resistance(self, left=0, right=-1):
         '''Compute the resistance in a particular event range. Returns resistance and RMS of resistance'''
@@ -128,74 +243,22 @@ class IVData:
         return r, rRMS
 
 
-
-class RingBuffer(object):
-    def __init__(self, size_max, default_value=0.0, dtype=float):
-        """initialization."""
-        self.size_max = size_max
-        self._data = np.empty(size_max, dtype=dtype)
-        self._data.fill(default_value)
-        self.size = 0
-
-
-    def append(self, value):
-        """append an element."""
-        self._data = np.roll(self._data, 1)
-        self._data[0] = value
-        self.size += 1
-        if self.size == self.size_max:
-            self.__class__ = RingBufferFull
-
-    def get_sum(self):
-        """sum of the current values."""
-        return(np.sum(self._data))
-
-    def get_mean(self):
-        '''mean of the current values.'''
-        return(np.mean(self._data))
-
-    def get_med(self):
-        '''median of the current values.'''
-        return(np.median(self._data))
-
-    def get_std(self):
-        '''std of the current values'''
-        return np.std(self._data)
-
-    def argmax(self):
-        """return index of first occurence of max value."""
-        return(np.argmax(self._data))
-
-    def get_all(self):
-        """return a list of elements from the newest to the oldest (left to
-        right)"""
-        return(self._data)
-
-    def get_partial(self):
-        return(self.get_all()[0:self.size])
-
-    def get_size(self):
-        return(np.size(self._data))
-
-    def __getitem__(self, key):
-        """get element."""
-        return(self._data[key])
-
+class IVData:
+    '''Class for IV Data objects. A simple container for the quantity and its RMS'''
+    
+    def __init__(self):
+        self.data = None
+        self.rms = None
+        return None
+    def set_values(self, data=None, rms=None):
+        self.data = data
+        self.rms = rms
+        return None
     def __repr__(self):
-        """return string representation."""
-        s = self._data.__repr__()
-        s = s + '\t' + str(self.size)
-        s = s + '\t' + self.get_all()[::-1].__repr__()
-        s = s + '\t' + self.get_partial()[::-1].__repr__()
+        '''Return a string representation'''
+        s = '\t' + 'Data:\t' + str(self.data) + '\n' + '\t' + 'RMS:\t' + str(self.rms)
         return(s)
 
-
-class RingBufferFull(RingBuffer):
-
-    def append(self, value):
-        """append an element when buffer is full."""
-        self._data = np.roll(self._data, 1)
-        self._data[0] = value
 
 
 def mkdpaths(dirpath):
@@ -980,71 +1043,6 @@ def make_tes_plots(output_path, data_channel, iv_dictionary, fit_dictionary):
     # Make a for all temperatures here
     make_tes_multiplot(output_path=outPath, data_channel=data_channel, iv_dictionary=iv_dictionary, fit_parameters=fit_dictionary)
     return None
-
-
-#@obsolete
-#def make_TES_plots(outPath, data_channel, mean_temperature, tes_values, vF_left, vF_sc, vF_right):
-#    '''Make TES plots for various quantities'''
-#    # First unpack tes_values
-#    iTES, iTES_rms, vTES, vTES_rms, rTES, rTES_rms = tes_values
-#    
-#    # Make iTES vs vTES plot
-#    xLabel = 'TES Voltage [uV]'
-#    yLabel = 'TES Current [uA]'
-#    T = np.round(mean_temperature*1e3,2)
-#    titleStr = 'Channel {} TES Current vs TES Voltage for T = {} mK'.format(data_channel, T)
-#    fName = outPath + '/' + 'iTES_vs_vTES_ch_' + str(data_channel) + '_' + str(T) + 'mK'
-#    gen_fitplot(vTES*1e6, iTES*1e6, vTES_rms*1e6, iTES_rms*1e6, vF_left, vF_right, vF_sc, xLabel, yLabel, titleStr, fName, log='linear', model='x')
-#    
-#    # Make rTES vs vTES plot
-#    xLabel = 'TES Voltage [uV]'
-#    yLabel = 'TES Resistance [mOhm]'
-#    T = np.round(mean_temperature*1e3,2)
-#    titleStr = 'Channel {} TES Resistance vs TES Voltage for T = {} mK'.format(data_channel, T)
-#    fName = outPath + '/' + 'rTES_vs_vTES_ch_' + str(data_channel) + '_' + str(T) + 'mK'
-#    make_gen_errplot(vTES*1e6, vTES_rms*1e6, rTES*1e3, rTES_rms*1e3, xLabel, yLabel, titleStr, fName, log='linear')
-#    
-#    # Make rTES vs iTES plot
-#    xLabel = 'TES Current [uA]'
-#    yLabel = 'TES Resistance [mOhm]'
-#    T = np.round(mean_temperature*1e3,2)
-#    titleStr = 'Channel {} TES Resistance vs TES Current for T = {} mK'.format(data_channel, T)
-#    fName = outPath + '/' + 'rTES_vs_iTES_ch_' + str(data_channel) + '_' + str(T) + 'mK'
-#    make_gen_errplot(iTES*1e6, iTES_rms*1e6, rTES*1e3, rTES_rms*1e3, xLabel, yLabel, titleStr, fName, log='linear')
-#    
-#    # Make power vs resistance plots
-#    pTES = iTES*vTES
-#    pTES_rms = pTES*np.sqrt((vTES_rms/vTES)**2 + (iTES_rms/iTES)**2)
-#    
-#    xLabel = 'TES Resistance [Ohm]'
-#    yLabel = 'TES Joule Power [pW]'
-#    T = np.round(mean_temperature*1e3,2)
-#    titleStr = 'Channel {} TES Joule Power vs Resistance for T = {} mK'.format(data_channel, T)
-#    fName = outPath + '/' + 'pTES_vs_rTES_ch_' + str(data_channel) + '_' + str(T) + 'mK'
-#    make_gen_plot(rTES, pTES*1e12, xLabel, yLabel, titleStr, fName, logx='linear', logy='linear')
-#    #make_gen_errplot(rTES, rTES_rms, pTES*1e12, pTES_rms*1e12, xLabel, yLabel, titleStr, fName, log='linear')
-#    
-#    # Make Power vs vTES plot (note: vTES = (iBias-iTES)*Rsh)
-#    # This is a parabola. Ideally it is pTES = vTES^2/rTES
-#    # We fit it to pTES = a*vTES^2 + b*vTES + c
-#    # a -> 1/rTES, b -> parasitic current, c -> parasitic power offset
-#    cut = np.logical_or(vTES < -0.5e-6, vTES > 0.5e-6)
-#    result, pcov = curve_fit(quad_sq, vTES[cut], pTES[cut], sigma=pTES_rms[cut], absolute_sigma=True)
-#    perr = np.sqrt(np.diag(pcov))
-#    pFit = quad_sq(vTES, result[0], result[1], result[2])
-#    
-#    xLabel = 'TES Voltage [uV]'
-#    yLabel = 'TES Joule Power [pW]'
-#    T = np.round(mean_temperature*1e3,2)
-#    titleStr = 'Channel {} TES Joule Power vs Voltage for T = {} mK'.format(data_channel, T)
-#    fName = outPath + '/' + 'pTES_vs_vTES_ch_' + str(data_channel) + '_' + str(T) + 'mK'
-#    # Note: Element 0 is technically rho = 1/R so let us switch it now.
-#    # dR/R = d(rho)/rho
-#    #perr[0] = perr[0]/result[0]/result[0]
-#    #result[0] = 1/result[0]
-#    make_power_voltage_fit(vTES*1e6, pTES*1e12, vTES*1e6, pFit*1e12, [result, perr], xLabel, yLabel, titleStr, fName, xErr=vTES_rms*1e6, yErr=pTES_rms*1e12, logx='linear', logy='linear')
-#    
-#    return True
 
 
 def make_power_plot(outPath, power_list, temp_list):
