@@ -11,6 +11,7 @@ from numpy import square as pow2
 from numpy import power as power
 from numpy import sqrt as sqrt
 from numpy import sum as nsum
+from numpy import tanh as tanh
 
 from scipy.optimize import minimize
 from scipy.optimize import curve_fit
@@ -36,6 +37,12 @@ class ArrayIsUnsortedException(Exception):
     pass
 
 class InvalidChannelNumberException(Exception):
+    pass
+
+class InvalidObjectTypeException(Exception):
+    pass
+
+class RequiredValueNotSetException(Exception):
     pass
 
 
@@ -103,8 +110,9 @@ class SQUIDParameters:
     
     def __init__(self, channel):
         self.squid = self.get_squid_parameters(channel)
+        return None
     
-    def get_SQUID_parameters(self, channel):
+    def get_squid_parameters(self, channel):
         '''Based on the channel number obtain SQUID parameters'''
         if channel == 2:
             self.serial = 'S0121'
@@ -127,14 +135,26 @@ class SQUIDParameters:
         else:
             raise InvalidChannelNumberException('Requested channel: {} is invalid. Please select 2 or 3'.format(channel))
         # Compute auxillary SQUID parameters based on ratios
-        self.M = -self.Mi/self.Mf
-        self.Lf = (self.M**2)*self.Li
+        self.M = -self.Mi/self.Mfb
+        self.Lfb = (self.M**2)*self.Li
         return None
 
 
 class IV:
-    '''A Class to contain IV data and some methods in a compact form. This class can contain all current, voltage,
-    resistance and power values as well as the appropriate RMS quantities
+    '''A Class to contain IV data and some methods in a compact form. 
+    All current, voltage, resistance and power is stored as an IVData class (value, RMS properties)
+    Inputs:
+        channel: The SQUID channel to use for proper transfer relationships
+    Properties:
+        bias current
+        output voltage
+        TES current
+        TES voltage
+        TES resistance
+        TES (Joule) power dissipation
+    Methods:
+        This class contains methods to compute the TES values 
+    
     '''
 
     def __init__(self, channel=2):
@@ -142,7 +162,10 @@ class IV:
         self.vOut = IVData()
         self.iTES = IVData()
         self.vTES = IVData()
+        self.rTES = IVData()
+        self.pTES = IVData()
         self.squid = SQUIDParameters(channel)
+        self.Rp = IVData()
         return None
     
     
@@ -154,18 +177,64 @@ class IV:
     
     
     @staticmethod
-    def compute_vTES(iBias, vOut, Rfb, M, Rsh, Rp=0):
+    def compute_vTES(iBias, vOut, Rfb, Rsh, M, Rp=0):
         '''Computes the TES voltage in V'''
         vTES = iBias*Rsh - (vOut/(M*Rfb))*Rsh - (vOut/(M*Rfb))*Rp
         return vTES
     
     
     @staticmethod
-    def get_vTES_rms(iBias_rms, vOut, vOut_rms, Rp, Rp_rms, Rfb, M, Rsh):
+    def compute_vTES_rms(iBias_rms, vOut, vOut_rms, Rfb, Rsh, M, Rp=0, Rp_rms=0):
         '''Computes the TES voltage RMS in V'''
-        
-        dV = sqrt(pow2(Rsh*iBias_rms) + pow2(((Rp + Rsh)/(M*Rfb))*vOut_rms) + pow2((vOut/(M*Rfb))*Rp_rms))
+        # The error is composed of 3 terms: The iBias term, the vOut term, and the parasitic term
+        dV_iBias = Rsh*iBias_rms
+        dV_vOut = ((Rp + Rsh)/(M*Rfb))*vOut_rms
+        dV_Rp = (vOut/(M*Rfb))*Rp_rms
+        dV = sqrt(pow2(dV_iBias) + pow2(dV_vOut) + pow2(dV_Rp))
         return dV
+    
+    
+    @staticmethod
+    def compute_rTES(vTES, iTES):
+        '''Compute the TES resistance in Ohms'''
+        rTES = vTES/iTES
+        return rTES
+    
+    
+    @staticmethod
+    def compute_rTES_rms(vTES, vTES_rms, iTES, iTES_rms):
+        '''Compute the RMS of the TES resistance in Ohms'''
+        # This is composed of the RMS of vTES in one part and the RMS of iTES in the other
+        dR_v = vTES_rms/iTES
+        dR_i = -1*(vTES/iTES)*(iTES_rms/iTES)
+        dR = sqrt(pow2(dR_v) + pow2(dR_i))
+        return dR
+    
+    
+    @staticmethod
+    def compute_pTES(vTES, iTES):
+        '''Compute the TES power'''
+        pTES = vTES*iTES
+        return pTES
+    
+    
+    @staticmethod
+    def compute_pTES_rms(vTES, vTES_rms, iTES, iTES_rms):
+        '''Compute the RMS of the TES power'''
+        # This is composed of the portion due to the vTES and the iTES RMS
+        dP_v = vTES_rms*iTES
+        dP_i = vTES*iTES_rms
+        dP = sqrt(pow2(dP_v) + pow2(dP_i))
+        return dP
+    
+    
+    def set_parasitic_resistance(self, R):
+        '''Takes as input an IVData object for the parasitic resistance value'''
+        if isinstance(R, IVData):
+            self.Rp = R
+        else:
+            raise InvalidObjectTypeException("Input object R is of type {}. Must be of type IVData".format(type(R)))
+        return None
     
     
     def get_iTES(self):
@@ -175,72 +244,44 @@ class IV:
         self.iTES.set_values(iTES, iTES_rms)
         return None
     
-    def get_vTES():
-        '''Assign vTES data values and vTES rms values'''
-        vTES = self.compute_vTES(self.iBias.rms, self.vOut.data, self.vOut.rms, self.Rp.data, self.Rp.rms, self.squid.Rfb, self.squid.M, self.squid.Rsh)
-        vTES_rms = self.compute_vTES_rms()
-        self.vTES.set_values(vTES, vTES_rms)
-
-
-def get_rTES(iTES, vTES):
-    '''Computes the TES resistance in Ohms'''
-    rTES = vTES/iTES
-    return rTES
-
-
-def get_rTES_rms(iTES, iTES_rms, vTES, vTES_rms):
-    '''Comptues the RMS on the TES resistance in Ohms'''
-    # Fundamentally this is R = a*iBias/vOut - b
-    # a = Rsh*Rfb*M
-    # b = Rsh
-    # dR/diBias = a/vOut
-    # dR/dVout = -a*iBias/vOut^2
-    # rTES_rms = sqrt( (dR/diBias * iBiasRms)^2 + (dR/dVout * vOutRms)^2 )
-    dR = sqrt(pow2(vTES_rms/iTES) + pow2(-1*vTES*iTES_rms/pow2(iTES)))
-    return dR
-
-
-def get_pTES(iTES, vTES):
-    '''Compute the TES power dissipation (Joule)'''
-    pTES = iTES*vTES
-    return pTES
-
-
-def get_pTES_rms(iTES, iTES_rms, vTES, vTES_rms):
-    '''Computes the RMS on the TES (Joule) power dissipation'''
-    dP = sqrt(pow2(iTES*vTES_rms) + pow2(vTES*iTES_rms))
-    return dP
-
-
-def get_vTES(iBias, vOut, Rfb, M, Rsh, Rp):
-    '''computes the TES voltage in Volts
-    vTES = vSh - vPara
-    vTES = Rsh*(iSh) - Rp*iTES
-    vTES = Rsh*(iBias - iTES) - Rp*iTES = Rsh*iBias - iTES*(Rp+Rsh)
-    '''
-    vTES = iBias*Rsh - (vOut/(M*Rfb))*Rsh - (vOut/(M*Rfb))*Rp
-    # Simple model
-    #vTES = Rsh*(iBias - vOut/M/Rfb)
-    return vTES
-
-
-def get_vTES_rms(iBias_rms, vOut, vOut_rms, Rfb, M, Rsh, Rp, Rp_err):
-    '''compute the RMS on the TES voltage in Volts'''
-    # Fundamentally this is V = Rsh*iBias - Rp/(MRfb)*vOut - Rsh/(MRfb)*vOut
-    # errV**2 = (dV/diBias * erriBias)**2 + (dV/dvOut * errvOut)**2 + (dV/dRp * errRp)**2
-    # a = Rsh
-    # b = Rsh/Rf/M
-    # dV/diBias = a
-    # dV/dVout = -b
-    # So this does as dV = sqrt((dV/dIbias * iBiasRMS)^2 + (dV/dVout * vOutRMS)^2)
-    dV = sqrt(pow2(Rsh*iBias_rms) + pow2(((Rp+Rsh)/(M*Rfb))*vOut_rms) + pow2((vOut/(M*Rfb))*Rp_err))
-    return dV
     
-    def compute_resistance(self, left=0, right=-1):
-        '''Compute the resistance in a particular event range. Returns resistance and RMS of resistance'''
-        rRMS = np.sqrt((self.vRMS[left:right]/self.v[left:right])**2 + (self.iRMS[left:right]/self.i[left:right])**2)
-        r = self.v[left:right]/self.i[left:right]
-        return r, rRMS
+    def get_vTES(self):
+        '''Assign vTES data values and vTES RMS values'''
+        vTES = self.compute_vTES(self.iBias.data, self.vOut.data, self.squid.Rfb, self.squid.Rsh, self.squid.M, self.Rp.data)
+        vTES_rms = self.compute_vTES_rms(self.iBias.rms, self.vOut.data, self.vOut.rms, self.squid.Rfb, self.squid.Rsh, self.squid.M, self.Rp.data, self.Rp.rms)
+        self.vTES.set_values(vTES, vTES_rms)
+        return None
+    
+    
+    def get_rTES(self):
+        '''Assign rTES values and rTES RMS values'''
+        rTES = self.compute_rTES(self.vTES.data, self.iTES.data)
+        rTES_rms = self.compute_rTES_rms(self.vTES.data, self.vTES.rms, self.iTES.data, self.iTES.rms)
+        self.rTES.set_values(rTES, rTES_rms)
+        return None
+    
+    
+    def get_pTES(self):
+        '''Assign pTES values and pTES RMS values'''
+        pTES = self.compute_pTES(self.vTES.data, self.iTES.data)
+        pTES_rms = self.compute_pTES_rms(self.vTES.data, self.vTES.rms, self.iTES.data, self.iTES.rms)
+        self.pTES.set_data(pTES, pTES_rms)
+        return None
+
+    
+    def get_all_TES(self):
+        '''Obtains and assigns all TES values'''
+        if self.Rp.data is None:
+            raise RequiredValueNotSetException('Required series parasitic values are not set')
+        if self.iBias.data is None:
+            raise RequiredValueNotSetException('Required bias current values are not set')
+        if self.vOut.data is None:
+            raise RequiredValueNotSetException('Required output voltage values are not set')
+        self.get_iTES()
+        self.get_vTES()
+        self.get_rTES()
+        self.get_pTES()
+        return None
 
 
 class IVData:
@@ -288,12 +329,86 @@ def quad_sq(x, a, b, c):
     return y
 
 
-def tes_power_polynomial(T, k, n, Tb):
+def exp_tc(T, C, D, B, A):
+    '''Alternative R vs T
+    Here we have 
+    C -> Rn
+    D -> Rp
+    -B/A -> Tc
+    In the old fit we hade (T-Tc)/Tw -> T/Tw - Tc/Tw
+    We have here A*T + B --> A = 1/Tw and B = -Tc/Tw
+    '''
+    R = (C*exp(A*T + B)) / (1 + exp(A*T + B)) + D
+    return R
+
+
+def tanh_tc(T, Rn, Rp, Tc, Tw):
+    '''Get resistance values from fitting T to a tanh
+    Rn is the normal resistance
+    Rp is the superconducting resistance (parasitic)
+    Tc is the critical temperature
+    Tw is the width of the transition
+    T is the actual temperature data
+    Usually the following is true:
+        When T >> Tc: R = Rn + Rp
+        When T << Tc: R = Rp
+        When T = Tc: R = Rn/2 + Rp
+    But Rp is already subtracted from our data so it should be 0ish
+    
+    '''
+    #R = (Rn/2.0)*(tanh((T - Tc)/Tw) + 1) + Rp
+    R = ((Rn - Rp)/2)*(tanh((T - Tc)/Tw) + 1) + Rp
+    return R
+
+def tanh_tc2(T, Rn, Tc, Tw):
+    '''Get resistance values from fitting T to a tanh
+    Rn is the normal resistance
+    Rp is the superconducting resistance (parasitic)
+    Tc is the critical temperature
+    Tw is the width of the transition
+    T is the actual temperature data
+    Usually the following is true:
+        When T >> Tc: R = Rn + Rp
+        When T << Tc: R = Rp
+        When T = Tc: R = Rn/2 + Rp
+    But Rp is already subtracted from our data so it should be 0ish
+    
+    '''
+    
+    R = (Rn/2.0)*(tanh((T - Tc)/Tw) + 1)
+    return R
+
+
+
+def nll_error(params, P, P_rms, T, func):
+    '''A fit for whatever function with y-errors'''
+    k, n, Ttes = params
+    if k <= 0 or n <= 0 or Ttes <= 0:
+        return np.inf
+    else:
+        model = func(T, k, n, Ttes)
+        lnl = nsum(((P - model)/P_rms)**2)
+        return lnl
+
+
+def tes_power_polynomial(T, k, n, Ttes):
     '''General TES power equation
     P = k*(T^n - Tb^n)
     '''
-    P = k*(power(Tb, n) - power(T, n))
+    P = k*np.power(Ttes,n) - k*np.power(T,n)
+    #P = k*(power(Ttes, n) - power(T, n))
     return P
+
+
+def tes_power_polynomial5(T, k, Ttes):
+    '''General TES power equation assuming n = 5
+    P = k*(T^n - Tb^n)
+    '''
+    P = k*np.power(Ttes, 5) - k*np.power(T, 5)
+    #P = k*(power(Ttes, n) - power(T, n))
+    return P
+
+
 
 def get_squid_parameters(channel):
     '''Return SQUID Parameters based on a given channel'''
@@ -667,12 +782,13 @@ def generic_fitplot_with_errors(ax, x, y, labels, params, xScale=1, yScale=1, lo
 
 def add_model_fits(ax, x, y, model, xScale=1, yScale=1, model_function=lin_sq):
     '''Add model fits to plots'''
+    xModel = np.linspace(x.min(), x.max(), 100)
     if model.left.result is not None:
-        yFit = model_function(x, *model.left.result)
-        ax.plot(x*xScale, yFit*yScale, 'r-', marker='None', linewidth=2)
+        yFit = model_function(xModel, *model.left.result)
+        ax.plot(xModel*xScale, yFit*yScale, 'r-', marker='None', linewidth=2)
     if model.right.result is not None:
-        yFit = model_function(x, *model.right.result)
-        ax.plot(x*xScale, yFit*yScale, 'g-', marker='None', linewidth=2)
+        yFit = model_function(xModel, *model.right.result)
+        ax.plot(xModel*xScale, yFit*yScale, 'g-', marker='None', linewidth=2)
     if model.sc.result is not None:
         yFit = model_function(x, *model.sc.result)
         cut = np.logical_and(yFit < y.max(), yFit > y.min())
@@ -717,12 +833,53 @@ def add_power_voltage_textbox(ax, model):
     ax.text(0.65, 0.9, textStr, transform=ax.transAxes, fontsize=14, verticalalignment='top', bbox=props)
     return ax
 
+
+def add_resistance_temperature_textbox(ax, model):
+    '''Add dectoration textbox for a power vs resistance fit'''
+    
+    # First is the ascending (SC to N) parameters
+    textStr = ''
+    if model.left.result is not None:
+        lR = r'SC to N: $\mathrm{R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(model.left.result[0]*1e3, model.left.error[0]*1e3)
+        lRp = r'SC to N: $\mathrm{R_{p}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(model.left.result[1]*1e3, model.left.error[1]*1e3)
+        lTc = r'SC to N: $\mathrm{T_{c}} = %.5f \pm %.5f \mathrm{mK}$'%(model.left.result[2]*1e3, model.left.error[2]*1e3)
+        lTw = r'SC to N: $\mathrm{\Delta T_{c}} = %.5f \pm %.5f \mathrm{mK}$'%(model.left.result[3]*1e3, model.left.error[3]*1e3)
+        textStr += lR + '\n' + lRp + '\n' + lTc + '\n' + lTw
+    # Next the descending (N to SC) parameters
+    if model.right.result is not None:
+        rR = r'N to SC: $\mathrm{R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(model.right.result[0]*1e3, model.right.error[0]*1e3)
+        rRp = r'N to SC: $\mathrm{R_{p}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(model.right.result[1]*1e3, model.right.error[1]*1e3)
+        rTc = r'N to SC: $\mathrm{T_{c}} = %.5f \pm %.5f \mathrm{mK}$'%(model.right.result[2]*1e3, model.right.error[2]*1e3)
+        rTw = r'N to SC: $\mathrm{\Delta T_{c}} = %.5f \pm %.5f \mathrm{mK}$'%(model.right.result[3]*1e3, model.right.error[3]*1e3)
+        if textStr is not '':
+            textStr += '\n' 
+        textStr += rR + '\n' + rRp + '\n' + rTc + '\n' + rTw
+    props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
+    ax.text(0.10, 0.9, textStr, transform=ax.transAxes, fontsize=14, verticalalignment='top', bbox=props)
+    return ax
+
+
+
 def add_power_temperature_textbox(ax, model):
     '''Add decoration textbox for a power vs temperature fit'''
-    lk = r'$k = %.5f \pm %.5f \mathrm{\mu W/K^{%.5f}}$'%(model.left.result[0]*1e6, model.left.error[0]*1e6, model.left.result[1])
-    ln = r'$n = %.5f \pm %.5f$'%(model.left.result[1], model.left.error[1])
-    lTt = r'$T_{TES} = %.5f \pm %.5f \mathrm{mK}$'%(model.left.result[2]*1e3, model.left.error[2]*1e3)
-    textStr = lk + '\n' + ln + '\n' + lTt
+    k = model.left.result[0]
+    dk = model.left.error[0]
+    n = model.left.result[1]
+    dn = model.left.error[1]
+    Ttes = model.left.result[2]
+    dTtes = model.left.error[2]
+    lk = r'$k = %.5f \pm %.5f \mathrm{nW/K^{%.5f}}$'%(k*1e9, dk*1e9, n)
+    ln = r'$n = %.5f \pm %.5f$'%(n, dn)
+    lTt = r'$T_{TES} = %.5f \pm %.5f \mathrm{mK}$'%(Ttes*1e3, dTtes*1e3)
+    # Compute G at T = Ttes
+    # G = dP/dT
+    G = n*k*power(Ttes, n-1)
+    dG_k = n*power(Ttes, n-1)*dk
+    dG_T = n*(n-1)*k*power(1e-4, n-2) # RMS on T not Ttes
+    dG_n = dn*(k*power(Ttes, n-1)*(n*np.log(Ttes) + 1))
+    dG = sqrt(pow2(dG_k) + pow2(dG_T) + pow2(dG_n))
+    lG = r'$G(T_{TES}) = %.5f \pm %.5f \mathrm{pW/K}$'%(G*1e12, dG*1e12)
+    textStr = lk + '\n' + ln + '\n' + lTt + '\n' + lG
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
     ax.text(0.65, 0.9, textStr, transform=ax.transAxes, fontsize=14, verticalalignment='top', bbox=props)
     return ax
@@ -1286,6 +1443,7 @@ def format_iv_data(iv_data, output_path):
     #print('waveforms keys: {}'.format(list(waveForms[biasChannel].keys())))
     for ch in waveForms.keys():
         mean_waveforms[ch], rms_waveforms[ch] = process_waveform(waveForms[ch], 'mean')
+    print('The number of things in the time_values are: {} and the number of waveforms are: {}'.format(np.size(time_values), len(mean_waveforms[5])))
     return time_values, temperatures, mean_waveforms, rms_waveforms
 
 
@@ -1554,19 +1712,29 @@ def get_PT_curves(output_path, data_channel, iv_dictionary):
     P = np.empty(0)
     P_rms = np.empty(0)
     for temperature, iv_data in iv_dictionary.items():
-        cut = np.logical_and(iv_data['rTES'] > 0.2*0.540 - 20e-3, iv_data['rTES'] < 0.2*0.540 + 20e-3)
+        cut = np.logical_and(iv_data['rTES'] > 0.3*0.540 - 20e-3, iv_data['rTES'] < 0.3*0.540 + 20e-3)
         if nsum(cut) > 0:
             T = np.append(T, float(temperature)*1e-3)
             P = np.append(P, np.mean(iv_data['pTES'][cut]))
-            P_rms = np.append(P_rms, np.mean(iv_data['pTES_rms'][cut]))
+            P_rms = np.append(P_rms, np.std(iv_data['pTES'][cut]))
     # Attempt to fit it to a power function
-    lBounds = [0, 5, 0]
-    uBounds = [10, 10, 10]
-    cutT = T < 36e-3
-    results, pcov = curve_fit(tes_power_polynomial, T[cutT], P[cutT], sigma=P_rms[cutT], bounds=(lBounds, uBounds), absolute_sigma=True, method='trf')
+    lBounds = [1e-15, 0, 10e-3]
+    uBounds = [1e-5, 10, 100e-3]
+    cutT = T < 35.5e-3
+    x0 = [5e-06, 5, 35.4e-3]
+    results, pcov = curve_fit(tes_power_polynomial, T[cutT], P[cutT], sigma=P_rms[cutT], p0=x0, bounds=(lBounds, uBounds), absolute_sigma=True, method='trf', max_nfev=1e4)
     perr = np.sqrt(np.diag(pcov))
+    #results = [results[0], 5, results[1]]
+    #perr = [perr[0], 0, perr[1]]
+    #x0 = [x0[0], 5, x0[1]]
+    #results = minimize(nll_error, x0=np.array(x0), args=(P,P_rms,T,tes_power_polynomial), method='Nelder-Mead', options={'fatol':1e-15})
+    #perr = results.x/100
+    #results = results.x
+    #results, pcov = curve_fit(tes_power_polynomial, T[cutT], P[cutT], method='dogbox')
+    
     fitResult = FitParameters()
     fitResult.left.set_values(results, perr)
+    fitResult.right.set_values(x0, [0,0,0])
     # Next make a P-T plot
     fig = plt.figure(figsize=(16,12))
     ax = fig.add_subplot(111)
@@ -1594,7 +1762,7 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     T = np.empty(0)
     R = np.empty(0)
     for temperature, iv_data in iv_dictionary.items():
-        cut = np.logical_and(iv_data['iBias'] > 7.4e-6, iv_data['iBias'] < 7.8e-6)
+        cut = np.logical_and(iv_data['iBias'] > 0.0e-6, iv_data['iBias'] < 1e-6)
         if nsum(cut) > 0:
             T = np.append(T, float(temperature)*1e-3) # T in K
             R = np.append(R, np.mean(iv_data['rTES'][cut]))
@@ -1617,22 +1785,108 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
         label.set_fontsize(18)
     save_plot(fig, ax, fName)
     
+    # Make R vs T only for times we are going from higher iBias to lower iBias values
+    # One way, assuming noise does not cause overlaps, is to only select points where iBias[i] > iBias[i+1]
+    # If I take the diff array I get the following: diBias[i] = iBias[i] - iBias[i-1]. If diBias[i] < 0 then iBias is descending
+    # So let's use that then.
+    
+    # Rtes = R(i,T) really so select a fixed i and across multiple temperatures obtain values for R and then plot
+    T = np.empty(0)
+    R = np.empty(0)
+    Rrms = np.empty(0)
+    T_desc = np.empty(0)
+    R_desc = np.empty(0)
+    Rrms_desc = np.empty(0)
+    fitResult = FitParameters()
+    i_select = 7.6e-6
+    for temperature, iv_data in iv_dictionary.items():
+        diBias = np.gradient(iv_data['iBias'], edge_order=2)
+        cut = np.logical_and(iv_data['iBias'] > i_select - 0.2e-6, iv_data['iBias'] < i_select + 0.2e-6)
+        cut1 = np.logical_and(iv_data['iBias'] > 0, diBias < 0)
+        cut2 = np.logical_and(iv_data['iBias'] <= 0, diBias > 0)
+        dcut = np.logical_or(cut1, cut2)
+        cut_desc = np.logical_and(cut, dcut)
+        cut_asc = np.logical_and(cut, ~dcut)
+        if nsum(cut_asc) > 0:
+            T = np.append(T, float(temperature)*1e-3) # T in K
+            R = np.append(R, np.mean(iv_data['rTES'][cut_asc]))
+            Rrms = np.append(Rrms, np.std(iv_data['rTES'][cut_asc]))
+        if nsum(cut_desc) > 0:
+            T_desc = np.append(T_desc, float(temperature)*1e-3) # T in K
+            R_desc = np.append(R_desc, np.mean(iv_data['rTES'][cut_desc]))
+            Rrms_desc = np.append(Rrms_desc, np.std(iv_data['rTES'][cut_desc]))
+    # Next make an R-T plot
+    # Try a fit?
+    # [Rn, Rp, Tc, Tw]
+    # In new fit we have [C, D, B, A] --> A = 1/Tw, B = -Tc/Tw
+    sortKey = np.argsort(T)
+    x0 = [1, 0, T[sortKey][np.gradient(R[sortKey], T[sortKey], edge_order=2).argmax()]*1.1, 1e-3]
+    #x0 = [1, 0, -T[sortKey][np.gradient(R[sortKey], T[sortKey], edge_order=2).argmax()]/1e-3,  1/1e-3]
+    print('For ascending fit initial guess is {}'.format(x0))
+    result, pcov = curve_fit(tanh_tc, T, R, sigma=Rrms, absolute_sigma=True, p0=x0, method='trf')
+    perr = np.sqrt(np.diag(pcov))
+    print('Ascending (SC -> N): Rn = {} mOhm, Rp = {} mOhm, Tc = {} mK, Tw = {} mK'.format(*[i*1e3 for i in result]))
+    fitResult.left.set_values(result, perr)
+    
+    # Try a fit?
+    sortKey = np.argsort(T_desc)
+    x0 = [1, 0, T_desc[sortKey][np.gradient(R_desc[sortKey], T_desc[sortKey], edge_order=2).argmax()]*1.1, 1e-3]
+    #x0 = [1, 0, -T_desc[sortKey][np.gradient(R_desc[sortKey], T_desc[sortKey], edge_order=2).argmax()]/1e-3, 1/1e-3]
+    print('For descending fit (N->S) initial guess is {}'.format(x0))
+    result_desc, pcov_desc = curve_fit(tanh_tc, T_desc, R_desc, sigma=Rrms_desc, p0=x0, absolute_sigma=True, method='trf')
+    perr_desc = np.sqrt(np.diag(pcov_desc))
+    print('Descending (N -> SC): Rn = {} mOhm, Rp = {} mOhm, Tc = {} mK, Tw = {} mK'.format(*[i*1e3 for i in result_desc]))
+    fitResult.right.set_values(result_desc, perr_desc)
+    # R vs T
+    fig = plt.figure(figsize=(16,12))
+    ax = fig.add_subplot(111)
+    xScale = 1e3
+    yScale = 1e3
+    sortKey = np.argsort(T)
+    
+    labels = {'xlabel': 'Temperature [mK]', 'ylabel': 'TES Resistance [m' + r'$\Omega$' +']', 'title': 'Channel {}'.format(data_channel) + ' TES Resistance vs Temperature for Bias Current = {}'.format(i_select*1e6)  + r'$\mu$' + 'A'}
+    
+    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'red', 'markerfacecolor': 'red', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': Rrms[sortKey]*yScale}
+    ax = generic_fitplot_with_errors(ax=ax, x=T[sortKey], y=R[sortKey], labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
+    
+    sortKey = np.argsort(T_desc)
+    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'green', 'markerfacecolor': 'green', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': Rrms_desc[sortKey]*yScale}
+    ax = generic_fitplot_with_errors(ax=ax, x=T_desc[sortKey], y=R_desc[sortKey], labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
+    #ax.set_ylim((-1,1))
+    ax = add_model_fits(ax=ax, x=T, y=R, model=fitResult, xScale=xScale, yScale=yScale, model_function=tanh_tc)
+    ax = add_resistance_temperature_textbox(ax=ax, model=fitResult)
+    ax.legend(['SC to N', 'N to SC'])
+    fName = output_path + '/' + 'rTES_vs_T_ch_' + str(data_channel) + '_descending_iBias_' + str(i_select*1e6) + 'uA'
+    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+        label.set_fontsize(18)
+    save_plot(fig, ax, fName)
+    
+    
     # We can try to plot alpha vs R as well why not
-    # alpha = To/Ro * dR/dT
-    alpha = (T/R)*np.gradient(R, T, edge_order=1)
+    # alpha = To/Ro * dR/dT --> dln(R)/dln(T)
+    #alpha = np.gradient(np.log(R), np.log(T), edge_order=2)
+    modelT = np.linspace(T.min(), T.max(), 100)
+    modelR = tanh_tc(modelT, *fitResult.right.result)
+    model_sortKey = np.argsort(modelT)
+    #model_alpha = (modelT[model_sortKey]/modelR[model_sortKey])*np.gradient(modelR[model_sortKey], modelT[model_sortKey], edge_order=1)
+    model_alpha = np.gradient(np.log(modelR[model_sortKey]), np.log(modelT[model_sortKey]), edge_order=1)
+    sortKey = np.argsort(T)
+    alpha = (T[sortKey]/R[sortKey])*np.gradient(R[sortKey], T[sortKey], edge_order=1)/1e3
+    #alpha = np.gradient(np.log(R[sortKey]), np.log(T[sortKey]), edge_order=1)
     fig = plt.figure(figsize=(16,12))
     ax = fig.add_subplot(111)
     xScale = 1e3
     yScale = 1
-    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': None}
+    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'red', 'markerfacecolor': 'red', 'markeredgewidth': 0, 'linestyle': '-', 'xerr': None, 'yerr': None}
     labels = {'xlabel': 'TES Resistance [m' + 'r$\Omega$' + ']', 'ylabel': r'$\alpha$', 'title': 'Channel {} TES '.format(data_channel) + r'$\alpha$' +' vs Resistance'}
-    
-    ax = generic_fitplot_with_errors(ax=ax, x=R, y=alpha, labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
+    ax = generic_fitplot_with_errors(ax=ax, x=modelR[model_sortKey], y=model_alpha, labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
+    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': None}
+    ax = generic_fitplot_with_errors(ax=ax, x=R[sortKey], y=alpha, labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
     #ax.set_ylim((-1,1))
     #ax = add_model_fits(ax=ax, x=data['vTES'], y=data['iTES'], model=fit_parameters, sc_bounds=sc_bounds, xScale=xScale, yScale=yScale, model_function=lin_sq)
     #ax = add_fit_textbox(ax=ax, R=data['R'], Rerr=data['Rerr'], model=fit_parameters)
     fName = output_path + '/' + 'alpha_vs_rTES_ch_' + str(data_channel)
-    ax.set_ylim((0,150))
+    #ax.set_ylim((0,150))
     for label in (ax.get_xticklabels() + ax.get_yticklabels()):
         label.set_fontsize(18)
     save_plot(fig, ax, fName)
@@ -1645,7 +1899,7 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': None}
     labels = {'xlabel': 'Temperature [mK]', 'ylabel': r'$\alpha$', 'title': 'Channel {} TES '.format(data_channel) + r'$\alpha$' +' vs Temperature'}
     
-    ax = generic_fitplot_with_errors(ax=ax, x=T, y=alpha, labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
+    ax = generic_fitplot_with_errors(ax=ax, x=T[sortKey], y=alpha, labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
     #ax.set_ylim((-1,1))
     #ax = add_model_fits(ax=ax, x=data['vTES'], y=data['iTES'], model=fit_parameters, sc_bounds=sc_bounds, xScale=xScale, yScale=yScale, model_function=lin_sq)
     #ax = add_fit_textbox(ax=ax, R=data['R'], Rerr=data['Rerr'], model=fit_parameters)
@@ -1667,11 +1921,17 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
         T = np.empty(0)
         R = np.empty(0)
         for temperature, iv_data in iv_dictionary.items():
+            diBias = np.gradient(iv_data['iBias'], edge_order=2)
             cut = np.logical_and(iv_data['iBias'] > i*1e-6, iv_data['iBias'] < (i+1)*1e-6)
+            cut1 = np.logical_and(iv_data['iBias'] > 0, diBias < 0)
+            cut2 = np.logical_and(iv_data['iBias'] <= 0, diBias > 0)
+            dcut = np.logical_or(cut1, cut2)
+            cut = np.logical_and(cut, dcut)
             if nsum(cut) > 0:
                 T = np.append(T, float(temperature)*1e-3)
                 R = np.append(R, np.mean(iv_data['rTES'][cut]))
-        ax = generic_fitplot_with_errors(ax=ax, x=T, y=R, labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
+        sortKey = np.argsort(T)
+        ax = generic_fitplot_with_errors(ax=ax, x=T[sortKey], y=R[sortKey], labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
     fName = output_path + '/' + 'rTES_vs_T_multi_ch_' + str(data_channel)
     for label in (ax.get_xticklabels() + ax.get_yticklabels()):
         label.set_fontsize(18)
@@ -1751,7 +2011,7 @@ def generate_iv_curves(outPath, time_values, temperatures, mean_waveforms, rms_w
         vOut_rms = rms_waveforms[data_channel][cut]
         # We can technically get iTES at this point too since it is proportional to vOut but since it is let's not.
         T = str(np.round(mean_temperature*1e3, 3))
-        iv_dictionary[T] = {'iBias': iBias, 'iBias_rms': iBias_rms, 'vOut': vOut, 'vOut_rms': vOut_rms}
+        iv_dictionary[T] = {'iBias': iBias, 'iBias_rms': iBias_rms, 'vOut': vOut, 'vOut_rms': vOut_rms, 't': times, 'diBias': np.gradient(iBias, edge_order=2)}
     return iv_dictionary
 
 
@@ -1792,7 +2052,7 @@ if __name__ == '__main__':
         save_to_root(outPath, iv_dictionary)
     if args.readROOT is True and args.readTESROOT is False:
         # If we saved the root file and want to load it do so here
-        iv_dictionary = read_from_ivroot(outPath + '/root/iv_data.root', branches=['iBias', 'iBias_rms', 'vOut', 'vOut_rms'])
+        iv_dictionary = read_from_ivroot(outPath + '/root/iv_data.root', branches=['iBias', 'iBias_rms', 'vOut', 'vOut_rms', 't'])
 
     # Next we can process the IV curves to get Rn and Rp values. Once we have Rp we can obtain vTES and go onward
     if args.readTESROOT is False:
@@ -1800,13 +2060,13 @@ if __name__ == '__main__':
         iv_dictionary = get_TES_values(outPath, args.dataChannel, iv_dictionary, parasitic_dictionary)
         save_to_root(outPath, iv_dictionary)
     if args.readTESROOT is True:
-        iv_dictionary = read_from_ivroot(outPath + '/root/iv_data.root', branches=['iBias', 'iBias_rms', 'vOut', 'vOut_rms', 'iTES', 'iTES_rms', 'vTES', 'vTES_rms', 'rTES', 'rTES_rms', 'pTES', 'pTES_rms'])
+        iv_dictionary = read_from_ivroot(outPath + '/root/iv_data.root', branches=['iBias', 'iBias_rms', 'vOut', 'vOut_rms', 't', 'iTES', 'iTES_rms', 'vTES', 'vTES_rms', 'rTES', 'rTES_rms', 'pTES', 'pTES_rms'])
         # Note: We would need to also save or re-generate the fit_parameters dictionary?
     
     # This step onwards assumes iv_dictionary contains TES values
     iv_dictionary, fit_dictionary = process_tes_curves(outPath, args.dataChannel, iv_dictionary)
     # Make TES Plots
-    make_tes_plots(output_path=outPath, data_channel=args.dataChannel, iv_dictionary=iv_dictionary, fit_dictionary=fit_dictionary)
+    #make_tes_plots(output_path=outPath, data_channel=args.dataChannel, iv_dictionary=iv_dictionary, fit_dictionary=fit_dictionary)
     
     # Next let's do some special processing...R vs T, P vs T type of thing
     get_RT_curves(outPath, args.dataChannel, iv_dictionary)
