@@ -1,3 +1,9 @@
+import os
+import argparse
+from os.path import isabs
+from os.path import dirname
+from os.path import basename
+
 import argparse
 import glob
 
@@ -13,6 +19,10 @@ from readROOT import readROOT
 eps = np.finfo(float).eps
 ln = np.log
 mp.rcParams['agg.path.chunksize'] = 10000
+
+def mkdpaths(dirpath):
+    os.makedirs(dirpath, exist_ok=True)
+    return True
 
 
 def gen_plot_bar(x, y, xlab, ylab, title, fName, dx=1, logx='log', logy='log'):
@@ -41,12 +51,13 @@ def gen_plot_line2(x, y, xlab, ylab, title, fName, logx='log', logy='log'):
     ax.set_yscale(logy)
     ax.set_title(title)
     ax.grid(True)
+    ax.set_ylim((1e-14, 1e-7))
     fig2.savefig(fName, dpi=100)
     plt.close('all')
     return None
 
 
-def gen_plot_line(x, y, xlab, ylab, title, fName, logx='log', logy='log'):
+def gen_plot_line(x, y, xlab, ylab, title, fName, ylim=(1e-14, 1e-7), logx='log', logy='log'):
     """Create generic plots that may be semilogx (default)"""
     fig2 = plt.figure(figsize=(16, 9))
     ax = fig2.add_subplot(111)
@@ -55,11 +66,18 @@ def gen_plot_line(x, y, xlab, ylab, title, fName, logx='log', logy='log'):
     ax.set_xlabel(xlab)
     ax.set_ylabel(ylab)
     ax.set_yscale(logy)
+    ax.set_ylim((ylim))
     ax.set_title(title)
     ax.grid(True)
     fig2.savefig(fName, dpi=200)
     plt.close('all')
     return None
+
+
+def gen_plot_line_both(ax, freq, fdata, channel):
+    '''Overlay both plots'''
+    ax.plot(freq, fdata, linestyle='-', linewidth=0.5, label="Channel {}".format(channel))
+    return ax
 
 
 def process_waveform(dWaveform, procType='mean'):
@@ -132,6 +150,9 @@ def compute_noise_spectra(input_directory, squid_run):
     method = 'chain'
     data = readROOT(list_of_files, tree, branches, method)
     data = data['data']
+    # Make output directory
+    outdir = '/Users/bwelliver/cuore/bolord/noise_spectra/sr_' + str(squid_run)
+    mkdpaths(outdir)
     # Now we need to unfold the data into an array
     # Note Units: waveform data are in Volts
     waveforms = {ch: {} for ch in np.unique(data['Channel'])}
@@ -152,11 +173,12 @@ def compute_noise_spectra(input_directory, squid_run):
     # Now we have dictionaries that should have, for a given channel, the time and voltage as single arrays. Let's plot and see
     
     for channel in data_array.keys():
+        print('Making output vs time for channel {}'.format(channel))
         xlab = 'Time (mus)'
         ylab = 'Signal (mV)'
-        title = 'Digitizer Channel ' + str(channel) + ' Signal vs Time'
-        fName = '/Users/bwelliver/cuore/bolord/noise_spectra/test/ch_' + str(channel) + '_output_vs_time.png'
-        gen_plot_line(time_array[channel]*1e6, data_array[channel], xlab, ylab, title, fName, logx='linear', logy='linear')
+        title = 'Digitizer Channel ' + str(channel) + ' Signal vs Time for SR ' + str(squid_run)
+        fName = outdir + '/ch_' + str(channel) + '_output_vs_time.png'
+        gen_plot_line(time_array[channel]*1e6, data_array[channel], xlab, ylab, title, fName, ylim=(-0.1, 0.1), logx='linear', logy='linear')
 
     # Now let's try our hand at fft
     for channel in data_array.keys():
@@ -165,28 +187,79 @@ def compute_noise_spectra(input_directory, squid_run):
         print('Making plot')
         xlab = 'Frequency (Hz)'
         ylab = 'V'
-        title = 'Digitizer Channel ' + str(channel) + ' FFT Signal vs Frequency'
-        fName = '/Users/bwelliver/cuore/bolord/noise_spectra/test/ch_' + str(channel) + '_fft_log.png'
+        title = 'Digitizer Channel ' + str(channel) + ' FFT Signal vs Frequency for SR ' + str(squid_run)
+        fName = outdir + '/ch_' + str(channel) + '_fft_log.png'
         fcut = freq >= 0
         gen_plot_line(freq, np.abs(fdata), xlab, ylab, title, fName, logx='log', logy='log')
         # Try to compute a psd directly
         psd = ((np.abs(fdata)/fdata.size)**2)/(2*(freq[1]-freq[0]))
         xlab = 'Frequency (Hz)'
         ylab = 'PSD V^2 / Hz'
-        title = 'Digitizer Channel ' + str(channel) + ' PSD vs Frequency'
-        fName = '/Users/bwelliver/cuore/bolord/noise_spectra/test/ch_' + str(channel) + '_psd_log.png'
-        gen_plot_line(freq, psd, xlab, ylab, title, fName, logx='log', logy='log')
+        title = 'Digitizer Channel ' + str(channel) + ' PSD vs Frequency for SR ' + str(squid_run)
+        fName = outdir + '/ch_' + str(channel) + '_psd_log.png'
+        gen_plot_line(freq, psd, xlab, ylab, title, fName, ylim=(1e-15, 1e-6), logx='log', logy='log')
         #gen_plot_bar(freq, np.abs(fdata), xlab, ylab, title, fName, dx=1000, logx='log', logy='log')
     # Try the welch method
+    fig = plt.figure(figsize=(16,9))
+    ax = fig.add_subplot(111)
     for channel in data_array.keys():
         print('Computing using welch')
         freq, fdata = compute_welch(time_array[channel], data_array[channel], number_segments=50)
         print('Making plot')
         xlab = 'Frequency (Hz)'
         ylab = 'PSD V^2/Hz'
-        title = 'Digitizer Channel ' + str(channel) + ' FFT Signal vs Frequency'
-        fName = '/Users/bwelliver/cuore/bolord/noise_spectra/test/ch_' + str(channel) + '_welch_psd_log.png'
+        title = 'Digitizer Channel ' + str(channel) + ' FFT Signal vs Frequency for SR ' + str(squid_run)
+        fName = outdir + '/ch_' + str(channel) + '_welch_psd_log.png'
         gen_plot_line(freq, fdata, xlab, ylab, title, fName, logx='log', logy='log')
+        gen_plot_line_both(ax, freq, fdata, channel)
+    xlab = 'Frequency (Hz)'
+    ylab = 'PSD V^2/Hz'
+    title = 'Digitizer Channels ' + ' FFT Signal vs Frequency for SR ' + str(squid_run)
+    fName = outdir + '/both_channels_welch_psd_log.png'
+    ax.set_xscale('log')
+    ax.set_xlabel(xlab)
+    ax.set_ylabel(ylab)
+    ax.set_yscale('log')
+    ax.set_ylim((1e-15, 1e-6))
+    ax.set_title(title)
+    ax.grid(True)
+    ax.legend()
+    fig.savefig(fName, dpi=200)
+    plt.close('all')
+    # Get both overlapped
+    #gen_plot_line_both(outdir, time_array, data_array, number_segments=50, logx='log', logy='log')
+#    # Try a spectrogram
+#    print('Trying to do a spectrogram')
+#    f, t, Sxx = signal.spectrogram(data_array[7], 250e3)
+#    plt.pcolormesh(t, f, np.log(Sxx))
+#    #print(Sxx)
+#    print('Max Sxx is: {}'.format(Sxx.max()))
+#    plt.ylabel('Frequency [Hz]')
+#    plt.xlabel('Time [sec]')
+#    plt.savefig(outdir + '/spectrogram_channel_7.png', dpi=200)
+#    
+#    plt.ylabel('Frequency [Hz]')
+#    plt.xlabel('Time [sec]')
+#    plt.yscale('log')
+#    plt.ylim((2e-2, 125e3))
+#    plt.savefig(outdir + '/spectrogram_channel_7_log.png', dpi=200)
+#    plt.close('all')
+#    
+#    print('Trying to do a spectrogram')
+#    f, t, Sxx = signal.spectrogram(data_array[5], 250e3)
+#    plt.pcolormesh(t, f, np.log(Sxx))
+#    #print(Sxx)
+#    print('Max Sxx is: {}'.format(Sxx.max()))
+#    plt.ylabel('Frequency [Hz]')
+#    plt.xlabel('Time [sec]')
+#    plt.savefig(outdir + '/spectrogram_channel_5.png', dpi=200)
+#    
+#    plt.ylabel('Frequency [Hz]')
+#    plt.xlabel('Time [sec]')
+#    plt.yscale('log')
+#    plt.ylim((2e-2, 125e3))
+#    plt.savefig(outdir + '/spectrogram_channel_5_log.png', dpi=200)
+#    plt.close('all')
     return None
         
 

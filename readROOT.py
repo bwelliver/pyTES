@@ -81,6 +81,9 @@ def readROOT(inFile, tree, branches, method='single', directory=None, info=None)
             data = getattr(obj, branch)
             # data could be a scalar or it could be an array
             if isinstance(data, rt.vector('double')):
+                # Here npData is a dictionary with key branch and value dictionary
+                # The subdictionary has key entry and value array
+                # It is vitally important that the ORDER be preserved! Use an ordered dict
                 npData[branch][entry] = np.asarray(data)
             else:
                 npData[branch][entry] = data

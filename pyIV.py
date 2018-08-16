@@ -118,7 +118,7 @@ class SQUIDParameters:
             self.serial = 'S0121'
             self.Li = 6e-9
             self.Mi = 1/26.062
-            self.Mfb = 1/33.27
+            self.Mfb = 1/33.488
             self.Rfb = 10000.0
             self.Rsh = 21.0e-3
             self.Rb = 10000.0
@@ -441,27 +441,153 @@ def get_squid_parameters(channel):
     return squid_dictionary[channel]
 
 
-def process_waveform(dWaveform, procType='mean'):
-    '''Take an input waveform dictionary and process it by collapse to 1 point
-    An incoming waveform is a dictionary with keys = event number and values = waveform of duration 1s
-    This function will collapse the waveform to 1 value based on procType and return it as a numpy array
-    We will also return a bonus array of the rms for each point too
+def process_waveform(waveform, time_values, sample_length, number_of_windows=1, process_type='mean'):
+    '''Function to process waveform into a statistically downsampled representative point
+    waveform:
+        A dictionary whose keys represent the event number. Values are numpy arrays with a length = NumberOfSamples
+        The timestamp of waveform[event][sample] is time_values[event] + sample*sample_length
+    time_values:
+        An array containing the start time (with microsecond resolution) of an event
+    sample_length:
+        The length in seconds of a sample within an event. waveform[event].size*sample_length = event duration
+    number_of_windows:
+        How many windows should an event be split into for statistical sampling
+    process_type:
+        The particular type of processing to use.
+        mean:
+            For the given division of the event performs a mean and std over samples to obtain statistically
+            representative values
+        median:
+            TODO
+    This will return 2 dictionaries keyed by event number and an appropriately re-sampled time_values array
     '''
-    # We can have events missing so better to make the vectors equal to the max key
-    npWaveform = np.empty(len(dWaveform.keys()))
-    npWaveformRMS = np.empty(len(dWaveform.keys()))
-    if procType == 'mean':
-        for ev, waveform in dWaveform.items():
-            npWaveform[ev] = np.mean(waveform)
-            npWaveformRMS[ev] = np.std(waveform)
-    elif procType == 'median':
-        for ev, waveform in dWaveform.items():
-            npWaveform[ev] = np.median(waveform)
-            q75, q25 = np.percentile(waveform, [75, 25])
-            npWaveformRMS[ev] = q75 - q25
+    # Allocate numpy arrays. Note that if we made some assumptions we could pre-allocate instead of append...
+    mean_waveform = np.empty(0)
+    rms_waveform = np.empty(0)
+    new_time_values = np.empty(0)
+    if process_type == 'mean':
+        for event, samples in waveform.items():
+            number_of_samples = samples.size
+            base_index = samples.size // number_of_windows
+            event_time = time_values[event]
+            for n in range(number_of_windows):
+                lower_index = n*base_index
+                upper_index = (n+1)*base_index
+                mean_waveform = np.append(mean_waveform, np.mean(samples[lower_index:upper_index]))
+                rms_waveform = np.append(rms_waveform, np.std(samples[lower_index:upper_index]))
+                new_time_values = np.append(new_time_values, event_time + ((upper_index + lower_index)/2)*sample_length)
+        return mean_waveform, rms_waveform, new_time_values
+    
+
+def correct_squid_jumps(outPath, temperature, t, x, xrms, y, yrms, buffer_size=5):
+    '''Function that will correct a SQUID jump in a given waveform'''
+    # This is a little dicey. Sudden changes in output voltage can be the result of a SQUID jump
+    # Or it could be simply a transition between a SC and N state.
+    # Typically SQUID jumps will be larger, but not always.
+    # One way to identify them is to first identify the "jump" whatever it is and then look at the slope on either side
+    # If the slope on either side of a jump is approximately the same, it is a SQUID jump since the SC to N transition
+    # results in a large change in slope.
+    
+    # The walk normal function should handle this fairly well with some modifications.
+    # Note that once a jump is identified we should apply a correction to subsequent data
+    
+    # We will examine the data in the IV plane, after we have processed waveforms.
+    # There will of course be a 'point' where the jump happens when we obtain the mean and RMS of the window
+    # This point can be discarded.
+    
+    # Let us walk along the waveform to see if there are any squid jumps
+    # Ensure we have the proper sorting of the data
+    if np.all(t[:-1] <= t[1:]) == False:
+        raise ArrayIsUnsortedException('Input argument t is unsorted')
+    # First let us compute the gradients with respect to time
+    dydt = np.gradient(y, t, edge_order=2)
+    dxdt = np.gradient(x, t, edge_order=2)
+    # Next construct dydx in time ordered sense
+    dydx = dydt/dxdt
+    # So we will walk along and compute the average of N elements at a time. 
+    # If the new average differs from the previous by some amount mark that as the boundary of a SQUID jump
+    # This should not be a subtle thing.
+    # Make a plot of what we are testing
+    test_plot(t, y, 'time', 'vOut', outPath + 'uncorrected_squid_jumps_' + str(temperature) + 'mK.png')
+    dbuff = RingBuffer(buffer_size, dtype=float)
+    for ev in range(buffer_size):
+        dbuff.append(dydt[ev])
+    # Now our buffer is initialized so loop over all events until we find a change
+    ev = buffer_size
+    dMean = 0
+    print('The first y value is: {} and the location of the max y value is: {}'.format(y[0], np.argmax(y)))
+    while dMean < 3 and ev < dydt.size - 1:
+        currentMean = dbuff.get_mean()
+        dbuff.append(dydt[ev])
+        newMean = dbuff.get_mean()
+        dMean = np.abs((currentMean - newMean)/currentMean)
+        print('The current y value is: {}'.format(y[ev]))
+        print('ev {}: currentMean = {}, newMean = {}, dMean = {}'.format(ev, currentMean, newMean, dMean))
+        ev += 1
+    # We have located a potential jump at this point (ev)
+    # So compute the slope on either side of ev and compare
+    print('The event and size of the data are {} and {}'.format(ev, t.size))
+    if ev == t.size - 1:
+        print('No jumps found after walking all of the data...')
     else:
-        raise Exception('Please enter mean or median for process')
-    return npWaveform, npWaveformRMS
+        distance_ahead = 10 if ev + 10 < dydt.size - 1 else dydt.size - ev - 1
+        distance_behind = 10 if ev - 10 > 0 else ev
+        #slope_before = np.mean(dydt[ev-distance_behind:ev])
+        #slope_after = np.mean(dydt[ev+1:ev+distance_ahead])
+        result, pcov = curve_fit(lin_sq, t[ev-distance_behind:ev], y[ev-distance_behind:ev])
+        fit_before = result[0]
+        result, pcov = curve_fit(lin_sq, t[ev+1:ev+distance_ahead], y[ev+1:ev+distance_ahead])
+        fit_after = result[0]
+        print('The event and size are {} and {} and The slope before is: {}, slope after is: {} and slope ratio: {}'.format(ev, dydt.size, fit_before, fit_after, np.abs((fit_before - fit_after)/fit_after)))
+        if np.abs((fit_before - fit_after)/fit_after) < 0.5:
+            # This means the slopes are the same and so we have a squid jump
+            # Easiest thing to do then is to determine what the actual value was prior to the jump
+            # and then shift the offset values up to it
+            result, pcov = curve_fit(lin_sq, t[ev-distance_behind:ev], y[ev-distance_behind:ev])
+            extrapolated_value_of_post_jump_point = lin_sq(t[ev+5], *result)
+            print('The extrapolated value for the post jump point should be: {}. It is actually right now {}'.format(extrapolated_value_of_post_jump_point, y[ev-10:ev+10]))
+            # Now when corrected y' - evopjp = 0 so we need y' = y - dy where dy = y - evopjp
+            dy = y[ev+5] - extrapolated_value_of_post_jump_point
+            y[ev+5:] = y[ev+5:] - dy
+            print('After correction the value of y is {}'.format(y[ev+5]))
+            # Finally we must remove the point ev from the data. Let's be safe and remove the surrounding points
+            points_to_remove = [ev + (i-4) for i in range(9)]
+            x = np.delete(x, points_to_remove)
+            y = np.delete(y, points_to_remove)
+            xrms = np.delete(xrms, points_to_remove)
+            yrms = np.delete(yrms, points_to_remove)
+            t = np.delete(t, points_to_remove)
+            test_plot(t, y, 'time', 'vOut', outPath + 'corrected_squid_jumps_' + str(temperature) + 'mK.png')
+            # probably what we should do here is then call this function again until we find no jumps
+            t, x, xrms, y, yrms = correct_squid_jumps(outPath, temperature, t, x, xrms, y, yrms)
+        else:
+            # Slopes are not the same...this is not a squid jump.
+            print('No SQUID Jump detected')
+    return t, x, xrms, y, yrms
+    
+
+#@obsolete
+#def process_waveform(dWaveform, procType='mean'):
+#    '''Take an input waveform dictionary and process it by collapse to 1 point
+#    An incoming waveform is a dictionary with keys = event number and values = waveform of duration 1s
+#    This function will collapse the waveform to 1 value based on procType and return it as a numpy array
+#    We will also return a bonus array of the rms for each point too
+#    '''
+#    # We can have events missing so better to make the vectors equal to the max key
+#    npWaveform = np.empty(len(dWaveform.keys()))
+#    npWaveformRMS = np.empty(len(dWaveform.keys()))
+#    if procType == 'mean':
+#        for ev, waveform in dWaveform.items():
+#            npWaveform[ev] = np.mean(waveform)
+#            npWaveformRMS[ev] = np.std(waveform)
+#    elif procType == 'median':
+#        for ev, waveform in dWaveform.items():
+#            npWaveform[ev] = np.median(waveform)
+#            q75, q25 = np.percentile(waveform, [75, 25])
+#            npWaveformRMS[ev] = q75 - q25
+#    else:
+#        raise Exception('Please enter mean or median for process')
+#    return npWaveform, npWaveformRMS
 
 
 def power_temp(T, t_tes, k, n):
@@ -572,7 +698,7 @@ def getStabTemp(vTime, vTemp, lenBuff=10, Tstep=5e-5):
     ev = 0
     tList = []
     tStart = vTime[0]
-    dt = 700
+    dt = 0
     while ev < vTemp.size - 1 and ev + lenBuff < vTemp.size - 1:
         # We start with assuming the first window starts at t = vTime[0]
         if len(tList) == 0:
@@ -689,7 +815,7 @@ def walk_sc(x, y, buffer_size=4, plane='iv'):
         # NOTE: The above will fail for small SC regions where vOut normal > vOut sc!!!!
     # First go from index_min_x and increase
     # Create ring buffer of to store signal
-    buffer_size = 4
+    #buffer_size = 4
     #TODO: FIX THIS TO HANDLE SQUID JUMPS
     dbuff = RingBuffer(buffer_size, dtype=float)
     # Start by walking buffer_size events to the right from the minimum abs. voltage
@@ -714,7 +840,7 @@ def walk_sc(x, y, buffer_size=4, plane='iv'):
     # Now our buffer is initialized so loop over all events until we find a change
     ev = index_min_x - buffer_size
     dM = 0
-    while dMean < 1e-2 and ev < didv.size - 1:
+    while dMean < 1e-2 and ev < dydx.size - 1:
         currentMean = dbuff.get_mean()
         dbuff.append(dydx[ev])
         newMean = dbuff.get_mean()
@@ -730,7 +856,7 @@ def test_plot(x, y, xlab, ylab, fName):
     fName = fName + '.png' if fName.split('.png') != 2 else fName
     fig = plt.figure(figsize=(8, 6))
     ax = fig.add_subplot(111)
-    ax.plot(x, y, marker='o', markersize=4, markeredgecolor='black', markeredgewidth=0.0, linestyle='None')
+    ax.plot(x, y, marker='o', markersize=2, markeredgecolor='black', markeredgewidth=0.0, linestyle='None')
     #ax.set_xscale(log)
     ax.set_xlabel(xlab)
     ax.set_ylabel(ylab)
@@ -748,7 +874,7 @@ def test_steps(x, y, v, t0, xlab, ylab, fName):
     fName = fName + '.png' if fName.split('.png') != 2 else fName
     fig = plt.figure(figsize=(8, 6))
     ax = fig.add_subplot(111)
-    ax.plot(x, y, marker='o', markersize=4, markeredgecolor='black', markeredgewidth=0.0, linestyle='None')
+    ax.plot(x, y, marker='o', markersize=1, markeredgecolor='black', markeredgewidth=0.0, linestyle='None')
     # Next add horizontal lines for each step it thinks it found
     for item in v:
         ax.plot([item[0]-t0,item[1]-t0], [item[2], item[2]], marker='.', linestyle='-', color='r')
@@ -947,6 +1073,158 @@ def iv_fitplot(x, y, xerr, yerr, model, Rp, xLabel, yLabel, title, fName, xScale
     plt.close('all')
     return None
 
+
+def make_root_plot(outPath, data_channel, temperature, iv_data, model, Rp, xScale=1, yScale=1):
+    '''A helper function to generate a TMultiGraph for the IV curve
+    Recipe for this type of plot:
+    Create a TCanvas object and adjust its parameters
+    Create a TMultiGraph
+    Create a TGraph - adjust its parameters and plant it in the TMultiGraph (which now owns the TGraph)
+    Finish styling for the TMultiGraph and then save the canvas as .png and .C
+    
+    There will be 4 TGraphs
+        vOut vs iBias
+        Left Normal fit
+        Right Normal fit
+        SC fit
+    '''
+    
+    # Create TCanvas
+    w = 1600
+    h = 1200 
+    c = rt.TCanvas("iv", "iv", w, h)
+    c.SetWindowSize(w + (w - c.GetWw()), h + (h - c.GetWh()))
+    c.cd()
+    c.SetGrid()
+    mg = rt.TMultiGraph()
+    
+    # Now let us generate some TGraphs!
+    x = iv_data['iBias']
+    xrms = iv_data['iBias_rms']
+    y = iv_data['vOut']
+    yrms = iv_data['vOut_rms']
+    # First up: vOut vs iBias
+    g0 = rt.TGraphErrors(x.size, x*xScale, y*yScale, xrms*xScale, yrms*yScale)
+    g0.SetMarkerSize(0.5)
+    g0.SetLineWidth(1)
+    g0.SetName("vOut_iBias")
+    g0.SetTitle("OutputVoltage vs Bias Current")
+    
+    mg.Add(g0)
+    
+    # Next up let's add the fit lines
+    if model.left.result is not None:
+        yFit = lin_sq(x, *model.left.result)
+        gLeft = rt.TGraph(x.size, x*xScale, yFit*yScale)
+        gLeft.SetMarkerSize(0)
+        gLeft.SetLineWidth(2)
+        gLeft.SetLineColor(rt.kRed)
+        gLeft.SetTitle("Left Normal Branch Fit")
+        gLeft.SetName("left_fit")
+        mg.Add(gLeft)
+    if model.right.result is not None:
+        yFit = lin_sq(x, *model.right.result)
+        gRight = rt.TGraph(x.size, x*xScale, yFit*yScale)
+        gRight.SetMarkerSize(0)
+        gRight.SetLineWidth(2)
+        gRight.SetLineColor(rt.kGreen)
+        gRight.SetTitle("Right Normal Branch Fit")
+        gRight.SetName("right_fit")
+        mg.Add(gRight)
+    if model.sc.result is not None:
+        yFit = lin_sq(x, *model.sc.result)
+        cut = np.logical_and(yFit < y.max(), yFit > y.min()) 
+        gSC = rt.TGraph(x[cut].size, x[cut]*xScale, yFit[cut]*yScale)
+        gSC.SetMarkerSize(0)
+        gSC.SetLineWidth(2)
+        gSC.SetLineColor(rt.kBlue)
+        gSC.SetTitle("Superconducting Branch Fit")
+        gSC.SetName("sc_fit")
+        mg.Add(gSC)
+    # Now I guess we format the multigraph
+    xLabel = 'Bias Current [uA]'
+    yLabel = 'Output Voltage [mV]'
+    titleStr = 'Channel {} Output Voltage vs Bias Current for T = {} mK'.format(data_channel, temperature)
+    fName = outPath + '/root/' + 'vOut_vs_iBias_ch_' + str(data_channel) + '_' + temperature + 'mK'
+    mg.Draw("APL")
+    mg.GetXaxis().SetTitle(xLabel)
+    mg.GetYaxis().SetTitle(yLabel)
+    mg.SetTitle(titleStr)
+    # Construct Legend
+    leg = rt.TLegend(0.6, 0.7, 0.9, 0.9)
+    leg.AddEntry(g0, "IV Data", "le")
+    leg.AddEntry(gLeft, "Left Normal Branch Fit", "l")
+    leg.AddEntry(gRight, "Right Normal Branch Fit", "l")
+    leg.AddEntry(gSC, "Superconducting Branch Fit", "l")
+    leg.SetTextSize(0.02)
+    #leg.SetTextFont(2)
+#    TLegend *leg = new TLegend(0.55, 0.7, 0.9, 0.9);
+#    //TLegendEntry *le = leg->AddEntry(h2, "All PhaseIDs: noise distribution across all channels", "fl");
+#    leg->AddEntry(h2, "All PhaseIDs: noise distribution across all channels", "fl");
+#    //TLegendEntry *le_optimal = leg->AddEntry(hc_optimal, Form("PhaseID %d: noise distribution across all channels", optimal_phaseid), "fl");
+#    leg->AddEntry(hc_optimal, Form("PhaseID %d: noise distribution across all channels", optimal_phaseid), "fl");
+#    leg->SetTextSize(0.02);
+#    leg->SetTextFont(2);
+#    leg->Draw();
+    leg.Draw()
+    # Add some annotations?
+    tN = rt.TLatex()
+    tN.SetNDC()
+    tN.SetTextSize(0.025)
+    tN.SetTextAlign(12)
+    tN.SetTextAngle(343)
+    tN.DrawLatex(0.14, 0.66, "Normal Branch")
+    
+    tB = rt.TLatex()
+    tB.SetNDC()
+    tB.SetTextSize(0.025)
+    tB.SetTextAlign(12)
+    tB.SetTextAngle(0)
+    tB.DrawLatex(0.55, 0.41, "Biased Region")
+    
+    tS = rt.TLatex()
+    tS.SetNDC()
+    tS.SetTextSize(0.025)
+    tS.SetTextAlign(12)
+    tS.SetTextAngle(282)
+    tS.DrawLatex(0.49, 0.77, "SC Region")
+    
+#    t = new TLatex();
+#    t->SetNDC();
+#    t->SetTextFont(62);
+#    t->SetTextColor(36);
+#    t->SetTextSize(0.08);
+#    t->SetTextAlign(12);
+#    t->DrawLatex(0.6,0.85,"p - p");
+#
+#    t->SetTextSize(0.05);
+#    t->DrawLatex(0.6,0.79,"Direct #gamma");
+#    t->DrawLatex(0.6,0.75,"#theta = 90^{o}");
+#
+#    t->DrawLatex(0.70,0.55,"H(z)");
+#    t->DrawLatex(0.68,0.50,"(barn)");
+#
+#    t->SetTextSize(0.045);
+#    t->SetTextColor(46);
+#    t->DrawLatex(0.20,0.30,"#sqrt{s}, GeV");
+#    t->DrawLatex(0.22,0.26,"63");
+#    t->DrawLatex(0.22,0.22,"200");
+#    t->DrawLatex(0.22,0.18,"500");
+#
+#    t->SetTextSize(0.05);
+#    t->SetTextColor(1);
+#    t->DrawLatex(0.88,0.06,"z");
+    #c.BuildLegend()
+    c.Update()
+    # Now save the damned thing
+    c.SaveAs(fName + '.png')
+    fName = outPath + '/root/' + 'vOut_vs_iBias_ch_' + str(data_channel) + '_' + str(int(float(temperature)*1e3)) + 'uK'
+    c.SaveAs(fName + '.C')
+    c.Close()
+    del mg
+    del c
+    return None
+    
 
 def gen_fitplot(x, y, xerr, yerr, lFit, rFit, scFit, xlab, ylab, title, fName, log='linear', model='y'):
     '''Generate fitplot for some data'''
@@ -1399,7 +1677,8 @@ def get_iv_data_from_file(input_path):
     '''Load IV data from specified directory'''
     
     tree = 'data_tree'
-    branches = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform', 'EPCal_K']
+    #branches = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform', 'EPCal_K']
+    branches = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform', 'NT']
     method = 'single'
     rData = readROOT(path, tree, branches, method)
     # Make life easier:
@@ -1420,8 +1699,13 @@ def format_iv_data(iv_data, output_path):
     # The things we need to return: Time, Temperature, Vin, Vout
     
     # Construct the complete timestamp from the s and mus values
+    # For a given waveform the exact timestamp of sample number N is as follows:
+    # t[N] = Timestamp_s + Timestamp_mus*1e-6 + N*SamplingWidth_s
+    # Note that there will be NEvents different values of Timestamp_s and Timestamp_mus, each of these containing 1/SamplingWidth_s samples
+    # (Note that NEvents = NEntries/NChannels)
     time_values = iv_data['Timestamp_s'] + iv_data['Timestamp_mus']/1e6
-    temperatures = iv_data['EPCal_K']
+    #temperatures = iv_data['EPCal_K']
+    temperatures = iv_data['NT']
     cut = temperatures > -1
     # Get unique time values for valid temperatures
     time_values, idx = np.unique(time_values[cut], return_index=True)
@@ -1429,22 +1713,34 @@ def format_iv_data(iv_data, output_path):
     temperatures = temperatures[cut]
     temperatures = temperatures[idx]
     test_plot(time_values, temperatures, 'Unix Time', 'Temperature [K]', output_path + '/' + 'quick_look_Tvt.png')
-    
+    print('Processing IV waveforms...')
     # Next process waveforms into input and output arrays
     waveForms = {ch: {} for ch in np.unique(iv_data['Channel'])}
     nChan = np.unique(iv_data['Channel']).size
     for ev, ch in enumerate(iv_data['Channel'][cut]):
         waveForms[ch][ev//nChan] = iv_data['Waveform'][ev]
-    # Ultimately the cut we form from times will tell us what times, and hence events to cut
-    # waveForms are dicts of channels with dicts of event numbers that point to the event's waveform
-    # Collapse a waveform down to a single value per event means we can form np arrays then
+    # We now have a nested dictionary of waveforms.
+    # waveForms[ch] consists of a dictionary of Nevents keys (actual events)
+    # So waveForms[ch][ev] will be a numpy array with size = NumberOfSamples.
+    # The timestamp of waveForms[ch][ev][sample] is time_values[ev] + sample*SamplingWidth_s
+    
+    # Ultimately let us collapse the finely sampled waveforms into more coarse waveforms.
     mean_waveforms = {}
     rms_waveforms = {}
-    #print('waveforms keys: {}'.format(list(waveForms[biasChannel].keys())))
-    for ch in waveForms.keys():
-        mean_waveforms[ch], rms_waveforms[ch] = process_waveform(waveForms[ch], 'mean')
-    print('The number of things in the time_values are: {} and the number of waveforms are: {}'.format(np.size(time_values), len(mean_waveforms[5])))
-    return time_values, temperatures, mean_waveforms, rms_waveforms
+    for channel in waveForms.keys():
+        mean_waveforms[channel], rms_waveforms[channel], mean_time_values = process_waveform(waveForms[channel], time_values, iv_data['SamplingWidth_s'][0], number_of_windows=1)
+    print('The number of things in the mean time values are: {} and the number of waveforms are: {}'.format(np.size(mean_time_values), len(mean_waveforms[5])))
+#    
+#    # Ultimately the cut we form from times will tell us what times, and hence events to cut
+#    # waveForms are dicts of channels with dicts of event numbers that point to the event's waveform
+#    # Collapse a waveform down to a single value per event means we can form np arrays then
+#    mean_waveforms = {}
+#    rms_waveforms = {}
+#    #print('waveforms keys: {}'.format(list(waveForms[biasChannel].keys())))
+#    for ch in waveForms.keys():
+#        mean_waveforms[ch], rms_waveforms[ch] = process_waveform(waveForms[ch], 'mean')
+#    print('The number of things in the time_values are: {} and the number of waveforms are: {}'.format(np.size(time_values), len(mean_waveforms[5])))
+    return time_values, temperatures, mean_waveforms, rms_waveforms, mean_time_values
 
 
 def find_temperature_steps(time_values, temperatures, output_path):
@@ -1464,8 +1760,15 @@ def find_temperature_steps(time_values, temperatures, output_path):
     # Now set some parameters for stablized temperatures
     # Define temperature steps to be larger than Tstep Kelvins
     # Define the rolling windows to contain lenBuff entries
-    Tstep = 5e-5
-    lenBuff = 10
+    temp_sensor = 'NT'
+    if temp_sensor == 'EP_Cal':
+        Tstep = 5e-5
+        lenBuff = 10
+    elif temp_sensor == 'NT':
+        # Usually is noisy
+        Tstep = 7e-4
+        lenBuff = 400
+    print('Attempting to find temperature steps now...')
     timeList = getStabTemp(time_values, temperatures, lenBuff, Tstep)
     test_steps(dt, temperatures, timeList, time_values[0], 'Time', 'T', output_path + '/' + 'test_Tsteps.png')
     return timeList
@@ -1479,7 +1782,7 @@ def get_pyIV_data(input_path, output_path, squid_run, bias_channel):
     # First load the data files and return data
     iv_data = get_iv_data_from_file(input_path)
     # Next process data into a more useful format
-    time_values, temperatures, mean_waveforms, rms_waveforms = format_iv_data(iv_data, output_path)
+    time_values, temperatures, mean_waveforms, rms_waveforms, mean_time_values = format_iv_data(iv_data, output_path)
     # Next identify temperature steps
     timeList = find_temperature_steps(time_values, temperatures, output_path)
     # Now we have our timeList so we can in theory loop through it and generate IV curves for selected data!
@@ -1488,7 +1791,7 @@ def get_pyIV_data(input_path, output_path, squid_run, bias_channel):
     print('length of time: {}'.format(time_values.size))
     print('length of mean waveforms vector: {}'.format(mean_waveforms[bias_channel].size))
     print('There are {} temperature steps with values of: {}'.format(len(timeList), timeList))
-    return time_values, temperatures, mean_waveforms, rms_waveforms, timeList
+    return mean_time_values, temperatures, mean_waveforms, rms_waveforms, timeList
 
 
 def fit_sc_branch(x, y, sigmaY, plane):
@@ -1499,6 +1802,8 @@ def fit_sc_branch(x, y, sigmaY, plane):
     # First generate a sortKey since dy/dx will require us to be sorted
     sortKey = np.argsort(x)
     (evLeft, evRight) = walk_sc(x[sortKey], y[sortKey], plane=plane)
+    print('Diagnostics: The input into curve_fit is as follows:')
+    print('x size: {}, y size: {}, x NaN: {}, y NaN: {}'.format(x[sortKey][evLeft:evRight].size, y[sortKey][evLeft:evRight].size, nsum(np.isnan(x[sortKey][evLeft:evRight])), nsum(np.isnan(y[sortKey][evLeft:evRight]))))
     result, pcov = curve_fit(lin_sq, x[sortKey][evLeft:evRight], y[sortKey][evLeft:evRight], sigma=sigmaY[sortKey][evLeft:evRight], absolute_sigma=True, method='trf')
     perr = np.sqrt(np.diag(pcov))
     # In order to properly plot the superconducting branch fit try to find the boundaries of the SC region
@@ -1650,6 +1955,7 @@ def get_parasitic_resistances(iv_dictionary):
     fitParams = FitParameters()
     minT = list(iv_dictionary.keys())[np.argmin([float(T) for T in iv_dictionary.keys()])]
     for temperature, iv_data in iv_dictionary.items():
+        print('Attempting to fit superconducting branch for temperature: {} mK'.format(temperature))
         result, perr = fit_sc_branch(iv_data['iBias'], iv_data['vOut'], iv_data['vOut_rms'], plane='iv')
         fitParams.sc.set_values(result, perr)
         R = fit_to_resistance(fitParams, fit_type='iv')
@@ -1701,6 +2007,8 @@ def process_iv_curves(outPath, data_channel, iv_dictionary):
         titleStr = 'Channel {} Output Voltage vs Bias Current for T = {} mK'.format(data_channel, temperature)
         fName = outPath + '/' + 'vOut_vs_iBias_ch_' + str(data_channel) + '_' + temperature + 'mK'
         iv_fitplot(iv_data['iBias'], iv_data['vOut'], iv_data['iBias_rms'], iv_data['vOut_rms'], fit_parameters_dictionary[temperature], parasitic_dictionary[minT], xLabel, yLabel, titleStr, fName, xScale=1e6, yScale=1e3, logx='linear', logy='linear')
+        # Let's make a ROOT style plot (yuck)
+        make_root_plot(outPath, data_channel, temperature, iv_data, fit_parameters_dictionary[temperature], parasitic_dictionary[minT], xScale=1e6, yScale=1e3)
     return iv_dictionary, fit_parameters_dictionary, parasitic_dictionary
 
 
@@ -1712,7 +2020,18 @@ def get_PT_curves(output_path, data_channel, iv_dictionary):
     P = np.empty(0)
     P_rms = np.empty(0)
     for temperature, iv_data in iv_dictionary.items():
+        # Create cut to select only data going in the Normal to SC mode
+        # This happens in situations as follows:
+        # if iBias > 0 and iBias is decreasing over time
+        # if iBias < 0 and iBias is increasing
+        # Basically whenever iBias is approaching 0
+        diBias = np.gradient(iv_data['iBias'], edge_order=2)
+        cNtoSC_pos = np.logical_and(iv_data['iBias'] > 0, diBias < 0)
+        cNtoSC_neg = np.logical_and(iv_data['iBias'] <= 0, diBias > 0)
+        cNtoSC = np.logical_or(cNtoSC_pos, cNtoSC_neg)
+        # Also select data that is some fraction of the normal resistance, say 20%
         cut = np.logical_and(iv_data['rTES'] > 0.3*0.540 - 20e-3, iv_data['rTES'] < 0.3*0.540 + 20e-3)
+        cut = np.logical_and(cut, cNtoSC)
         if nsum(cut) > 0:
             T = np.append(T, float(temperature)*1e-3)
             P = np.append(P, np.mean(iv_data['pTES'][cut]))
@@ -1720,9 +2039,10 @@ def get_PT_curves(output_path, data_channel, iv_dictionary):
     # Attempt to fit it to a power function
     lBounds = [1e-15, 0, 10e-3]
     uBounds = [1e-5, 10, 100e-3]
-    cutT = T < 35.5e-3
-    x0 = [5e-06, 5, 35.4e-3]
+    cutT = T < 35e-3
+    x0 = [5e-06, 5, 35e-3]
     results, pcov = curve_fit(tes_power_polynomial, T[cutT], P[cutT], sigma=P_rms[cutT], p0=x0, bounds=(lBounds, uBounds), absolute_sigma=True, method='trf', max_nfev=1e4)
+    #results, pcov = curve_fit(tes_power_polynomial, T[cutT], P[cutT], sigma=P_rms[cutT], absolute_sigma=True, method='trf')
     perr = np.sqrt(np.diag(pcov))
     #results = [results[0], 5, results[1]]
     #perr = [perr[0], 0, perr[1]]
@@ -1798,10 +2118,11 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     R_desc = np.empty(0)
     Rrms_desc = np.empty(0)
     fitResult = FitParameters()
-    i_select = 7.6e-6
+    i_select = 1e-6
     for temperature, iv_data in iv_dictionary.items():
         diBias = np.gradient(iv_data['iBias'], edge_order=2)
         cut = np.logical_and(iv_data['iBias'] > i_select - 0.2e-6, iv_data['iBias'] < i_select + 0.2e-6)
+        print('the sum of cut is: {}'.format(nsum(cut)))
         cut1 = np.logical_and(iv_data['iBias'] > 0, diBias < 0)
         cut2 = np.logical_and(iv_data['iBias'] <= 0, diBias > 0)
         dcut = np.logical_or(cut1, cut2)
@@ -1869,7 +2190,9 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     modelR = tanh_tc(modelT, *fitResult.right.result)
     model_sortKey = np.argsort(modelT)
     #model_alpha = (modelT[model_sortKey]/modelR[model_sortKey])*np.gradient(modelR[model_sortKey], modelT[model_sortKey], edge_order=1)
-    model_alpha = np.gradient(np.log(modelR[model_sortKey]), np.log(modelT[model_sortKey]), edge_order=1)
+    #model_alpha = np.gradient(np.log(modelR[model_sortKey]), np.log(modelT[model_sortKey]), edge_order=1)
+    model_alpha = (modelT[model_sortKey]/modelR[model_sortKey])*np.gradient(modelR[model_sortKey], modelT[model_sortKey], edge_order=2)
+    print('The max alpha is: {}'.format(np.max(model_alpha)))
     sortKey = np.argsort(T)
     alpha = (T[sortKey]/R[sortKey])*np.gradient(R[sortKey], T[sortKey], edge_order=1)/1e3
     #alpha = np.gradient(np.log(R[sortKey]), np.log(T[sortKey]), edge_order=1)
@@ -2009,9 +2332,31 @@ def generate_iv_curves(outPath, time_values, temperatures, mean_waveforms, rms_w
         # sort in order of increasing bias current
         vOut = mean_waveforms[data_channel][cut]
         vOut_rms = rms_waveforms[data_channel][cut]
-        # We can technically get iTES at this point too since it is proportional to vOut but since it is let's not.
-        T = str(np.round(mean_temperature*1e3, 3))
-        iv_dictionary[T] = {'iBias': iBias, 'iBias_rms': iBias_rms, 'vOut': vOut, 'vOut_rms': vOut_rms, 't': times, 'diBias': np.gradient(iBias, edge_order=2)}
+        # Let us toss out T values wherein the digitizer rails
+        if np.any(vOut_rms < 1e-9):
+            print('Invalid digitizer response for T: {} mK'.format(np.round(mean_temperature*1e3, 3)))
+            continue
+        else:
+            T = str(np.round(mean_temperature*1e3, 3))
+            # Proceed to correct for SQUID Jumps
+            # We should SORT everything by increasing time....
+            sortKey = np.argsort(times)
+            times = times[sortKey]
+            iBias = iBias[sortKey]
+            iBias_rms = iBias_rms[sortKey]
+            vOut = vOut[sortKey]
+            vOut_rms = vOut_rms[sortKey]
+            print('Attempting to correct for SQUID jumps for temperature {}'.format(T))
+            times, iBias, iBias_rms, vOut, vOut_rms = correct_squid_jumps(outPath, T, times, iBias, iBias_rms, vOut, vOut_rms)
+            # We can technically get iTES at this point too since it is proportional to vOut but since it is let's not.
+            print('Creating dictionary entry for T: {} mK'.format(T))
+            # Make gradient to save as well
+            # Try to do this: dV/dt and di/dt and then (dV/dt)/(di/dt) --> (dV/di)
+            dvdt = np.gradient(vOut, times, edge_order=2)
+            didt = np.gradient(iBias, times, edge_order=2)
+            dvdi = dvdt/didt
+            index_vector = np.asarray([i for i in range(dvdi.size)])
+            iv_dictionary[T] = {'iBias': iBias, 'iBias_rms': iBias_rms, 'vOut': vOut, 'vOut_rms': vOut_rms, 't': times, 'dvdi': dvdi, 'dvdt': dvdt, 'didt': didt, 'index': index_vector}
     return iv_dictionary
 
 
@@ -2059,6 +2404,7 @@ if __name__ == '__main__':
         iv_dictionary, fit_parameters_dictionary, parasitic_dictionary = process_iv_curves(outPath, args.dataChannel, iv_dictionary)
         iv_dictionary = get_TES_values(outPath, args.dataChannel, iv_dictionary, parasitic_dictionary)
         save_to_root(outPath, iv_dictionary)
+        print('Obtained TES values')
     if args.readTESROOT is True:
         iv_dictionary = read_from_ivroot(outPath + '/root/iv_data.root', branches=['iBias', 'iBias_rms', 'vOut', 'vOut_rms', 't', 'iTES', 'iTES_rms', 'vTES', 'vTES_rms', 'rTES', 'rTES_rms', 'pTES', 'pTES_rms'])
         # Note: We would need to also save or re-generate the fit_parameters dictionary?

@@ -72,6 +72,7 @@ def getNTdata(fileName):
         tData['time'] = tData['time'] + delta
     return tData
 
+
 def tmfParser(fileName):
     '''Pandas allows us to open the file and correctly parse the file by padding with nan'''
     
@@ -139,6 +140,7 @@ if __name__ == '__main__':
     parser.add_argument('-s', '--inputSQUIDFile', help='Specify the full path to the directory with the SQUID root files you wish to merge with fridge data')
     parser.add_argument('-r', '--squidrun', help='Specify the SQUID run number you wish to grab files from')
     parser.add_argument('-f', '--inputFridgeFile', help='Specify the full path of the Fridge root file you wish to merge with SQUID data')
+    parser.add_argument('-n', '--inputNTFile', default='', help='Specify the full path of the Noise Thermometer TMF file you wish to merge with SQUID data')
     parser.add_argument('-o', '--outputFile', help='Specify output root file. If not a full path, it will be output in the same directory as the input SQUID file')    
     parser.add_argument('-i', '--interpType', default='spline', help='Specify interpolation method: "interp" for standard interpolation and "spline" for interpolated univariate spline. Default is "spline"')
     parser.add_argument('-d', '--interpDegree', default=3, help='Specify the interpolation degree (default 3 for cubic)')
@@ -147,6 +149,7 @@ if __name__ == '__main__':
     inSQUIDFile = args.inputSQUIDFile
     squidRun = args.squidrun
     inFridgeFile = args.inputFridgeFile
+    inNTFile = args.inputNTFile
     outFile = args.outputFile
     interpType = args.interpType
     interpDegree = args.interpDegree
@@ -210,6 +213,50 @@ if __name__ == '__main__':
     gen_plot(uTunix[cNF], new_T[cNF], 'Unix Time', 'Interp EPCal Temp', 'Interp Temp vs Time', 'interpT_vs_time', 'linear')
     # Now re-expand to full size to make duplicates based on unfolding the unique time grid
     new_T = new_T[rdx]
+    
+    # Now we can also try to add in NT data if so desired
+    # nt_data contains 3 keys: time, T, dT
+    if inNTFile != '':
+        nt_data = getNTdata(inNTFile)
+        print('First SQUID Unix Time is {}'.format(sTunix[0]))
+        print('First NT Unix Time is {}'.format(nt_data['time'][0]))
+
+        # Now interpolate NT data to align with these start times...generally we will not worry about
+        # inter-waveform alignment
+        # These are NT data that are above 0K, not missing Temp data, and that occur within the SQUID timestamps.
+        # Warning! timestamps are duplicated N(unique channels) times because of the way entries vs events are recorded
+        uTunix, idx, rdx = np.unique(sTunix, return_index=True, return_inverse=True)
+        fBranch = 'T'
+        # During times the sensor is off the time is duplicated
+        fBranch_t = 'time'
+        print('Original sizes: {}, {}'.format(sTunix.size, nt_data[fBranch].size))
+        # get unique fridge times and keys to get same events
+        uTemp_t, idxT, rdxT = np.unique(nt_data[fBranch_t], return_index=True, return_inverse=True)
+        uTemp = nt_data[fBranch][idxT]
+        # First get only valid temperatures
+        cValidT = np.logical_and(uTemp > 0, ~np.isnan(uTemp))
+        # Next select temperatures that occur during SQUID data
+        cTSQUID = np.logical_and(uTemp_t >= uTunix[0], uTemp_t <= uTunix[-1])
+        # Interpolation will only work also if the new values are not outside of what data is there
+        cNF = np.logical_and(uTunix >= uTemp_t[cValidT][0], uTunix <= uTemp_t[cValidT][-1])
+        print('Number of useable values inside squid data is {}'.format(np.sum(cNF)))
+        cUseT = np.logical_and(cValidT, cTSQUID)
+        print('Number to use from NT is {}'.format(np.sum(cUseT)))
+        # Fill everything else with Nan?
+        new_NT = np.zeros(uTunix.size) - 1
+        gen_plot(uTemp_t[cUseT], uTemp[cUseT], 'Unix Time', 'NT Temp', 'NT Temp vs Time', 'nt_vs_time', 'linear')
+        # Interpolate power over the uniqued timestamps
+        if interpType == 'interp':
+            new_NT[cNF] = timeInterp(uTemp_t[cUseT], uTemp[cUseT], uTunix[cNF], interpDegree)
+        elif interpType == 'spline':
+            new_NT[cNF] = timeSpline(uTemp_t[cUseT], uTemp[cUseT], uTunix[cNF], interpDegree)
+        print('New NT size is {0} and root size is {1}'.format(new_NT.size, sTunix.size))
+        #gen_plot(nTunix[branch][cNF], new_spline_Terr[cNF], 'Unix Time', 'Spline Temp', 'Spline Temp vs Time', 'splineT_vs_time', 'linear')
+        gen_plot(uTunix[cNF], new_NT[cNF], 'Unix Time', 'Interp NT Temp', 'Interp NT Temp vs Time', 'interpNT_vs_time', 'linear')
+        # Now re-expand to full size to make duplicates based on unfolding the unique time grid
+        new_NT = new_NT[rdx]
+    
+    
     #gen_plot(nTunix[branch][cNF], new_Terr[cNF] - new_spline_Terr[cNF], 'Unix Time', 'delta Temp', 'delta Temp vs Time', 'deltaT_vs_time', 'linear')
     # Now comes the "fun" part...write a new ROOT file that contains everything
     # Create dictionary with correct format
@@ -223,7 +270,12 @@ if __name__ == '__main__':
     for branch in squidNames:
         rootDict['TTree']['data_tree']['TBranch'][branch] = sData[branch]
     rootDict['TTree']['data_tree']['TBranch']['EPCal_K'] = new_T
+    if inNTFile != '':
+        rootDict['TTree']['data_tree']['TBranch']['NT'] = new_NT
     result = wR(outFile, rootDict)
     if result:
-        print('EPCal data has been interpolated and added to SQUID data.')
+        if inNTFile != '':
+            print("Noise thermometer and EPCal data have been interpolated and added to SQUID data")
+        else:
+            print('EPCal data has been interpolated and added to SQUID data.')
 
