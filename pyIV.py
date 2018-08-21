@@ -479,7 +479,7 @@ def process_waveform(waveform, time_values, sample_length, number_of_windows=1, 
         return mean_waveform, rms_waveform, new_time_values
     
 
-def correct_squid_jumps(outPath, temperature, t, x, xrms, y, yrms, buffer_size=5):
+def correct_squid_jumps(outPath, temperature, t, x, xrms, y, yrms, evStart=0, buffer_size=5):
     '''Function that will correct a SQUID jump in a given waveform'''
     # This is a little dicey. Sudden changes in output voltage can be the result of a SQUID jump
     # Or it could be simply a transition between a SC and N state.
@@ -511,9 +511,9 @@ def correct_squid_jumps(outPath, temperature, t, x, xrms, y, yrms, buffer_size=5
     test_plot(t, y, 'time', 'vOut', outPath + 'uncorrected_squid_jumps_' + str(temperature) + 'mK.png')
     dbuff = RingBuffer(buffer_size, dtype=float)
     for ev in range(buffer_size):
-        dbuff.append(dydt[ev])
+        dbuff.append(dydt[evStart + ev])
     # Now our buffer is initialized so loop over all events until we find a change
-    ev = buffer_size
+    ev = evStart + buffer_size
     dMean = 0
     print('The first y value is: {} and the location of the max y value is: {}'.format(y[0], np.argmax(y)))
     while dMean < 3 and ev < dydt.size - 1:
@@ -527,19 +527,34 @@ def correct_squid_jumps(outPath, temperature, t, x, xrms, y, yrms, buffer_size=5
     # We have located a potential jump at this point (ev)
     # So compute the slope on either side of ev and compare
     print('The event and size of the data are {} and {}'.format(ev, t.size))
-    if ev == t.size - 1:
+    if ev >= t.size - 1:
         print('No jumps found after walking all of the data...')
     else:
-        distance_ahead = 10 if ev + 10 < dydt.size - 1 else dydt.size - ev - 1
-        distance_behind = 10 if ev - 10 > 0 else ev
+        # We have found something and are not yet at the end of the array
+        # Let's see if we have something...
+        step_away = 15
+        distance_ahead = np.min([step_away, dydt.size - ev])
+        distance_behind = np.min([step_away, np.abs(ev - step_away), 0])
         #slope_before = np.mean(dydt[ev-distance_behind:ev])
         #slope_after = np.mean(dydt[ev+1:ev+distance_ahead])
-        result, pcov = curve_fit(lin_sq, t[ev-distance_behind:ev], y[ev-distance_behind:ev])
+        result, pcov = curve_fit(lin_sq, t[ev-distance_behind:ev-1], y[ev-distance_behind:ev-1])
         fit_before = result[0]
         result, pcov = curve_fit(lin_sq, t[ev+1:ev+distance_ahead], y[ev+1:ev+distance_ahead])
         fit_after = result[0]
-        print('The event and size are {} and {} and The slope before is: {}, slope after is: {} and slope ratio: {}'.format(ev, dydt.size, fit_before, fit_after, np.abs((fit_before - fit_after)/fit_after)))
-        if np.abs((fit_before - fit_after)/fit_after) < 0.5:
+        print('The event and size are {} and {} and The slope before is: {}, slope after is: {}'.format(ev, dydt.size, fit_before, fit_after))
+        slope_ratio1 = 1 - fit_after/fit_before
+        slope_ratio2 = 1 - fit_before/fit_after
+        # Slope ratio values:
+        # If the slopes are approximately the same, slope_ratio1 ~ slope_ratio2
+        # If the slopes are very different, then one slope ratio will be very big and the other close to 1
+        # Diff is 1 - fa/fb - (1 - fb/fa) == fb/fa - fa/fb
+        # In the limit that both are the same this tends towards 0. If they are very different it will be big.
+        # Note that there should not be a slope change at a squid jump (well...shouldn't be likely)
+        # Thus we should require the slope_ratios to be also of different signs. If they are the same sign then we have
+        # one of either fa or fb with the opposite sign of the other.
+        print('slope_ratio 1 (1 - fa/fb): {}'.format(slope_ratio1))
+        print('slope_ratio 2 (1 - fb/fa): {}'.format(slope_ratio2))
+        if np.abs(slope_ratio1 - slope_ratio2) < 0.5 and (np.sign(slope_ratio1) != np.sign(slope_ratio2)):
             # This means the slopes are the same and so we have a squid jump
             # Easiest thing to do then is to determine what the actual value was prior to the jump
             # and then shift the offset values up to it
@@ -558,11 +573,11 @@ def correct_squid_jumps(outPath, temperature, t, x, xrms, y, yrms, buffer_size=5
             yrms = np.delete(yrms, points_to_remove)
             t = np.delete(t, points_to_remove)
             test_plot(t, y, 'time', 'vOut', outPath + 'corrected_squid_jumps_' + str(temperature) + 'mK.png')
-            # probably what we should do here is then call this function again until we find no jumps
-            t, x, xrms, y, yrms = correct_squid_jumps(outPath, temperature, t, x, xrms, y, yrms)
         else:
             # Slopes are not the same...this is not a squid jump.
-            print('No SQUID Jump detected')
+            print('No SQUID Jump detected up to event {}'.format(ev))
+        # Cycle through again until we hit the end of the list.
+        t, x, xrms, y, yrms = correct_squid_jumps(outPath, temperature, t, x, xrms, y, yrms, evStart=ev)
     return t, x, xrms, y, yrms
     
 
@@ -2073,6 +2088,11 @@ def get_PT_curves(output_path, data_channel, iv_dictionary):
         label.set_fontsize(18)
     save_plot(fig, ax, fName)
     print('Results: k = {}, n = {}, Tb = {}'.format(*results))
+    # Compute G
+    # P = k*(Ts^n - T^n)
+    # G = n*k*T^(n-1)
+    print('G(Ttes) = {} pW/K'.format(results[0]*results[1]*np.power(results[2],results[1]-1)*1e12))
+    print('G(10 mK) = {} pW/K'.format(results[0]*results[1]*np.power(10e-3, results[1]-1)*1e12))
     return None
     
 
@@ -2415,6 +2435,6 @@ if __name__ == '__main__':
     #make_tes_plots(output_path=outPath, data_channel=args.dataChannel, iv_dictionary=iv_dictionary, fit_dictionary=fit_dictionary)
     
     # Next let's do some special processing...R vs T, P vs T type of thing
-    get_RT_curves(outPath, args.dataChannel, iv_dictionary)
-    get_PT_curves(outPath, args.dataChannel, iv_dictionary)
+    #get_RT_curves(outPath, args.dataChannel, iv_dictionary)
+    #get_PT_curves(outPath, args.dataChannel, iv_dictionary)
     print('done')

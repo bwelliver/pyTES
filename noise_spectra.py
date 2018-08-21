@@ -220,7 +220,7 @@ def compute_noise_spectra(input_directory, squid_run):
     ax.set_xlabel(xlab)
     ax.set_ylabel(ylab)
     ax.set_yscale('log')
-    ax.set_ylim((1e-15, 1e-6))
+    ax.set_ylim((1e-15, 1e-1))
     ax.set_title(title)
     ax.grid(True)
     ax.legend()
