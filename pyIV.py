@@ -508,7 +508,7 @@ def correct_squid_jumps(outPath, temperature, t, x, xrms, y, yrms, evStart=0, bu
     # If the new average differs from the previous by some amount mark that as the boundary of a SQUID jump
     # This should not be a subtle thing.
     # Make a plot of what we are testing
-    test_plot(t, y, 'time', 'vOut', outPath + 'uncorrected_squid_jumps_' + str(temperature) + 'mK.png')
+    test_plot(t, y, 'time', 'vOut', outPath + 'uncorrected_squid_jumps_' + str(temperature) + 'evStart_' + str(evStart) + '_' + 'mK.png')
     dbuff = RingBuffer(buffer_size, dtype=float)
     for ev in range(buffer_size):
         dbuff.append(dydt[evStart + ev])
@@ -521,8 +521,8 @@ def correct_squid_jumps(outPath, temperature, t, x, xrms, y, yrms, evStart=0, bu
         dbuff.append(dydt[ev])
         newMean = dbuff.get_mean()
         dMean = np.abs((currentMean - newMean)/currentMean)
-        print('The current y value is: {}'.format(y[ev]))
-        print('ev {}: currentMean = {}, newMean = {}, dMean = {}'.format(ev, currentMean, newMean, dMean))
+        #print('The current y value is: {}'.format(y[ev]))
+        #print('ev {}: currentMean = {}, newMean = {}, dMean = {}'.format(ev, currentMean, newMean, dMean))
         ev += 1
     # We have located a potential jump at this point (ev)
     # So compute the slope on either side of ev and compare
@@ -534,7 +534,12 @@ def correct_squid_jumps(outPath, temperature, t, x, xrms, y, yrms, evStart=0, bu
         # Let's see if we have something...
         step_away = 15
         distance_ahead = np.min([step_away, dydt.size - ev])
-        distance_behind = np.min([step_away, np.abs(ev - step_away), 0])
+        # Compute distance to look behind.
+        # Basically we need to ensure that ev - distance_behind >= 0
+        if ev - step_away < 0:
+            distance_behind = ev
+        else:
+            distance_behind = step_away
         #slope_before = np.mean(dydt[ev-distance_behind:ev])
         #slope_after = np.mean(dydt[ev+1:ev+distance_ahead])
         result, pcov = curve_fit(lin_sq, t[ev-distance_behind:ev-1], y[ev-distance_behind:ev-1])
@@ -558,6 +563,7 @@ def correct_squid_jumps(outPath, temperature, t, x, xrms, y, yrms, evStart=0, bu
             # This means the slopes are the same and so we have a squid jump
             # Easiest thing to do then is to determine what the actual value was prior to the jump
             # and then shift the offset values up to it
+            print('Potential SQUID jump found for temperature {} at event {}'.format(temperature, ev))
             result, pcov = curve_fit(lin_sq, t[ev-distance_behind:ev], y[ev-distance_behind:ev])
             extrapolated_value_of_post_jump_point = lin_sq(t[ev+5], *result)
             print('The extrapolated value for the post jump point should be: {}. It is actually right now {}'.format(extrapolated_value_of_post_jump_point, y[ev-10:ev+10]))
@@ -572,7 +578,7 @@ def correct_squid_jumps(outPath, temperature, t, x, xrms, y, yrms, evStart=0, bu
             xrms = np.delete(xrms, points_to_remove)
             yrms = np.delete(yrms, points_to_remove)
             t = np.delete(t, points_to_remove)
-            test_plot(t, y, 'time', 'vOut', outPath + 'corrected_squid_jumps_' + str(temperature) + 'mK.png')
+            test_plot(t, y, 'time', 'vOut', outPath + 'corrected_squid_jumps_' + str(temperature) + 'event_' + str(ev) + '_mK.png')
         else:
             # Slopes are not the same...this is not a squid jump.
             print('No SQUID Jump detected up to event {}'.format(ev))
@@ -747,11 +753,20 @@ def getStabTemp(vTime, vTemp, lenBuff=10, Tstep=5e-5):
         ev, stepEv, pBuff, cBuff, fBuff = find_end(pBuff, cBuff, fBuff, Tstep, vTemp, ev)
         tEnd = vTime[stepEv]
         # Check validity of this temperature step: It must last longer than some amount of time
+        # Also if the temperature is flagged as bad, ignore it.
+        badTemps = [(10e-3, 10.8e-3)]
         if tEnd - tStart > dt:
             cut = np.logical_and(vTime >= tStart + dt, vTime <= tEnd)
             mTemp = np.mean(vTemp[cut])
-            tri = (tStart, tEnd, mTemp)
-            tList.append(tri)
+            cTemp = False
+            for badTempRange in badTemps:
+                cBad = np.logical_and(mTemp >= badTempRange[0], mTemp <= badTempRange[1])
+                if cBad == True:
+                    print('Temperature {} is flagged as a bad temperature and will not be included onward'.format(mTemp))
+                cTemp = np.logical_or(cTemp, cBad)
+            if cTemp == False:
+                tri = (tStart, tEnd, mTemp)
+                tList.append(tri)
     return tList
 
 
@@ -2343,9 +2358,10 @@ def generate_iv_curves(outPath, time_values, temperatures, mean_waveforms, rms_w
     power_list = np.empty(0)
     temp_list = np.empty(0)
     iv_dictionary = {}
+    time_buffer = 300
     for values in timeList:
         start_time, stop_time, mean_temperature = values
-        cut = np.logical_and(time_values >= start_time, time_values <= stop_time)
+        cut = np.logical_and(time_values >= start_time + time_buffer, time_values <= stop_time)
         times = time_values[cut]
         iBias = mean_waveforms[bias_channel][cut]/Rbias
         iBias_rms = rms_waveforms[bias_channel][cut]/Rbias
@@ -2370,6 +2386,7 @@ def generate_iv_curves(outPath, time_values, temperatures, mean_waveforms, rms_w
             times, iBias, iBias_rms, vOut, vOut_rms = correct_squid_jumps(outPath, T, times, iBias, iBias_rms, vOut, vOut_rms)
             # We can technically get iTES at this point too since it is proportional to vOut but since it is let's not.
             print('Creating dictionary entry for T: {} mK'.format(T))
+            #raise Exception("Debug")
             # Make gradient to save as well
             # Try to do this: dV/dt and di/dt and then (dV/dt)/(di/dt) --> (dV/di)
             dvdt = np.gradient(vOut, times, edge_order=2)
@@ -2432,9 +2449,9 @@ if __name__ == '__main__':
     # This step onwards assumes iv_dictionary contains TES values
     iv_dictionary, fit_dictionary = process_tes_curves(outPath, args.dataChannel, iv_dictionary)
     # Make TES Plots
-    #make_tes_plots(output_path=outPath, data_channel=args.dataChannel, iv_dictionary=iv_dictionary, fit_dictionary=fit_dictionary)
+    make_tes_plots(output_path=outPath, data_channel=args.dataChannel, iv_dictionary=iv_dictionary, fit_dictionary=fit_dictionary)
     
     # Next let's do some special processing...R vs T, P vs T type of thing
-    #get_RT_curves(outPath, args.dataChannel, iv_dictionary)
-    #get_PT_curves(outPath, args.dataChannel, iv_dictionary)
+    get_RT_curves(outPath, args.dataChannel, iv_dictionary)
+    get_PT_curves(outPath, args.dataChannel, iv_dictionary)
     print('done')
