@@ -13,6 +13,7 @@ from matplotlib import pyplot as plt
 from scipy import fftpack
 from scipy.signal import hann
 from scipy import signal
+from scipy.signal import find_peaks, find_peaks_cwt
 
 from readROOT import readROOT
 
@@ -57,11 +58,16 @@ def gen_plot_line2(x, y, xlab, ylab, title, fName, logx='log', logy='log'):
     return None
 
 
-def gen_plot_line(x, y, xlab, ylab, title, fName, ylim=(1e-14, 1e-7), logx='log', logy='log'):
+def gen_plot_line(x, y, xlab, ylab, title, fName, peaks=None, ylim=(1e-14, 1e-7), logx='log', logy='log'):
     """Create generic plots that may be semilogx (default)"""
-    fig2 = plt.figure(figsize=(16, 9))
+    fig2 = plt.figure(figsize=(32, 8))
     ax = fig2.add_subplot(111)
     ax.plot(x, y, linestyle='-', linewidth=0.5)
+    if peaks is not None:
+        # Let's get the highest 15 peaks
+        ax.plot(peaks, y[peaks], 'x')
+        for i, label in enumerate(peaks):
+            ax.text(peaks[i], y[peaks[i]]*1.5, str(label) + ' Hz - ' + '{:2.3f} pV^2/Hz'.format(y[peaks[i]]*1e12))
     ax.set_xscale(logx)
     ax.set_xlabel(xlab)
     ax.set_ylabel(ylab)
@@ -140,38 +146,54 @@ def compute_welch(time, data, number_segments=10):
     return f, Pxx_den
 
 
-def compute_noise_spectra(input_directory, squid_run):
+def compute_noise_spectra(input_directory, squid_run, mode='old'):
     '''Main function to compute noise spectra information from'''
     
     # This is tricky because they must be chained together if we have multiple partials
     list_of_files = glob.glob('{}/*{}*.root'.format(input_directory, squid_run))
     tree = 'data_tree'
-    branches = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform']
+    # New mode:
+    if mode == 'new':
+        branches = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform005', 'Waveform007']
+    else:
+        branches = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform']
     method = 'chain'
     data = readROOT(list_of_files, tree, branches, method)
     data = data['data']
     # Make output directory
     outdir = '/Users/bwelliver/cuore/bolord/noise_spectra/sr_' + str(squid_run)
     mkdpaths(outdir)
-    # Now we need to unfold the data into an array
-    # Note Units: waveform data are in Volts
-    waveforms = {ch: {} for ch in np.unique(data['Channel'])}
-    number_channels = np.unique(data['Channel']).size
-    for event, channel in enumerate(data['Channel']):
-        waveforms[channel][event//number_channels] = data['Waveform'][event]
-    # We now have waveforms separated into dictionaries based on channel number
-    # waveforms[2][0] is a numpy array for the first event on channel 2. waveforms[2][1] is the next event
-    # Let us collapse this to a concatenated array
-    data_array = {}
-    time_array = {}
-    for channel in waveforms.keys():
-        data_array[channel] = concatenate_waveform(waveforms[channel])
-        # We don't need to add Timestamp_s[0] + Timestamp_mus[0]/1e6 because we don't need absolute time
-        time_array[channel] = np.asarray([i*data['SamplingWidth_s'][0] for i in range(data_array[channel].size)])
-        print('The second entry in this channels time array is: {}'.format(time_array[channel][1]))
-        print('There are {} total data points'.format(data_array[channel].size))
-    # Now we have dictionaries that should have, for a given channel, the time and voltage as single arrays. Let's plot and see
     
+    # New mode:
+    # Waveforms come in their own things now.
+    # Waveform%d[ev] = np.array
+    if mode == 'new':
+        data_array = {ch: None for ch in np.unique(data['Channel'])}
+        time_array = {ch: None for ch in np.unique(data['Channel'])}
+        for channel in data_array.keys():
+            data_array[channel] = concatenate_waveform(data['Waveform00' + str(int(channel))])
+            time_array[channel] = np.asarray([i*data['SamplingWidth_s'][0] for i in range(data_array[channel].size)])
+            print('The second entry in this channels time array is: {}'.format(time_array[channel][1]))
+            print('There are {} total data points'.format(data_array[channel].size))
+    else:
+        # Now we need to unfold the data into an array
+        # Note Units: waveform data are in Volts
+        waveforms = {ch: {} for ch in np.unique(data['Channel'])}
+        number_channels = np.unique(data['Channel']).size
+        for event, channel in enumerate(data['Channel']):
+            waveforms[channel][event//number_channels] = data['Waveform'][event]
+        # We now have waveforms separated into dictionaries based on channel number
+        # waveforms[2][0] is a numpy array for the first event on channel 2. waveforms[2][1] is the next event
+        # Let us collapse this to a concatenated array
+        data_array = {}
+        time_array = {}
+        for channel in waveforms.keys():
+            data_array[channel] = concatenate_waveform(waveforms[channel])
+            # We don't need to add Timestamp_s[0] + Timestamp_mus[0]/1e6 because we don't need absolute time
+            time_array[channel] = np.asarray([i*data['SamplingWidth_s'][0] for i in range(data_array[channel].size)])
+            print('The second entry in this channels time array is: {}'.format(time_array[channel][1]))
+            print('There are {} total data points'.format(data_array[channel].size))
+    # Now we have dictionaries that should have, for a given channel, the time and voltage as single arrays. Let's plot and see
     for channel in data_array.keys():
         print('Making output vs time for channel {}'.format(channel))
         xlab = 'Time (mus)'
@@ -205,12 +227,14 @@ def compute_noise_spectra(input_directory, squid_run):
     for channel in data_array.keys():
         print('Computing using welch')
         freq, fdata = compute_welch(time_array[channel], data_array[channel], number_segments=50)
+        # Find peaks toooooooo
+        peaks = find_peaks_cwt(fdata, np.asarray([i+0.1 for i in range(10)]), noise_perc=10, min_snr=20)
         print('Making plot')
         xlab = 'Frequency (Hz)'
         ylab = 'PSD V^2/Hz'
         title = 'Digitizer Channel ' + str(channel) + ' FFT Signal vs Frequency for SR ' + str(squid_run)
         fName = outdir + '/ch_' + str(channel) + '_welch_psd_log.png'
-        gen_plot_line(freq, fdata, xlab, ylab, title, fName, logx='log', logy='log')
+        gen_plot_line(freq, fdata, xlab, ylab, title, fName, peaks=peaks, logx='log', logy='log')
         gen_plot_line_both(ax, freq, fdata, channel)
     xlab = 'Frequency (Hz)'
     ylab = 'PSD V^2/Hz'
@@ -268,7 +292,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--inputDir', help='Specify the full path to the directory with the SQUID root files you wish to use are')
     parser.add_argument('-r', '--squidRun', help='Specify the SQUID run number you wish to grab files from')
-    parser.add_argument('-o', '--outputFile', help='Specify output root file. If not a full path, it will be output in the same directory as the input SQUID file')    
+    parser.add_argument('-o', '--outputFile', help='Specify output root file. If not a full path, it will be output in the same directory as the input SQUID file')
+    parser.add_argument('-n', '--newMode', default=None, help='Specify if you want to use the new mode for root files or not')
     args = parser.parse_args()
-    
-    compute_noise_spectra(input_directory=args.inputDir, squid_run=args.squidRun)
+    if args.newMode is not None:
+        root_mode = 'new'
+    else:
+        root_mode = 'old'
+    compute_noise_spectra(input_directory=args.inputDir, squid_run=args.squidRun, mode=root_mode)

@@ -1,6 +1,69 @@
 import numpy as np
 import ROOT as rt
 
+#TODO: REPLACE ROOT_DICTIONARY WITH A CLASS
+#class ROOTDictionary:
+#    '''A class to store root objects'''
+#    
+#    def __init__(self):
+#        self = PYTDirectory()
+#        return None
+#
+#class PYTDirectory:
+#    '''Class to store TDirectories within'''
+#    
+#    def __init__(self):
+#        self.TTree = PYTree()
+#        self.TBranch = PYBranch()
+#        return None
+#
+#class PYTree:
+#    '''Class to store TTrees'''
+#    
+#    def __init__(self):
+#        self.TBranch = PYBranch()
+#        return None
+#    
+#class PYBranch:
+#    '''Class to store branch names'''
+#    
+#    def __init__(self, list_of_branch_names):
+#        self.branches = self.branch_names(list_of_branch_names)
+#        return None
+#    def branch_names(list_of_branch_names):
+#        return list_of_branch_names
+#    
+
+
+
+
+def readROOT_new(input_file, root_dictionary, read_method='single'):
+    '''A function to make loading data from ROOT files into numpy arrays more flexible.
+    This function reads from an input root file
+    The root_dictionary is a specially formatted dictionary of names, similar to the interface in writeROOT.
+    root_dictionary = {'TDirectory': {DirectoryName1: {'TTree': {Tree1: [Branch1, Branch2, Branch3 ...], 'TBranch': [BranchA, BranchB, ...]} } }, 'TTree': {...} }
+    
+    As an example we can get a list of branch names in Dir/TreeA as follows:
+    branches = root_dictionary['TDirectory'][Dir]['TTree'][TreeA]
+    
+    read_method defines if we are opening the TFile directly (single) or using a TChain (chain).
+    
+    '''
+    
+    # The course of action depends if we are chaining or not
+    # If we have a TChain note that these chain together *TREES* across files.
+    # The standard format is to call the chain as "dirName/treeName"
+    if read_method == 'chain':
+        
+        pychain = rt.TChain(tree)
+        
+        
+        
+    return None
+
+
+
+
 def readROOT(inFile, tree, branches, method='single', directory=None, info=None):
     '''Read in root file'''
 
