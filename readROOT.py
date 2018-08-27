@@ -29,7 +29,7 @@ import ROOT as rt
 #    
 #    def __init__(self, list_of_branch_names):
 #        self.branches = self.branch_names(list_of_branch_names)
-#        return None
+#        return Noned
 #    def branch_names(list_of_branch_names):
 #        return list_of_branch_names
 #    
