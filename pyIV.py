@@ -21,6 +21,8 @@ from scipy.signal import detrend
 import matplotlib as mp
 from matplotlib import pyplot as plt
 
+import pandas as pan
+
 from RingBuffer import RingBuffer
 
 import ROOT as rt
@@ -462,6 +464,7 @@ def process_waveform(waveform, time_values, sample_length, number_of_windows=1, 
     This will return 2 dictionaries keyed by event number and an appropriately re-sampled time_values array
     '''
     # Allocate numpy arrays. Note that if we made some assumptions we could pre-allocate instead of append...
+    print('The first entry contents of waveform are: {}'.format(waveform[0]))
     mean_waveform = np.empty(0)
     rms_waveform = np.empty(0)
     new_time_values = np.empty(0)
@@ -1703,17 +1706,77 @@ def dump2text(R,T,fileName):
     return None
 
 
-def get_iv_data_from_file(input_path):
+def get_iv_data_from_file(input_path, new_format=False):
     '''Load IV data from specified directory'''
-    
-    tree = 'data_tree'
-    #branches = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform', 'EPCal_K']
-    branches = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform', 'NT']
-    method = 'single'
-    rData = readROOT(path, tree, branches, method)
-    # Make life easier:
-    rData = rData['data']
+    if new_format is False:
+        tree = 'data_tree'
+        #branches = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform', 'EPCal_K']
+        branches = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform', 'NT']
+        method = 'single'
+        rData = readROOT(input_path, tree, branches, method)
+        # Make life easier:
+        rData = rData['data']
+    else:
+        chlist = 'ChList'
+        channels = readROOT(input_path, None, None, method='single', tobject=chlist)
+        channels = channels['data'][chlist]
+        branches = ['NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'NT'] + ['Waveform' + '{:03d}'.format(int(i)) for i in channels]
+        print('Branches to be read are: {}'.format(branches))
+        tree = 'data_tree'
+        method = 'single'
+        rData = readROOT(input_path, tree, branches, method)
+        rData = rData['data']
+        rData['Channel'] = channels
     return rData
+
+
+def new_format_iv_data(iv_data, output_path):
+    '''Format the IV data into easy to use forms'''
+    
+    # Things are organized in a sane way. For a given TEntry we have one Timestamp_s, Timestamp_mus, SamplingWidth_s, NumberOfSamples, Temperature, and 1 Vector for each Waveform%03d
+    # Globally we have only 1 Vector for Channels
+    # The things we need to return: Time, Temperature, Vin, Vout
+    
+    # Construct the complete timestamp from the s and mus values
+    # For a given waveform the exact timestamp of sample number N is as follows:
+    # t[N] = Timestamp_s + Timestamp_mus*1e-6 + N*SamplingWidth_s
+    # Note that there will be NEvents different values of Timestamp_s and Timestamp_mus, each of these containing 1/SamplingWidth_s samples
+    # (Note that NEvents = NEntries/NChannels)
+    time_values = iv_data['Timestamp_s'] + iv_data['Timestamp_mus']/1e6
+    #temperatures = iv_data['EPCal_K']
+    temperatures = iv_data['NT']
+    cut = temperatures > -1
+    # Get unique time values for valid temperatures
+    time_values, idx = np.unique(time_values[cut], return_index=True)
+    # Reshape temperatures to be only the valid values that correspond to unique times
+    temperatures = temperatures[cut]
+    temperatures = temperatures[idx]
+    test_plot(time_values, temperatures, 'Unix Time', 'Temperature [K]', output_path + '/' + 'quick_look_Tvt.png')
+    print('The first contents of channel 5 are: {}'.format(iv_data['Waveform005'][0]))
+    print('The first contents of channel 7 are: {}'.format(iv_data['Waveform007'][0]))
+    print('Processing NEW IV waveforms...')
+    # We now have a set of dictionaries of Waveform vectors
+    # Waveform00ch consists of a dictionary of Nevents keys (actual events)
+    # So Waveform00ch[ev] will be a numpy array with size = NumberOfSamples.
+    # The timestamp of Waveform00ch[ev][sample] is time_values[ev] + sample*SamplingWidth_s
+    
+    # Ultimately let us collapse the finely sampled waveforms into more coarse waveforms.
+    mean_waveforms = {}
+    rms_waveforms = {}
+    for channel in iv_data['Channel']:
+        mean_waveforms[channel], rms_waveforms[channel], mean_time_values = process_waveform(iv_data['Waveform' + '{:03d}'.format(int(channel))], time_values, iv_data['SamplingWidth_s'][0], number_of_windows=1)
+    print('The number of things in the mean time values are: {} and the number of waveforms are: {}'.format(np.size(mean_time_values), len(mean_waveforms[5])))
+#    
+#    # Ultimately the cut we form from times will tell us what times, and hence events to cut
+#    # waveForms are dicts of channels with dicts of event numbers that point to the event's waveform
+#    # Collapse a waveform down to a single value per event means we can form np arrays then
+#    mean_waveforms = {}
+#    rms_waveforms = {}
+#    #print('waveforms keys: {}'.format(list(waveForms[biasChannel].keys())))
+#    for ch in waveForms.keys():
+#        mean_waveforms[ch], rms_waveforms[ch] = process_waveform(waveForms[ch], 'mean')
+#    print('The number of things in the time_values are: {} and the number of waveforms are: {}'.format(np.size(time_values), len(mean_waveforms[5])))
+    return time_values, temperatures, mean_waveforms, rms_waveforms, mean_time_values
 
 
 def format_iv_data(iv_data, output_path):
@@ -1773,6 +1836,33 @@ def format_iv_data(iv_data, output_path):
     return time_values, temperatures, mean_waveforms, rms_waveforms, mean_time_values
 
 
+def parse_temperature_steps(output_path, time_values, temperatures, pid_log):
+    '''Run through the PID log and parse temperature steps
+    The PID log has as the first column the timestamp a PID setting STARTS
+    The second column is the power or temperature setting point
+    '''
+    times = pan.read_csv(pid_log, delimiter='\t', header=None)
+    times = times.values[:,0]
+    # Each index of times is now the starting time of a temperature step. Include an appropriate offset for mean computation BUT only a softer one for time boundaries
+    # timeList is a list of tuples.
+    timeList = []
+    for index in range(times.size - 1):
+        cut = np.logical_and(time_values > times[index]+500, time_values < times[index+1]-10)
+        mT = np.mean(temperatures[cut])
+        start_time = times[index]
+        stop_time = times[index+1]-10
+        timeList.append((start_time, stop_time, mT))
+    # Handle the last step
+    cut = time_values > times[-1]+500
+    mT = np.mean(temperatures[cut])
+    start_time = times[-1]
+    end_time = time_values[-1]-10
+    timeList.append((start_time, end_time, mT))
+    dt = time_values-time_values[0]
+    test_steps(dt, temperatures, timeList, time_values[0], 'Time', 'T', output_path + '/' + 'test_Tsteps.png')
+    return timeList
+
+
 def find_temperature_steps(time_values, temperatures, output_path):
     ''' Given an array of time and temperatures identify temperature steps and return the start, stop and mean Temp
     Will return these as a list of tuples
@@ -1804,7 +1894,30 @@ def find_temperature_steps(time_values, temperatures, output_path):
     return timeList
 
 
-def get_pyIV_data(input_path, output_path, squid_run, bias_channel):
+def get_pyIV_data_new(input_path, output_path, squid_run, bias_channel, pid_log=None):
+    '''Function to gather data in correct format for running IV data from new format
+    Returns time_values, temperatures, mean_waveforms, rms_waveforms, and timeList
+    '''
+    
+    # First load the data files and return data
+    iv_data = get_iv_data_from_file(input_path, new_format=True)
+    # Next process data into a more useful format
+    time_values, temperatures, mean_waveforms, rms_waveforms, mean_time_values = new_format_iv_data(iv_data, output_path)
+    # Next identify temperature steps
+    if pid_log is None:
+        timeList = find_temperature_steps(time_values, temperatures, output_path)
+    else:
+        timeList = parse_temperature_steps(output_path, time_values, temperatures, pid_log)
+    # Now we have our timeList so we can in theory loop through it and generate IV curves for selected data!
+    print('Diagnostics:')
+    print('Channels: {}'.format(np.unique(iv_data['Channel'])))
+    print('length of time: {}'.format(time_values.size))
+    print('length of mean waveforms vector: {}'.format(mean_waveforms[bias_channel].size))
+    print('There are {} temperature steps with values of: {}'.format(len(timeList), timeList))
+    return mean_time_values, temperatures, mean_waveforms, rms_waveforms, timeList
+
+
+def get_pyIV_data(input_path, output_path, squid_run, bias_channel, pid_log=None):
     '''Function to gather data in correct format for running IV data
     Returns time_values, temperatures, mean_waveforms, rms_waveforms, and timeList
     '''
@@ -1814,7 +1927,10 @@ def get_pyIV_data(input_path, output_path, squid_run, bias_channel):
     # Next process data into a more useful format
     time_values, temperatures, mean_waveforms, rms_waveforms, mean_time_values = format_iv_data(iv_data, output_path)
     # Next identify temperature steps
-    timeList = find_temperature_steps(time_values, temperatures, output_path)
+    if pid_log is None:
+        timeList = find_temperature_steps(time_values, temperatures, output_path)
+    else:
+        timeList = parse_temperature_steps(output_path, time_values, temperatures, pid_log)
     # Now we have our timeList so we can in theory loop through it and generate IV curves for selected data!
     print('Diagnostics:')
     print('Channels: {}'.format(np.unique(iv_data['Channel'])))
@@ -2383,7 +2499,7 @@ def generate_iv_curves(outPath, time_values, temperatures, mean_waveforms, rms_w
             vOut = vOut[sortKey]
             vOut_rms = vOut_rms[sortKey]
             print('Attempting to correct for SQUID jumps for temperature {}'.format(T))
-            times, iBias, iBias_rms, vOut, vOut_rms = correct_squid_jumps(outPath, T, times, iBias, iBias_rms, vOut, vOut_rms)
+            #times, iBias, iBias_rms, vOut, vOut_rms = correct_squid_jumps(outPath, T, times, iBias, iBias_rms, vOut, vOut_rms)
             # We can technically get iTES at this point too since it is proportional to vOut but since it is let's not.
             print('Creating dictionary entry for T: {} mK'.format(T))
             #raise Exception("Debug")
@@ -2397,9 +2513,13 @@ def generate_iv_curves(outPath, time_values, temperatures, mean_waveforms, rms_w
     return iv_dictionary
 
 
-def get_iv_data(input_path, output_path, squid_run, bias_channel, data_channel):
+def get_iv_data(input_path, output_path, squid_run, bias_channel, data_channel, pid_log=None, new_format=False):
     '''Function that returns an iv dictionary from waveform root file'''
-    time_values, temperatures, mean_waveforms, rms_waveforms, timeList = get_pyIV_data(input_path, output_path, squid_run, bias_channel)
+    if new_format == True:
+        print('Reading new format')
+        time_values, temperatures, mean_waveforms, rms_waveforms, timeList = get_pyIV_data_new(input_path, output_path, squid_run, bias_channel, pid_log)
+    else:
+        time_values, temperatures, mean_waveforms, rms_waveforms, timeList = get_pyIV_data(input_path, output_path, squid_run, bias_channel, pid_log)
     # Next chop up waveform data into an iv dictionary
     iv_dictionary = generate_iv_curves(output_path, time_values, temperatures, mean_waveforms, rms_waveforms, timeList, bias_channel, data_channel)
     return iv_dictionary
@@ -2415,6 +2535,8 @@ if __name__ == '__main__':
     parser.add_argument('-s', '--makeRoot', action='store_true', help='Specify whether to write data to a root file')
     parser.add_argument('-L', '--readROOT', action='store_true', help='Read IV data from processed root file. Stored in outputPath /root/iv_data.root')
     parser.add_argument('-T', '--readTESROOT', action='store_true', help='Read IV and TES data from processed root file. Stored in outputPath /root/iv_data.root')
+    parser.add_argument('-n', '--newFormat', action='store_true', help='Specify whether or not to use the new ROOT format for file reading')
+    parser.add_argument('-p', '--pidLog', default=None, help='Specify an optional PID log file to denote the step timestamps. If not supplied program will try to find them from Temperature data')
     args = parser.parse_args()
 
     path = args.inputFile
@@ -2429,7 +2551,7 @@ if __name__ == '__main__':
     
     # First step is to get basic IV data into a dictionary format. Either read raw files or load from a saved root file
     if args.readROOT is False and args.readTESROOT is False:
-        iv_dictionary = get_iv_data(input_path=args.inputFile, output_path=outPath, squid_run=args.run, bias_channel=args.biasChannel, data_channel=args.dataChannel)
+        iv_dictionary = get_iv_data(input_path=args.inputFile, output_path=outPath, squid_run=args.run, bias_channel=args.biasChannel, data_channel=args.dataChannel, pid_log=args.pidLog, new_format=args.newFormat)
         # Next save the iv_curves
         save_to_root(outPath, iv_dictionary)
     if args.readROOT is True and args.readTESROOT is False:

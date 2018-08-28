@@ -156,6 +156,9 @@ def readROOT(inFile, tree, branches, method='single', tobject=None, directory=No
         for branch in branches:
             tBranch = obj.GetBranch(branch)
             if tBranch.GetClassName() == 'vector<double>':
+                # Create std vector double. It is SUPER important that we pass the ADDRESS OF THE POINTER TO THE VECTOR AND NOT THE ADDRESS OF THE VECTOR!!!!!
+                pt = rt.std.vector('double')()
+                obj.SetBranchAddress(branch, rt.AddressOf(pt))
                 npData[branch] = {}
             else:
                 npData[branch] = np.zeros(nEntries)
@@ -168,7 +171,7 @@ def readROOT(inFile, tree, branches, method='single', tobject=None, directory=No
                     # Here npData is a dictionary with key branch and value dictionary
                     # The subdictionary has key entry and value array
                     # It is vitally important that the ORDER be preserved! Use an ordered dict
-                    npData[branch][entry] = np.asarray(data)
+                    npData[branch][entry] = np.array(pt)
                 else:
                     npData[branch][entry] = data
             # Print a notification every N events

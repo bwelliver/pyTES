@@ -1,5 +1,6 @@
 import ROOT as rt
 from array import array
+import numpy as np
 #rt.gROOT.ProcessLine("#include<vector>")
 #rt.gROOT.ProcessLine("std::vector<double> vec;")
 #from ROOT import vec
@@ -22,6 +23,15 @@ def writeTDir(source, dirData):
         del tDir
         source.cd()
         #print(rt.gDirectory.pwd())
+    return True
+
+
+def writeTVectorT(tFile, tData):
+    '''Write a TObject into the ROOT file'''
+    for key, value in tData.items():
+        tVector = rt.TVectorT("double")(value.size, value.astype('double'))
+        tVector.Write(key)
+        del tVector
     return True
 
 
@@ -62,6 +72,7 @@ def writeTBranch(tTree, bData):
     for branchKey in bData.keys():
         if isinstance(bData[branchKey], dict):
             #v = vec
+            print('Vector found')
             nEntries = bData[branchKey][0].size
             dLoc[branchKey] = rt.vector('double')()
             #dLoc[branchKey] = v
@@ -127,6 +138,8 @@ def writeROOT(inFile, data):
             result = writeTDir(tFile, value)
         elif key == 'TTree':
             result = writeTTree(tFile, value)
+        elif key == 'TVectorT':
+            result = writeTVectorT(tFile, value)
         tFile.cd()
     del tFile
     return True

@@ -144,6 +144,7 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--outputFile', help='Specify output root file. If not a full path, it will be output in the same directory as the input SQUID file')    
     parser.add_argument('-i', '--interpType', default='spline', help='Specify interpolation method: "interp" for standard interpolation and "spline" for interpolated univariate spline. Default is "spline"')
     parser.add_argument('-d', '--interpDegree', default=3, help='Specify the interpolation degree (default 3 for cubic)')
+    parser.add_argument('-c', '--newFormat', action='store_true', help='Specify whether or not to process with new file format')
     args = parser.parse_args()
     
     inSQUIDFile = args.inputSQUIDFile
@@ -163,17 +164,29 @@ if __name__ == '__main__':
     # This is tricky because they must be chained together
     lof = glob.glob('{}/*{}*.root'.format(inSQUIDFile, squidRun))
     #lof = glob.glob('/Users/bwelliver/cuore/bolord/squid/*{0}*.root'.format(run))
-    tree = 'data_tree'
-    branches = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform']
-    method = 'chain'
-    sData = readROOT(lof, tree, branches, method)
+    if args.newFormat is False:
+        tree = 'data_tree'
+        branches = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform']
+        method = 'chain'
+        sData = readROOT(lof, tree, branches, method)
+    else:
+        chlist = 'ChList'
+        channels = readROOT(lof[0], None, None, method='single', tobject=chlist)
+        channels = channels['data'][chlist]
+        tree = 'data_tree'
+        branches = ['NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s'] + ['Waveform' + '{:03d}'.format(int(i)) for i in channels]
+        method = 'chain'
+        sData = readROOT(lof, tree, branches, method)
     # Now make life easier
     fData = fData['data']
     sData = sData['data']
+    if args.newFormat is True:
+        sData['Channels'] = channels
+    print('The first entry in Waveform005 is: {}'.format(sData['Waveform005'][0]))
     # OK now get the SQUID event timestamp vector...this is annoyingly tricky.
     # The following will represent the time stamp of the FIRST entry in the waveform vector
     # Individual samples inside a waveform
-    print(len(sData['Waveform'][0]))
+    print(len(sData['Waveform'][0])) if args.newFormat is False else print(len(sData['Waveform' + '{:03d}'.format(int(sData['Channels'][0]))]))
     # will have actual timestamps of 'Timestamp_s + Timestamp_mus/1e6 + SamplingWidth_s'
     sTunix = sData['Timestamp_s'] + sData['Timestamp_mus']/1e6
     print('First sTunix is {}'.format(sTunix[0]))
@@ -261,17 +274,27 @@ if __name__ == '__main__':
     # Now comes the "fun" part...write a new ROOT file that contains everything
     # Create dictionary with correct format
     rootDict = {'TTree': {'data_tree': {'TBranch': {} } } }
-    squidNames = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform']
-    # Waveform is a bit tricky...originally it is a std::vector<double>. So if I load in entry 0 that will give us
-    # these branches for some channel with some values. entry 1 will be for a different value but same time and so on
-    # until entry N (where N = unique(channels)). This collection of entries can be considered an "event".
-    # readROOT will still return array[entry] = data but here now type(data) == array too.
-    # make a diagnostic output plot
-    for branch in squidNames:
-        rootDict['TTree']['data_tree']['TBranch'][branch] = sData[branch]
-    rootDict['TTree']['data_tree']['TBranch']['EPCal_K'] = new_T
-    if inNTFile != '':
-        rootDict['TTree']['data_tree']['TBranch']['NT'] = new_NT
+    if args.newFormat is False:
+        squidNames = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform']
+        # Waveform is a bit tricky...originally it is a std::vector<double>. So if I load in entry 0 that will give us
+        # these branches for some channel with some values. entry 1 will be for a different value but same time and so on
+        # until entry N (where N = unique(channels)). This collection of entries can be considered an "event".
+        # readROOT will still return array[entry] = data but here now type(data) == array too.
+        # make a diagnostic output plot
+        for branch in squidNames:
+            rootDict['TTree']['data_tree']['TBranch'][branch] = sData[branch]
+        rootDict['TTree']['data_tree']['TBranch']['EPCal_K'] = new_T
+        if inNTFile != '':
+            rootDict['TTree']['data_tree']['TBranch']['NT'] = new_NT
+    else:
+        squidNames = ['NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s'] + ['Waveform' + '{:03d}'.format(int(i)) for i in sData['Channels']]
+        for branch in squidNames:
+            rootDict['TTree']['data_tree']['TBranch'][branch] = sData[branch]
+        rootDict['TTree']['data_tree']['TBranch']['EPCal_K'] = new_T
+        if inNTFile != '':
+            rootDict['TTree']['data_tree']['TBranch']['NT'] = new_NT
+        # How do we write the single ChList TVectorT<double> ?
+        rootDict['TVectorT'] = {'ChList': sData['Channels']}
     result = wR(outFile, rootDict)
     if result:
         if inNTFile != '':
