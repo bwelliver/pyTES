@@ -36,6 +36,17 @@ import ROOT as rt
 
 
 
+def root_dictionary_walker():
+    '''Function that will walk through a root_dictionary and do something?'''
+    for key, value in root_dictionary:
+        if key == 'TDirectory':
+            root_dictionary_walker(value, 'TDirectory')
+        elif key == 'TTree':
+            root_dictionary_walker(value, 'TTree')
+        elif key == 'TBranch':
+            root_dictionary_walk(value, 'TBranch')
+
+
 
 def readROOT_new(input_file, root_dictionary, read_method='single'):
     '''A function to make loading data from ROOT files into numpy arrays more flexible.
@@ -53,23 +64,24 @@ def readROOT_new(input_file, root_dictionary, read_method='single'):
     # The course of action depends if we are chaining or not
     # If we have a TChain note that these chain together *TREES* across files.
     # The standard format is to call the chain as "dirName/treeName"
+    # So let's recreate the hiearchy as need be then I guess
+    
     if read_method == 'chain':
-        
-        pychain = rt.TChain(tree)
-        
-        
-        
+        for key, value in root_dictionary:
+            if key == 'TDirectory':
+                # value is a dictionary whose keys are TDirectory names which themselves are keys to further dicts
+                pychain = rt.TChain(tree)
     return None
 
 
 
 
-def readROOT(inFile, tree, branches, method='single', directory=None, info=None):
+def readROOT(inFile, tree, branches, method='single', tobject=None, directory=None, info=None):
     '''Read in root file'''
 
     if isinstance(branches,str):
         branches = [branches]
-
+    print('The method is: {}'.format(method))
     if method is 'chain':
         # TChain Method
         #fPrefix = '/Volumes/Lantea/data/CUORE0/OfficialProcessed_v02.30/ds2049/'
@@ -96,25 +108,33 @@ def readROOT(inFile, tree, branches, method='single', directory=None, info=None)
         #tChain.Draw(">>eventlist", "DAQ@PulseInfo.fChannelId==" + str(int(ch)))
         #from ROOT import eventlist
         getEv = tChain.GetEntry
-    elif method is 'single':
+        tTree = None
+    elif method == 'single':
         # Single file mode
         tFile = rt.TFile.Open(inFile)
         tDir = tFile.Get(directory) if directory else None
-        tTree = tFile.Get(tree)
-        tTree.SetBranchStatus('*', 0)
-        # Need wildcard to set the whole thing active or you get segfaults
-        for branch in branches:
-            tTree.SetBranchStatus(branch, 1)
-        nEntries = tTree.GetEntries()
-        # tdir.Draw(">>eventlist", "DAQ@PulseInfo.fChannelId==" + str(int(ch)))
-        # from ROOT import eventlist
-        getEv = tTree.GetEntry
+        tTree = tFile.Get(tree) if tree else None
+        print('TTree is {}'.format(tTree))
+        if tTree is not None:
+            tTree.SetBranchStatus('*', 0)
+            # Need wildcard to set the whole thing active or you get segfaults
+            for branch in branches:
+                tTree.SetBranchStatus(branch, 1)
+            nEntries = tTree.GetEntries()
+            # tdir.Draw(">>eventlist", "DAQ@PulseInfo.fChannelId==" + str(int(ch)))
+            # from ROOT import eventlist
+            getEv = tTree.GetEntry
 
     # Here on out we are invariant to single file or chain mode
     # Grab any info from the directory specified.
-    obj = tChain if method == 'chain' else tTree
+    if method == 'chain':
+        obj = tChain
+    elif tTree is not None:
+        obj = tTree
+    else:
+        obj = None
     infoList = None
-    if tDir:
+    if tDir is not None:
         keys = tDir.GetListOfKeys()
         keyList = [key.GetName() for key in keys]
         keyList.sort()
@@ -128,34 +148,41 @@ def readROOT(inFile, tree, branches, method='single', directory=None, info=None)
             infoList = None
         del tDir
     # Beaware that chain mode can result in file sizes that are super-big
-    print('Starting ROOT entry grabbing. There are {0} entries'.format(nEntries))
     # nEvent_list = eventlist.GetN()
-    nTen = np.floor(nEntries/10)
-    npData = {}
-    for branch in branches:
-        tBranch = obj.GetBranch(branch)
-        if tBranch.GetClassName() == 'vector<double>':
-            npData[branch] = {}
-        else:
-            npData[branch] = np.zeros(nEntries)
-    for entry in range(nEntries):
-        getEv(entry)
+    if obj is not None:
+        print('Starting ROOT entry grabbing. There are {0} entries'.format(nEntries))
+        nTen = np.floor(nEntries/10)
+        npData = {}
         for branch in branches:
-            data = getattr(obj, branch)
-            # data could be a scalar or it could be an array
-            if isinstance(data, rt.vector('double')):
-                # Here npData is a dictionary with key branch and value dictionary
-                # The subdictionary has key entry and value array
-                # It is vitally important that the ORDER be preserved! Use an ordered dict
-                npData[branch][entry] = np.asarray(data)
+            tBranch = obj.GetBranch(branch)
+            if tBranch.GetClassName() == 'vector<double>':
+                npData[branch] = {}
             else:
-                npData[branch][entry] = data
-        # Print a notification every N events
-        if entry%nTen == 0:
-            print('Grabbing entry Number {0} ({1} %)'.format(entry, round(100*entry/nEntries,2)))
+                npData[branch] = np.zeros(nEntries)
+        for entry in range(nEntries):
+            getEv(entry)
+            for branch in branches:
+                data = getattr(obj, branch)
+                # data could be a scalar or it could be an array
+                if isinstance(data, rt.vector('double')):
+                    # Here npData is a dictionary with key branch and value dictionary
+                    # The subdictionary has key entry and value array
+                    # It is vitally important that the ORDER be preserved! Use an ordered dict
+                    npData[branch][entry] = np.asarray(data)
+                else:
+                    npData[branch][entry] = data
+            # Print a notification every N events
+            if entry%nTen == 0:
+                print('Grabbing entry Number {0} ({1} %)'.format(entry, round(100*entry/nEntries,2)))
+    elif tobject is not None:
+        # For now this is to load a TVector object to a numpy vector
+        tObject = tFile.Get(tobject)
+        if tObject.ClassName() == 'TVectorT<double>':
+            npData = {tobject: np.asarray(tObject)}
     # Destroy chain and other things
-    del getEv
-    del obj
+    if tTree is not None:
+        del getEv
+        del obj
     if method is 'chain':
         del tChain
     else:

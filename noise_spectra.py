@@ -154,7 +154,11 @@ def compute_noise_spectra(input_directory, squid_run, mode='old'):
     tree = 'data_tree'
     # New mode:
     if mode == 'new':
-        branches = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform005', 'Waveform007']
+        chlist = 'ChList'
+        branches = ['NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s']
+        channels = readROOT(list_of_files[0], None, None, method='single', tobject=chlist)
+        channels = channels['data'][chlist]
+        branches = branches + ['Waveform' + '{:03d}'.format(int(i)) for i in channels]
     else:
         branches = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform']
     method = 'chain'
@@ -168,8 +172,8 @@ def compute_noise_spectra(input_directory, squid_run, mode='old'):
     # Waveforms come in their own things now.
     # Waveform%d[ev] = np.array
     if mode == 'new':
-        data_array = {ch: None for ch in np.unique(data['Channel'])}
-        time_array = {ch: None for ch in np.unique(data['Channel'])}
+        data_array = {ch: None for ch in channels}
+        time_array = {ch: None for ch in channels}
         for channel in data_array.keys():
             data_array[channel] = concatenate_waveform(data['Waveform00' + str(int(channel))])
             time_array[channel] = np.asarray([i*data['SamplingWidth_s'][0] for i in range(data_array[channel].size)])
