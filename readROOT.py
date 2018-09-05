@@ -153,27 +153,36 @@ def readROOT(inFile, tree, branches, method='single', tobject=None, directory=No
         print('Starting ROOT entry grabbing. There are {0} entries'.format(nEntries))
         nTen = np.floor(nEntries/10)
         npData = {}
+        vectorDict = {}
         for branch in branches:
             tBranch = obj.GetBranch(branch)
             if tBranch.GetClassName() == 'vector<double>':
                 # Create std vector double. It is SUPER important that we pass the ADDRESS OF THE POINTER TO THE VECTOR AND NOT THE ADDRESS OF THE VECTOR!!!!!
-                pt = rt.std.vector('double')()
-                obj.SetBranchAddress(branch, rt.AddressOf(pt))
+                # NOTE: If you just make var = rt.std.vector('double')() and the address of that in each loop, python WILL point to the same vector each time
+                # The net result is a frustrating time trying to figure out WHY your vectors are the same. >:(
+                vectorDict[branch] = rt.std.vector('double')()
+                #pt = rt.std.vector('double')()
+                obj.SetBranchAddress(branch, rt.AddressOf(vectorDict[branch]))
                 npData[branch] = {}
             else:
                 npData[branch] = np.zeros(nEntries)
         for entry in range(nEntries):
             getEv(entry)
             for branch in branches:
-                data = getattr(obj, branch)
-                # data could be a scalar or it could be an array
-                if isinstance(data, rt.vector('double')):
-                    # Here npData is a dictionary with key branch and value dictionary
-                    # The subdictionary has key entry and value array
-                    # It is vitally important that the ORDER be preserved! Use an ordered dict
-                    npData[branch][entry] = np.array(pt)
+                if isinstance(npData[branch], dict):
+                    npData[branch][entry] = np.array(vectorDict[branch])
                 else:
+                    data = getattr(obj, branch)
                     npData[branch][entry] = data
+#                data = getattr(obj, branch)
+#                # data could be a scalar or it could be an array
+#                if isinstance(data, rt.vector('double')):
+#                    # Here npData is a dictionary with key branch and value dictionary
+#                    # The subdictionary has key entry and value array
+#                    # It is vitally important that the ORDER be preserved! Use an ordered dict
+#                    npData[branch][entry] = np.array(pt)
+#                else:
+#                    npData[branch][entry] = data
             # Print a notification every N events
             if entry%nTen == 0:
                 print('Grabbing entry Number {0} ({1} %)'.format(entry, round(100*entry/nEntries,2)))

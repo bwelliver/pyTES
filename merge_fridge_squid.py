@@ -34,6 +34,21 @@ def gen_plot(x, y, xlab, ylab, title, fName, log='log'):
     ax.set_title(title)
     fig2.savefig(fName, dpi=100)
     plt.close('all')
+    return None
+
+
+def gen_line(x, y, xlab, ylab, title, fName, log='log'):
+    """Create generic plots that may be semilogx (default)"""
+    fig2 = plt.figure(figsize=(32, 16))
+    ax = fig2.add_subplot(111)
+    ax.plot(x, y, marker='None', linewidth=1)
+    ax.set_xscale(log)
+    ax.set_xlabel(xlab)
+    ax.set_ylabel(ylab)
+    ax.set_title(title)
+    fig2.savefig(fName, dpi=100)
+    plt.close('all')
+    return None
 
 def timeParse(tString, tPatr='%Y-%m-%d_%H-%M-%S'):
     '''Function to parse local time into tzone free UTC'''
@@ -163,6 +178,7 @@ if __name__ == '__main__':
     # We also need to obtain the UnixTimestamps from the SQUID ROOT files.
     # This is tricky because they must be chained together
     lof = glob.glob('{}/*{}*.root'.format(inSQUIDFile, squidRun))
+    lof.sort()
     #lof = glob.glob('/Users/bwelliver/cuore/bolord/squid/*{0}*.root'.format(run))
     if args.newFormat is False:
         tree = 'data_tree'
@@ -177,12 +193,25 @@ if __name__ == '__main__':
         branches = ['NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s'] + ['Waveform' + '{:03d}'.format(int(i)) for i in channels]
         method = 'chain'
         sData = readROOT(lof, tree, branches, method)
+        # Try a sanity check plot
+        n5 = np.empty(0)
+        n7 = np.empty(0)
+        index = np.empty(0)
+#        print('starting append loop')
+#        for ev in range(3000):
+#            print('Performing append for event: {}'.format(ev))
+#            n5 = np.append(n5, sData['data']['Waveform005'][ev])
+#            n7 = np.append(n7, sData['data']['Waveform007'][ev])
+#        index = [i for i in range(n7.size)]
+#        print('Making plot...')
+#        gen_line(index, n5, 'Index', 'vBias', 'vBias vs index', dirname(inSQUIDFile) + '/test_startLoad_vBias_sr' + str(squidRun) + '.png', log='linear')
+#        gen_line(index, n7, 'Index', 'vOut', 'vOut vs index', dirname(inSQUIDFile) + '/test_startLoad_vOut_sr' + str(squidRun) + '.png', log='linear')
     # Now make life easier
     fData = fData['data']
     sData = sData['data']
     if args.newFormat is True:
         sData['Channels'] = channels
-    print('The first entry in Waveform005 is: {}'.format(sData['Waveform005'][0]))
+    #print('The first entry in Waveform005 is: {}'.format(sData['Waveform005'][0]))
     # OK now get the SQUID event timestamp vector...this is annoyingly tricky.
     # The following will represent the time stamp of the FIRST entry in the waveform vector
     # Individual samples inside a waveform
@@ -287,6 +316,17 @@ if __name__ == '__main__':
         if inNTFile != '':
             rootDict['TTree']['data_tree']['TBranch']['NT'] = new_NT
     else:
+        # Make a test plot please
+        # Convert sData to a single array
+#        n = np.empty(0)
+#        index = np.empty(0)
+#        print('starting append loop')
+#        for ev in range(1000):
+#            print('Performing append for event: {}'.format(ev))
+#            n = np.append(n, sData['Waveform005'][ev])
+#        index = [i for i in range(n.size)]
+#        print('Making plot...')
+#        gen_line(index, n, 'Index', 'vBias', 'vBias vs index', dirname(inSQUIDFile) + '/test_EndLoad_vBias_sr' + str(squidRun) + '.png', log='linear')
         squidNames = ['NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s'] + ['Waveform' + '{:03d}'.format(int(i)) for i in sData['Channels']]
         for branch in squidNames:
             rootDict['TTree']['data_tree']['TBranch'][branch] = sData[branch]

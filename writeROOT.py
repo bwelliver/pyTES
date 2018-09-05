@@ -74,8 +74,10 @@ def writeTBranch(tTree, bData):
             #v = vec
             print('Vector found')
             nEntries = bData[branchKey][0].size
-            dLoc[branchKey] = rt.vector('double')()
+            dLoc[branchKey] = rt.std.vector('double')()
             #dLoc[branchKey] = v
+            # Caution: We may need to do something else here about the vectors
+            print('The address of the vector is {}'.format(dLoc[branchKey]))
             tTree.Branch(branchKey, 'std::vector<double>', rt.AddressOf(dLoc[branchKey]))
         else:
             nEntries = bData[branchKey].size
