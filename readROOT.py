@@ -153,7 +153,7 @@ def walk_a_directory(file_list, method, directory_name, directory_contents):
         if key == 'TTree':
             # directory_contents[key] = {TTree: {Tree1: listofbranches, Tree2: listofbranches, ...}}
             # Each tree must be accessed as 'DirectoryName/Tree1' for example
-            data = walk_trees(file_list, method, directory_name=key, tree_dictionary=value)
+            data = walk_trees(file_list, method, directory_name=directory_name, tree_dictionary=value)
         elif key == 'TBranch':
             # directory_contents[key] = {TBranch: listofbranches}
             # Not sure how to load these
