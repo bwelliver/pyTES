@@ -36,19 +36,149 @@ import ROOT as rt
 
 
 
-def root_dictionary_walker():
-    '''Function that will walk through a root_dictionary and do something?'''
-    for key, value in root_dictionary:
-        if key == 'TDirectory':
-            root_dictionary_walker(value, 'TDirectory')
-        elif key == 'TTree':
-            root_dictionary_walker(value, 'TTree')
+def get_root_object(file_list, method, full_tree_name, branches):
+    '''Function that returns a TTree or a TChain for the requested tree name based on the method requested'''
+    if method == 'single':
+        # This method probably can be deprecated since everything, even 1 file, can be loaded as a chain!
+        root_object = None
+    if method == 'chain':
+        root_object = rt.TChain(full_tree_name)
+        print('The filelist is {}'.format(file_list))
+        if isinstance(file_list, list):
+            for file in file_list:
+                root_object.Add(file)
+        else:
+            root_object.Add(file_list)
+        # Need wildcard to set the whole thing active or you get segfaults
+        root_object.SetBranchStatus('*', 0)
+        for branch in branches:
+            root_object.SetBranchStatus(branch, 1)
+    return root_object
+
+
+def create_branch_arrays(root_object, branches, number_of_entries=None):
+    '''Create storage dictionaries for the branches
+    In order to be compatible with writeROOT we must ensure each TBranch array is a subdictionary with master dictionary key of 'TBranch'
+    '''
+    data = {'TBranch': {}}
+    vector_data = {}
+    if number_of_entries is None:
+        number_of_entries = root_object.GetEntries()
+    for branch in branches:
+        tBranch = root_object.GetBranch(branch)
+        if tBranch.GetClassName() == 'vector<double>':
+            vector_data[branch] = rt.std.vector('double')()
+            root_object.SetBranchAddress(branch, rt.AddressOf(vector_data[branch]))
+            data['TBranch'][branch] = {}
+        else:
+            data['TBranch'][branch] = np.zeros(number_of_entries)
+    return vector_data, data
+
+
+def fill_branch_entry(root_object, entry, branches, vector_data, data):
+    '''Function to fill a branch array with the requested entry value'''
+    for branch in branches:
+        if isinstance(data['TBranch'][branch], dict):
+            data['TBranch'][branch][entry] = np.array(vector_data[branch])
+        else:
+            value = getattr(root_object, branch)
+            data['TBranch'][branch][entry] = value
+    return data
+
+
+def get_entries(root_object, branches, vector_data, data):
+    '''Function to actually get all the entries'''
+    nEntries = root_object.GetEntries()
+    nTen = np.floor(nEntries/10)
+    # Create alias
+    getEntry = root_object.GetEntry
+    for entry in range(nEntries):
+        getEntry(entry)
+        data = fill_branch_entry(root_object, entry, branches, vector_data, data)
+        # Print a notification every N events
+        if entry%nTen == 0:
+            print('Grabbing entry Number {} ({} %)'.format(entry, round(100*entry/nEntries, 2)))
+    # All entries are looped over here so return the data object
+    return data
+
+
+def fetch_branches(root_object, branches):
+    '''Function that will load branches based on specified root object and a list of branches
+    We accomplish this by first creating storage arrays for the branches and then filling them
+    root_object:    This is a rt.TChain or rt.TTree object
+    branches:       A list of branch names to query from the root_object
+    '''
+    nEntries = root_object.GetEntries()
+    print('Starting ROOT entry grabbing. There are {} entries'.format(nEntries))
+    # Construct data storage dictionaries
+    vector_data, data = create_branch_arrays(root_object, branches=branches, number_of_entries=nEntries)
+    # Now let us loop over all the entries in the object and fill the branches
+    data = get_entries(root_object, branches, vector_data, data)
+    # We have looped over all the entries for this particular root object and filled the requested branches into a numpy array.
+    return data
+
+
+def walk_branches(file_list, method, full_tree_name, branches):
+    '''Function that walks the branches
+    In order to do this we must create the appropriate root object here (e.g., rt.TChain)
+    '''
+    root_object = get_root_object(file_list, method, full_tree_name, branches)
+    data = fetch_branches(root_object, branches)
+    return data
+
+
+def walk_trees(file_list, method, directory_name, tree_dictionary):
+    '''A helper function to walk through the tree and get all the branches
+    '''
+    # Here directory_name is the current directory we are in
+    # tree_dictionary = {Tree1: list of branches, Tree2: list of branches, ...}
+    data_dictionary = {}
+    for key, value in tree_dictionary.items():
+        # key = tree name
+        # value = list of branches in the tree
+        if directory_name is not None:
+            full_tree_name = directory_name + '/' + key
+        else:
+            full_tree_name = key
+        data = walk_branches(file_list, method, full_tree_name=full_tree_name, branches=value)
+        data_dictionary[key] = data
+    return data_dictionary
+
+
+def walk_a_directory(file_list, method, directory_name, directory_contents):
+    '''A function to walk the contents of a specified TDirectory'''
+    # Here directory_contents is a dictionary whose keys are either 'TTree' or 'TBranch'
+    data_dictionary = {}
+    for key, value in directory_contents.items():
+        if key == 'TTree':
+            # directory_contents[key] = {TTree: {Tree1: listofbranches, Tree2: listofbranches, ...}}
+            # Each tree must be accessed as 'DirectoryName/Tree1' for example
+            data = walk_trees(file_list, method, directory_name=key, tree_dictionary=value)
         elif key == 'TBranch':
-            root_dictionary_walk(value, 'TBranch')
+            # directory_contents[key] = {TBranch: listofbranches}
+            # Not sure how to load these
+            data = None
+        data_dictionary[key] = data
+    return data_dictionary
 
 
+def walk_directories(file_list, method, directory_dictionary):
+    '''A helper function to walk through TDirectories
+    The directory_dictionary has keys that are DirectoryNames
+    '''
+    # Our root_dictionary can specify a TDirectory that contains multiple trees. Each tree can contain multiple branches. When creating the TChain we must do it in the form
+    # chain("TDirectory/TTree") so this function should iterate over all TDirectories and call the TTree walker.
+    data_dictionary = {}
+    for directory_name, value in directory_dictionary.items():
+        # Key is a DirectoryName
+        # Value is a dictionary whose keys can be ['TTree' or 'TBranch']
+        data = walk_a_directory(file_list, method, directory_name=directory_name, directory_contents=value)
+        # root_dictionary['TDirectory'][directory] = {'TTree: {Tree1: list of branches, ..., Tree2: list of branches }, TBranch: list of branches}
+        data_dictionary[directory_name] = data
+    return data_dictionary
 
-def readROOT_new(input_file, root_dictionary, read_method='single'):
+
+def readROOT_new(input_files, root_dictionary, read_method='chain'):
     '''A function to make loading data from ROOT files into numpy arrays more flexible.
     This function reads from an input root file
     The root_dictionary is a specially formatted dictionary of names, similar to the interface in writeROOT.
@@ -57,21 +187,32 @@ def readROOT_new(input_file, root_dictionary, read_method='single'):
     As an example we can get a list of branch names in Dir/TreeA as follows:
     branches = root_dictionary['TDirectory'][Dir]['TTree'][TreeA]
     
-    read_method defines if we are opening the TFile directly (single) or using a TChain (chain).
+    read_method defines if we are opening the TFile directly (single, deprecated) or using a TChain (chain).
     
     '''
     
     # The course of action depends if we are chaining or not
     # If we have a TChain note that these chain together *TREES* across files.
     # The standard format is to call the chain as "dirName/treeName"
+    # Therefore we must iterate through as follows:
+    # iterate_tdir --> iterate_ttree --> construct chain names --> get associated branches
     # So let's recreate the hiearchy as need be then I guess
     
-    if read_method == 'chain':
-        for key, value in root_dictionary:
-            if key == 'TDirectory':
-                # value is a dictionary whose keys are TDirectory names which themselves are keys to further dicts
-                pychain = rt.TChain(tree)
-    return None
+    # root_dictionary.keys() can be any of ['TDirectory', 'TTree', or 'TBranch']
+    data_dictionary = {}
+    for key, value in root_dictionary.items():
+        if key == 'TDirectory':
+            # Here value is a dictionary whose keys are DirectoryNames
+            data = walk_directories(input_files, read_method, directory_dictionary=value)
+        if key == 'TTree':
+            # Here value is a dictionary whose keys are TreeNames
+            data = walk_trees(input_files, read_method, directory_name=None, tree_dictionary=value)
+        if key == 'TBranch':
+            # Here value is a list of branch names
+            # TODO: How do we handle these? Can they exist?
+            data = None
+        data_dictionary[key] = data
+    return data_dictionary
 
 
 

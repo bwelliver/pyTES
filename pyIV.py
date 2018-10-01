@@ -408,7 +408,7 @@ def find_and_fix_squid_jumps(output_path, temperature, iv_data, evStart=0, buffe
     # If the new average differs from the previous by some amount mark that as the boundary of a SQUID jump
     # This should not be a subtle thing.
     # Make a plot of what we are testing
-    test_plot(t, y, 'time', 'vOut', outPath + 'uncorrected_squid_jumps_' + str(temperature) + 'evStart_' + str(evStart) + '_' + 'mK.png')
+    test_plot(t, y, 'time', 'vOut', output_path + 'uncorrected_squid_jumps_' + str(temperature) + 'evStart_' + str(evStart) + '_' + 'mK.png')
     dbuff = RingBuffer(buffer_size, dtype=float)
     buffer_size = buffer_size if evStart + buffer_size < dydt.size - 1 else dydt.size - evStart - 1
     for ev in range(buffer_size):
@@ -670,7 +670,7 @@ def getStabTemp(vTime, vTemp, lenBuff=10, Tstep=5e-5):
     return tList
 
 
-def walk_normal(x, y, side, buffer_size=50):
+def walk_normal(x, y, side, buffer_size=40):
     '''Function to walk the normal branches and find the line fit
     To do this we will start at the min or max input current and compute a walking derivative
     If the derivative starts to change then this indicates we entered the biased region and should stop
@@ -708,7 +708,7 @@ def walk_normal(x, y, side, buffer_size=50):
     return ev
 
 
-def walk_sc(x, y, buffer_size=12, plane='iv'):
+def walk_sc(x, y, buffer_size=4, plane='iv'):
     '''Function to walk the superconducting region of the IV curve and get the left and right edges
     Generally when ib = 0 we should be superconducting so we will start there and go up until the bias
     then return to 0 and go down until the bias
@@ -741,7 +741,8 @@ def walk_sc(x, y, buffer_size=12, plane='iv'):
         # Find the index of x nearest this mean value
         #index_min_x = np.argmin(np.abs(x-mean_x))
         # wait...if we plot iBias as x, then by def iBias = 0 is 0 since we control it...
-        index_min_x = np.argmin(np.abs(x))
+        ioffset = 0
+        index_min_x = np.argmin(np.abs(x+ioffset))
         # NOTE: The above will fail for small SC regions where vOut normal > vOut sc!!!!
     # First go from index_min_x and increase
     # Create ring buffer of to store signal
@@ -985,7 +986,7 @@ def iv_fitplot(x, y, xerr, yerr, model, Rp, xLabel, yLabel, title, fName, xScale
         label.set_fontsize(18)
     # Now generate text strings
     # model values are [results, perr] --> [[m, b], [merr, berr]]
-    R = fit_to_resistance(model, fit_type='iv', Rp=Rp.value, Rp_rms=Rp.rms)
+    R = convert_fit_to_resistance(model, fit_type='iv', Rp=Rp.value, Rp_rms=Rp.rms)
     lR = r'$\mathrm{Left \ R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.left.value*1e3, R.left.rms*1e3)
     lOff = r'$\mathrm{Left \ V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.left.result[1]*1e3, model.left.error[1]*1e3)
     
@@ -1009,7 +1010,7 @@ def iv_fitplot(x, y, xerr, yerr, model, Rp, xLabel, yLabel, title, fName, xScale
     return None
 
 
-def make_root_plot(outPath, data_channel, temperature, iv_data, model, Rp, xScale=1, yScale=1):
+def make_root_plot(output_path, data_channel, temperature, iv_data, model, Rp, xScale=1, yScale=1):
     '''A helper function to generate a TMultiGraph for the IV curve
     Recipe for this type of plot:
     Create a TCanvas object and adjust its parameters
@@ -1080,7 +1081,7 @@ def make_root_plot(outPath, data_channel, temperature, iv_data, model, Rp, xScal
     xLabel = 'Bias Current [uA]'
     yLabel = 'Output Voltage [mV]'
     titleStr = 'Channel {} Output Voltage vs Bias Current for T = {} mK'.format(data_channel, temperature)
-    fName = outPath + '/root/' + 'vOut_vs_iBias_ch_' + str(data_channel) + '_' + temperature + 'mK'
+    fName = output_path + '/root/' + 'vOut_vs_iBias_ch_' + str(data_channel) + '_' + temperature + 'mK'
     mg.Draw("APL")
     mg.GetXaxis().SetTitle(xLabel)
     mg.GetYaxis().SetTitle(yLabel)
@@ -1153,7 +1154,7 @@ def make_root_plot(outPath, data_channel, temperature, iv_data, model, Rp, xScal
     c.Update()
     # Now save the damned thing
     c.SaveAs(fName + '.png')
-    fName = outPath + '/root/' + 'vOut_vs_iBias_ch_' + str(data_channel) + '_' + str(int(float(temperature)*1e3)) + 'uK'
+    fName = output_path + '/root/' + 'vOut_vs_iBias_ch_' + str(data_channel) + '_' + str(int(float(temperature)*1e3)) + 'uK'
     c.SaveAs(fName + '.C')
     c.Close()
     del mg
@@ -1234,7 +1235,7 @@ def read_from_ivroot(filename, branches):
     return iv_dictionary
 
 
-def save_to_root(output_directory, iv_dictionary):
+def save_iv_to_root(output_directory, iv_dictionary):
     '''Function to save iv data to a root file
     Here we will let the temperatures be the name of TTrees
     Branches of each TTree will be the various iv components
@@ -1281,7 +1282,7 @@ def make_tes_multiplot(output_path, data_channel, iv_dictionary, fit_parameters)
     
     '''
     # Convert fit parameters to R values
-    #R = fit_to_resistance(fit_parameters, fit_type='tes')
+    #R = convert_fit_to_resistance(fit_parameters, fit_type='tes')
     # Current vs Voltage
     fig = plt.figure(figsize=(16,12))
     ax = fig.add_subplot(111)
@@ -1313,7 +1314,7 @@ def tes_plots(output_path, data_channel, temperature, data, fit_parameters):
     '''
     
     # Convert fit parameters to R values
-    R = fit_to_resistance(fit_parameters, fit_type='tes')
+    R = convert_fit_to_resistance(fit_parameters, fit_type='tes')
     # Current vs Voltage
     fig = plt.figure(figsize=(16,12))
     ax = fig.add_subplot(111)
@@ -1416,11 +1417,11 @@ def make_tes_plots(output_path, data_channel, iv_dictionary, fit_dictionary):
     for temperature, data in iv_dictionary.items():
         tes_plots(output_path, data_channel, temperature, data, fit_dictionary[temperature])
     # Make a for all temperatures here
-    make_tes_multiplot(output_path=outPath, data_channel=data_channel, iv_dictionary=iv_dictionary, fit_parameters=fit_dictionary)
+    make_tes_multiplot(output_path=output_path, data_channel=data_channel, iv_dictionary=iv_dictionary, fit_parameters=fit_dictionary)
     return None
 
 
-def make_power_plot(outPath, power_list, temp_list):
+def make_power_plot(output_path, power_list, temp_list):
     '''Make TES plots for various quantities'''
     # First unpack tes_values
     #iTES, iTES_rms, vTES, vTES_rms, rTES, rTES_rms = tes_values
@@ -1431,7 +1432,7 @@ def make_power_plot(outPath, power_list, temp_list):
     xLabel = 'Temperature [mK]'
     yLabel = 'TES Power [fW]'
     titleStr = 'TES Power vs Temperature'
-    fName = outPath + '/' + 'pTES_vs_T'
+    fName = output_path + '/' + 'pTES_vs_T'
     make_gen_plot(temp_list*1e3, power_list*1e15, xLabel, yLabel, titleStr, fName, logx='linear', logy='linear')
     # Test fit
     testT = np.asarray([10, 20, 30, 32, 33, 35, 40])*1e-3
@@ -1468,7 +1469,7 @@ def make_power_plot(outPath, power_list, temp_list):
     xLabel = 'Temperature [mK]'
     yLabel = 'TES Power [fW]'
     titleStr = 'TES Power vs Temperature'
-    fName = outPath + '/' + 'pTES_vs_T_fit'
+    fName = output_path + '/' + 'pTES_vs_T_fit'
     model_x = [temp_list*1e3, temp_list*1e3]
     model_y = [p_fit*1e15, p_fitL*1e15]
     make_gen_fitplot(temp_list*1e3, power_list*1e15, model_x, model_y, xLabel, yLabel, titleStr, fName, logx='linear', logy='linear', y0=True)
@@ -1628,6 +1629,7 @@ def get_iv_data_from_file(input_path, new_format=False):
         channels = readROOT(input_path, None, None, method='single', tobject=chlist)
         channels = channels['data'][chlist]
         branches = ['NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'NT'] + ['Waveform' + '{:03d}'.format(int(i)) for i in channels]
+        #branches = ['NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'EPCal_K'] + ['Waveform' + '{:03d}'.format(int(i)) for i in channels]
         print('Branches to be read are: {}'.format(branches))
         tree = 'data_tree'
         method = 'single'
@@ -1657,7 +1659,7 @@ def format_iv_data(iv_data, output_path, new_format=False):
     time_values = iv_data['Timestamp_s'] + iv_data['Timestamp_mus']/1e6
     #temperatures = iv_data['EPCal_K']
     temperatures = iv_data['NT']
-    cut = temperatures > -1
+    cut = temperatures >= -1
     # Get unique time values for valid temperatures
     time_values, idx = np.unique(time_values[cut], return_index=True)
     # Reshape temperatures to be only the valid values that correspond to unique times
@@ -1666,20 +1668,20 @@ def format_iv_data(iv_data, output_path, new_format=False):
     test_plot(time_values, temperatures, 'Unix Time', 'Temperature [K]', output_path + '/' + 'quick_look_Tvt.png')
     print('Processing IV waveforms...')
     # Next process waveforms into input and output arrays
-    waveForms = {ch: {} for ch in np.unique(iv_data['Channel'])}
-    nChan = np.unique(iv_data['Channel']).size
-    for ev, ch in enumerate(iv_data['Channel'][cut]):
-        waveForms[ch][ev//nChan] = iv_data['Waveform'][ev]
-    # We now have a nested dictionary of waveforms.
-    # waveForms[ch] consists of a dictionary of Nevents keys (actual events)
-    # So waveForms[ch][ev] will be a numpy array with size = NumberOfSamples.
-    # The timestamp of waveForms[ch][ev][sample] is time_values[ev] + sample*SamplingWidth_s
     
     # Ultimately let us collapse the finely sampled waveforms into more coarse waveforms.
     mean_waveforms = {}
     rms_waveforms = {}
     # How we process depends upon the format
     if new_format == False:
+        waveForms = {ch: {} for ch in np.unique(iv_data['Channel'])}
+        nChan = np.unique(iv_data['Channel']).size
+        for ev, ch in enumerate(iv_data['Channel'][cut]):
+            waveForms[ch][ev//nChan] = iv_data['Waveform'][ev]
+        # We now have a nested dictionary of waveforms.
+        # waveForms[ch] consists of a dictionary of Nevents keys (actual events)
+        # So waveForms[ch][ev] will be a numpy array with size = NumberOfSamples.
+        # The timestamp of waveForms[ch][ev][sample] is time_values[ev] + sample*SamplingWidth_s
         for channel in waveForms.keys():
             mean_waveforms[channel], rms_waveforms[channel], mean_time_values = process_waveform(waveForms[channel], time_values, iv_data['SamplingWidth_s'][0], number_of_windows=1)
     else:
@@ -1719,21 +1721,30 @@ def parse_temperature_steps(output_path, time_values, temperatures, pid_log):
     timeList = []
     start_offset = 600
     end_offset = 60
-    for index in range(times.size - 1):
-        cut = np.logical_and(time_values > times[index]+start_offset, time_values < times[index+1]-end_offset)
+    if times.size > 1:
+        for index in range(times.size - 1):
+            cut = np.logical_and(time_values > times[index]+start_offset, time_values < times[index+1]-end_offset)
+            mT = np.mean(temperatures[cut])
+            start_time = times[index]+start_offset
+            stop_time = times[index+1]-end_offset
+            timeList.append((start_time, stop_time, mT))
+        # Handle the last step
+        # How long was the previous step?
+        dt = times[1] - times[0]
+        start_time = times[-1]
+        end_time = start_time + dt - end_offset
+        cut = np.logical_and(time_values > start_time, time_values < end_time)
         mT = np.mean(temperatures[cut])
-        start_time = times[index]+start_offset
-        stop_time = times[index+1]-end_offset
-        timeList.append((start_time, stop_time, mT))
-    # Handle the last step
-    # How long was the previous step?
-    dt = times[1] - times[0]
-    start_time = times[-1]
-    end_time = start_time + dt - end_offset
-    cut = np.logical_and(time_values > start_time, time_values < end_time)
-    mT = np.mean(temperatures[cut])
-    timeList.append((start_time, end_time, mT))
-    dt = time_values-time_values[0]
+        timeList.append((start_time, end_time, mT))
+        dt = time_values-time_values[0]
+    else:
+        # Only 1 temperature step defined
+        start_time = times[0] + start_offset
+        end_time = time_values[-1] - end_offset
+        cut = np.logical_and(time_values > start_time, time_values < end_time)
+        mT = np.mean(temperatures[cut])
+        timeList.append((start_time, end_time, mT))
+        dt = time_values-time_values[0]
     test_steps(dt, temperatures, timeList, time_values[0], 'Time', 'T', output_path + '/' + 'test_Tsteps.png')
     return timeList
 
@@ -1931,7 +1942,7 @@ def correct_offsets(fitParams, iv_data, branch='normal'):
     return current_intersection, voltage_intersection
 
 
-def fit_to_resistance(fit_parameters, fit_type='iv', Rp=None, Rp_rms=None):
+def convert_fit_to_resistance(fit_parameters, fit_type='iv', Rp=None, Rp_rms=None):
     '''Given a iv_results.FitParameters object convert to Resistance and Resistance error iv_resistance.TESResistance objects
     
     If a parasitic resistance is provided subtract it from the normal and superconducting branches and assign it
@@ -2049,12 +2060,12 @@ def get_parasitic_resistances(iv_dictionary):
         print('Attempting to fit superconducting branch for temperature: {} mK'.format(temperature))
         result, perr = fit_sc_branch(iv_data['iBias'], iv_data['vOut'], iv_data['vOut_rms'], plane='iv')
         fitParams.sc.set_values(result, perr)
-        R = fit_to_resistance(fitParams, fit_type='iv')
+        R = convert_fit_to_resistance(fitParams, fit_type='iv')
         parasitic_dictionary[temperature] = R.parasitic
     return parasitic_dictionary, minT
 
 
-def process_iv_curves(outPath, data_channel, iv_dictionary):
+def process_iv_curves(output_path, data_channel, iv_dictionary):
     '''Processes the IV data to obtain electrical parameters
     The IV curve has 3 regions -- normal, biased, superconducting
     When the temperature becomes warm enough the superconducting 
@@ -2076,7 +2087,6 @@ def process_iv_curves(outPath, data_channel, iv_dictionary):
     Rsh = squid_parameters.Rsh
     M = squid_parameters.M
     Rfb = squid_parameters.Rfb
-    keys = ['iBias', 'iBias_rms', 'vOut', 'vOut_rms']
     fit_parameters_dictionary = {}
     
     # First we should try to obtain a measure of the parasitic series resistance. This value will be subtracted from
@@ -2088,7 +2098,10 @@ def process_iv_curves(outPath, data_channel, iv_dictionary):
     for temperature, iv_data in iv_dictionary.items():
         fit_parameters_dictionary[temperature] = fit_iv_regions(x=iv_data['iBias'], y=iv_data['vOut'], sigmaY=iv_data['vOut_rms'], fittype='iv', plane='iv')
         # Make it pass through zero. Correct offset.
-        i_offset, v_offset = correct_offsets(fit_parameters_dictionary[temperature], iv_data, 'interceptbalance')
+        #i_offset, v_offset = correct_offsets(fit_parameters_dictionary[temperature], iv_data, 'interceptbalance')
+        i_offset, v_offset = correct_offsets(fit_parameters_dictionary[temperature], iv_data, 'dual')
+        # Manual offset adjustment
+        #i_offset, v_offset = (-1.1104794020729887e-05, 0.010244294053372446)
         #v_offset = fit_parameters_dictionary[temperature].sc.result[1]
         print('The maximum iBias={} and the minimum iBias={} with a total size={}'.format(iv_data['iBias'].max(), iv_data['iBias'].min(), iv_data['iBias'].size))
         print('For temperature {} the normal offset adjustment value to subtract from vOut is: {} and from iBias: {}'.format(temperature, v_offset, i_offset))
@@ -2121,10 +2134,10 @@ def process_iv_curves(outPath, data_channel, iv_dictionary):
         xLabel = 'Bias Current [uA]'
         yLabel = 'Output Voltage [mV]'
         titleStr = 'Channel {} Output Voltage vs Bias Current for T = {} mK'.format(data_channel, temperature)
-        fName = outPath + '/' + 'vOut_vs_iBias_ch_' + str(data_channel) + '_' + temperature + 'mK'
+        fName = output_path + '/' + 'vOut_vs_iBias_ch_' + str(data_channel) + '_' + temperature + 'mK'
         iv_fitplot(iv_data['iBias'], iv_data['vOut'], iv_data['iBias_rms'], iv_data['vOut_rms'], fit_parameters_dictionary[temperature], parasitic_dictionary[minT], xLabel, yLabel, titleStr, fName, xScale=1e6, yScale=1e3, logx='linear', logy='linear')
         # Let's make a ROOT style plot (yuck)
-        make_root_plot(outPath, data_channel, temperature, iv_data, fit_parameters_dictionary[temperature], parasitic_dictionary[minT], xScale=1e6, yScale=1e3)
+        make_root_plot(output_path, data_channel, temperature, iv_data, fit_parameters_dictionary[temperature], parasitic_dictionary[minT], xScale=1e6, yScale=1e3)
     return iv_dictionary, fit_parameters_dictionary, parasitic_dictionary
 
 
@@ -2239,13 +2252,14 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     R_desc = np.empty(0)
     Rrms_desc = np.empty(0)
     fitResult = iv_results.FitParameters()
-    i_select = 1e-6
+    i_select = 1e-7
+    selector = 'vTES'
     for temperature, iv_data in iv_dictionary.items():
-        diBias = np.gradient(iv_data['iBias'], edge_order=2)
-        cut = np.logical_and(iv_data['iBias'] > i_select - 0.2e-6, iv_data['iBias'] < i_select + 0.2e-6)
+        diBias = np.gradient(iv_data[selector], edge_order=2)
+        cut = np.logical_and(iv_data[selector] > i_select - 5e-8, iv_data[selector] < i_select + 5e-8)
         print('the sum of cut is: {}'.format(nsum(cut)))
-        cut1 = np.logical_and(iv_data['iBias'] > 0, diBias < 0)
-        cut2 = np.logical_and(iv_data['iBias'] <= 0, diBias > 0)
+        cut1 = np.logical_and(iv_data[selector] > 0, diBias < 0)
+        cut2 = np.logical_and(iv_data[selector] <= 0, diBias > 0)
         dcut = np.logical_or(cut1, cut2)
         cut_desc = np.logical_and(cut, dcut)
         cut_asc = np.logical_and(cut, ~dcut)
@@ -2261,11 +2275,30 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     # Try a fit?
     # [Rn, Rp, Tc, Tw]
     # In new fit we have [C, D, B, A] --> A = 1/Tw, B = -Tc/Tw
+    fig = plt.figure(figsize=(16,12))
+    ax = fig.add_subplot(111)
+    xScale = 1e3
+    yScale = 1e3
+    sortKey = np.argsort(T)
+    
+    labels = {'xlabel': 'Temperature [mK]', 'ylabel': 'TES Resistance [m' + r'$\Omega$' +']', 'title': 'Channel {}'.format(data_channel) + ' TES Resistance vs Temperature for Bias Current = {}'.format(i_select*1e6)  + r'$\mu$' + 'A'}
+    
+    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'red', 'markerfacecolor': 'red', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': Rrms[sortKey]*yScale}
+    ax = generic_fitplot_with_errors(ax=ax, x=T[sortKey], y=R[sortKey], labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
+    ax.legend(['SC to N', 'N to SC'])
+    fName = output_path + '/' + 'rTES_vs_T_ch_' + str(data_channel) + '_descending_iBias_nofit_' + str(i_select*1e6) + 'uA'
+    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+        label.set_fontsize(18)
+    save_plot(fig, ax, fName)
+    
+    
     sortKey = np.argsort(T)
     x0 = [1, 0, T[sortKey][np.gradient(R[sortKey], T[sortKey], edge_order=2).argmax()]*1.1, 1e-3]
+    x0 = [1, 0, 20e-3, 1e-3]
     #x0 = [1, 0, -T[sortKey][np.gradient(R[sortKey], T[sortKey], edge_order=2).argmax()]/1e-3,  1/1e-3]
     print('For ascending fit initial guess is {}'.format(x0))
-    result, pcov = curve_fit(tanh_tc, T, R, sigma=Rrms, absolute_sigma=True, p0=x0, method='trf')
+    #result, pcov = curve_fit(tanh_tc, T, R, sigma=Rrms, absolute_sigma=True, p0=x0, method='trf')
+    result, pcov = curve_fit(tanh_tc, T, R, sigma=Rrms, absolute_sigma=True)
     perr = np.sqrt(np.diag(pcov))
     print('Ascending (SC -> N): Rn = {} mOhm, Rp = {} mOhm, Tc = {} mK, Tw = {} mK'.format(*[i*1e3 for i in result]))
     fitResult.left.set_values(result, perr)
@@ -2273,6 +2306,7 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     # Try a fit?
     sortKey = np.argsort(T_desc)
     x0 = [1, 0, T_desc[sortKey][np.gradient(R_desc[sortKey], T_desc[sortKey], edge_order=2).argmax()]*1.1, 1e-3]
+    x0 = [1, 0, 20e-3, 1e-3]
     #x0 = [1, 0, -T_desc[sortKey][np.gradient(R_desc[sortKey], T_desc[sortKey], edge_order=2).argmax()]/1e-3, 1/1e-3]
     print('For descending fit (N->S) initial guess is {}'.format(x0))
     result_desc, pcov_desc = curve_fit(tanh_tc, T_desc, R_desc, sigma=Rrms_desc, p0=x0, absolute_sigma=True, method='trf')
@@ -2384,7 +2418,7 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     return None
 
 
-def process_tes_curves(outPath, data_channel, iv_dictionary):
+def process_tes_curves(output_path, data_channel, iv_dictionary):
     '''Take TES data and find Rp and Rn values.'''
     squid_parameters = squid_info.SQUIDParameters(2)
     Rsh = squid_parameters.Rsh
@@ -2411,7 +2445,7 @@ def process_tes_curves(outPath, data_channel, iv_dictionary):
     return iv_dictionary, fit_dictionary
 
 
-def get_TES_values(outPath, data_channel, iv_dictionary, parasitic_dictionary):
+def get_TES_values(output_path, data_channel, iv_dictionary, parasitic_dictionary):
     '''From I-V data values compute the TES values for iTES and vTES, ultimately yielding rTES'''
     squid_parameters = squid_info.SQUIDParameters(2)
     Rsh = squid_parameters.Rsh
@@ -2432,6 +2466,35 @@ def get_TES_values(outPath, data_channel, iv_dictionary, parasitic_dictionary):
         
         iv_data['pTES'] = get_pTES(iv_data['iTES'], iv_data['vTES'])
         iv_data['pTES_rms'] = get_pTES_rms(iv_data['iTES'], iv_data['iTES_rms'], iv_data['vTES'], iv_data['vTES_rms'])
+    return iv_dictionary
+
+
+
+
+def compute_extra_quantities(iv_dictionary):
+    '''Function to compute other helpful debug quantities'''
+    for T in iv_dictionary.keys():
+        # Extra stuff
+        dvdt = np.gradient(iv_dictionary[T]['vOut'], iv_dictionary[T]['timestamps'], edge_order=2)
+        didt = np.gradient(iv_dictionary[T]['iBias'], iv_dictionary[T]['timestamps'], edge_order=2)
+        dvdi = dvdt/didt
+        Ratio = iv_dictionary[T]['vOut']/iv_dictionary[T]['iBias']
+        # How about a detrended iBias?
+        detrend_iBias = detrend(iv_dictionary[T]['iBias'],type='linear')
+        # How about a "fake" RTES?
+        #i_offset = -1.1275759312455495e-05
+        #v_offset = 0.008104607442168656
+        i_offset = 0
+        v_offset = 0
+        ertes = 21e-3*((iv_dictionary[T]['iBias']-i_offset)*(-1.28459*10000)/(iv_dictionary[T]['vOut'] - v_offset) - 1) - 12e-3
+        #index_vector = np.array([i for i in range(dvdi.size)])
+        iv_dictionary[T]['dvdt'] = dvdt
+        iv_dictionary[T]['didt'] = didt
+        iv_dictionary[T]['dvdi'] = dvdi
+        iv_dictionary[T]['Ratio'] = Ratio
+        iv_dictionary[T]['fakeRtes'] = ertes
+        
+        iv_dictionary[T]['iBiasDetrend'] = detrend_iBias
     return iv_dictionary
 
 
@@ -2463,65 +2526,13 @@ def chop_data_by_temperature_steps(output_path, formatted_data, timelist, bias_c
             iBias_rms = iBias_rms[sortKey]
             vOut = vOut[sortKey]
             vOut_rms = vOut_rms[sortKey]
+            normTime = timestamps - timestamps[0]
             # We can technically get iTES at this point too since it is proportional to vOut but since it is let's not.
             print('Creating dictionary entry for T: {} mK'.format(T))
             # Make gradient to save as well
             # Try to do this: dV/dt and di/dt and then (dV/dt)/(di/dt) --> (dV/di)
-            dvdt = np.gradient(vOut, timestamps, edge_order=2)
-            didt = np.gradient(iBias, timestamps, edge_order=2)
-            dvdi = dvdt/didt
-            Ratio = vOut/iBias
-            index_vector = np.array([i for i in range(dvdi.size)])
-            iv_dictionary[T] = {'iBias': iBias, 'iBias_rms': iBias_rms, 'vOut': vOut, 'vOut_rms': vOut_rms, 'timestamps': timestamps, 'dvdi': dvdi, 'dvdt': dvdt, 'didt': didt, 'index': index_vector, 'Ratio': Ratio}
-    return iv_dictionary
-
-@obsolete
-def generate_iv_curves(outPath, time_values, temperatures, mean_waveforms, rms_waveforms, timeList, bias_channel, data_channel):
-    '''Function that will process the multiple waveform vs temperature windows into separate I-V curve regions'''
-    squid_parameters = squid_info.SQUIDParameters(2)
-    # Unfold useful squid parameters
-    Rbias = squid_parameters.Rbias
-    T = [32.57, 33.04, 34.46, 34.94, 35.43, 35.91]
-    power_list = np.empty(0)
-    temp_list = np.empty(0)
-    iv_dictionary = {}
-    time_buffer = 0
-    for values in timeList:
-        start_time, stop_time, mean_temperature = values
-        cut = np.logical_and(time_values >= start_time + time_buffer, time_values <= stop_time)
-        times = time_values[cut]
-        iBias = mean_waveforms[bias_channel][cut]/Rbias
-        iBias_rms = rms_waveforms[bias_channel][cut]/Rbias
-        # sort in order of increasing bias current
-        vOut = mean_waveforms[data_channel][cut]
-        vOut_rms = rms_waveforms[data_channel][cut]
-        # Let us toss out T values wherein the digitizer rails
-        if np.any(vOut_rms < 1e-9):
-            print('Invalid digitizer response for T: {} mK'.format(np.round(mean_temperature*1e3, 3)))
-            continue
-        else:
-            T = str(np.round(mean_temperature*1e3, 3))
-            # Proceed to correct for SQUID Jumps
-            # We should SORT everything by increasing time....
-            sortKey = np.argsort(times)
-            times = times[sortKey]
-            iBias = iBias[sortKey]
-            iBias_rms = iBias_rms[sortKey]
-            vOut = vOut[sortKey]
-            vOut_rms = vOut_rms[sortKey]
-            print('Attempting to correct for SQUID jumps for temperature {}'.format(T))
-            times, iBias, iBias_rms, vOut, vOut_rms = correct_squid_jumps(outPath, T, times, iBias, iBias_rms, vOut, vOut_rms)
-            # We can technically get iTES at this point too since it is proportional to vOut but since it is let's not.
-            print('Creating dictionary entry for T: {} mK'.format(T))
-            #raise Exception("Debug")
-            # Make gradient to save as well
-            # Try to do this: dV/dt and di/dt and then (dV/dt)/(di/dt) --> (dV/di)
-            dvdt = np.gradient(vOut, times, edge_order=2)
-            didt = np.gradient(iBias, times, edge_order=2)
-            dvdi = dvdt/didt
-            R = vOut/iBias
-            index_vector = np.array([i for i in range(dvdi.size)])
-            iv_dictionary[T] = {'iBias': iBias, 'iBias_rms': iBias_rms, 'vOut': vOut, 'vOut_rms': vOut_rms, 't': times, 'dvdi': dvdi, 'dvdt': dvdt, 'didt': didt, 'index': index_vector, 'R': R}
+            index_vector = np.array([i for i in range(timestamps.size)])
+            iv_dictionary[T] = {'iBias': iBias, 'iBias_rms': iBias_rms, 'vOut': vOut, 'vOut_rms': vOut_rms, 'timestamps': timestamps, 'index': index_vector, 'TimeSinceStart': normTime}
     return iv_dictionary
 
 
@@ -2561,27 +2572,29 @@ if __name__ == '__main__':
     if args.readROOT is False and args.readTESROOT is False:
         iv_dictionary = get_iv_data(input_path=args.inputFile, output_path=output_path, squid_run=args.run, bias_channel=args.biasChannel, data_channel=args.dataChannel, pid_log=args.pidLog, new_format=args.newFormat)
         # Next try to correct squid jumps
-        iv_dictionary = correct_squid_jumps(output_path, iv_dictionary)
+        #iv_dictionary = correct_squid_jumps(output_path, iv_dictionary)
+        iv_dictionary = compute_extra_quantities(iv_dictionary)
         # Next save the iv_curves
-        save_to_root(output_path, iv_dictionary)
+        save_iv_to_root(output_path, iv_dictionary)
     if args.readROOT is True and args.readTESROOT is False:
         # If we saved the root file and want to load it do so here
-        iv_dictionary = read_from_ivroot(output_path + '/root/iv_data.root', branches=['iBias', 'iBias_rms', 'vOut', 'vOut_rms', 't'])
+        iv_dictionary = read_from_ivroot(output_path + '/root/iv_data.root', branches=['iBias', 'iBias_rms', 'vOut', 'vOut_rms', 'timestamps'])
 
     # Next we can process the IV curves to get Rn and Rp values. Once we have Rp we can obtain vTES and go onward
     if args.readTESROOT is False:
         iv_dictionary, fit_parameters_dictionary, parasitic_dictionary = process_iv_curves(output_path, args.dataChannel, iv_dictionary)
+        save_iv_to_root(output_path, iv_dictionary)
         iv_dictionary = get_TES_values(output_path, args.dataChannel, iv_dictionary, parasitic_dictionary)
-        save_to_root(output_path, iv_dictionary)
+        save_iv_to_root(output_path, iv_dictionary)
         print('Obtained TES values')
     if args.readTESROOT is True:
-        iv_dictionary = read_from_ivroot(output_path + '/root/iv_data.root', branches=['iBias', 'iBias_rms', 'vOut', 'vOut_rms', 't', 'iTES', 'iTES_rms', 'vTES', 'vTES_rms', 'rTES', 'rTES_rms', 'pTES', 'pTES_rms'])
+        iv_dictionary = read_from_ivroot(output_path + '/root/iv_data.root', branches=['iBias', 'iBias_rms', 'vOut', 'vOut_rms', 'timestamps', 'iTES', 'iTES_rms', 'vTES', 'vTES_rms', 'rTES', 'rTES_rms', 'pTES', 'pTES_rms'])
         # Note: We would need to also save or re-generate the fit_parameters dictionary?
     
     # This step onwards assumes iv_dictionary contains TES values
-    iv_dictionary, fit_dictionary = process_tes_curves(output_path, args.dataChannel, iv_dictionary)
+    #iv_dictionary, fit_dictionary = process_tes_curves(output_path, args.dataChannel, iv_dictionary)
     # Make TES Plots
-    make_tes_plots(output_path=output_path, data_channel=args.dataChannel, iv_dictionary=iv_dictionary, fit_dictionary=fit_dictionary)
+    #make_tes_plots(output_path=output_path, data_channel=args.dataChannel, iv_dictionary=iv_dictionary, fit_dictionary=fit_dictionary)
     
     # Next let's do some special processing...R vs T, P vs T type of thing
     get_PT_curves(output_path, args.dataChannel, iv_dictionary)

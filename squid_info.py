@@ -14,8 +14,8 @@ class SQUIDParameters:
             self.Mfb = 1/33.488
             self.Rfb = 10000.0
             self.Rsh = 21.0e-3
-            self.Rb = 10000.0
-            self.Cb = 100e-12
+            self.Rbias = 10000.0
+            self.Cbias = 100e-12
         elif channel == 3:
             self.serial = 'S0094'
             self.Li = 6e-9
@@ -23,8 +23,8 @@ class SQUIDParameters:
             self.Mfb = 1/32.9
             self.Rfb = 10000.0
             self.Rsh = 22.8e-3
-            self.Rb = 10000.0
-            self.Cb = 100e-12
+            self.Rbias = 10000.0
+            self.Cbias = 100e-12
         else:
             raise InvalidChannelNumberException('Requested channel: {} is invalid. Please select 2 or 3'.format(channel))
         # Compute auxillary SQUID parameters based on ratios
