@@ -127,18 +127,17 @@ def walk_branches(file_list, method, full_tree_name, branches):
     return data
 
 
-def walk_trees(file_list, method, directory_name, directory_prefix, tree_dictionary):
+def walk_trees(file_list, method, directory_name, tree_dictionary):
     '''A helper function to walk through the tree and get all the branches
     '''
     # Here directory_name is the current directory we are in
     # tree_dictionary = {Tree1: list of branches, Tree2: list of branches, ...}
     data_dictionary = {}
+    print('The directory_name in walk_trees() is {}'.format(directory_name))
     for key, value in tree_dictionary.items():
         # key = tree name
         # value = list of branches in the tree
-        if directory_prefix is not None and directory_name is not None:
-            full_tree_name = directory_prefix + '/' + directory_name + '/' + key
-        elif directory_name is not None:
+        if directory_name is not None:
             full_tree_name = directory_name + '/' + key
         else:
             full_tree_name = key
@@ -147,31 +146,24 @@ def walk_trees(file_list, method, directory_name, directory_prefix, tree_diction
     return data_dictionary
 
 
-def walk_a_directory(file_list, method, directory_name, directory_contents, directory_prefix=None):
+def walk_a_directory(file_list, method, directory_name, directory_contents, full_directory):
     '''A function to walk the contents of a specified TDirectory'''
     # Here directory_contents is a dictionary whose keys are any of 'TDirectory', 'TTree' or 'TBranch'
     data_dictionary = {}
-    print('At the start of walk_a_directory the directory name is {} and the directory prefix is {}'.format(directory_name, directory_prefix))
+    print('At the start of walk_a_directory the directory name is {} and the full directory is {}'.format(directory_name, full_directory))
     for key, value in directory_contents.items():
         if key == 'TDirectory':
-            print('The current directory prefix is {}'.format(directory_prefix))
-            if directory_prefix is None:
-                directory_prefix = directory_name
-            else:
-                directory_prefix = directory_prefix + '/' + directory_name
-            print('The current directory prefix is {} and the directory name is {}'.format(directory_prefix, directory_name))
-            data = walk_directories(file_list, method, directory_dictionary=value, directory_prefix=directory_prefix)
+            data = walk_directories(file_list, method, directory_dictionary=value, directory_prefix=full_directory)
         if key == 'TTree':
             # directory_contents[key] = {TTree: {Tree1: listofbranches, Tree2: listofbranches, ...}}
             # Each tree must be accessed as 'DirectoryName/Tree1' for example
-            print('The directory_name is {} and the directory prefix is {}'.format(directory_name, directory_prefix))
-            data = walk_trees(file_list, method, directory_name=directory_name, directory_prefix=directory_prefix, tree_dictionary=value)
+            data = walk_trees(file_list, method, directory_name=full_directory, tree_dictionary=value)
         elif key == 'TBranch':
             # directory_contents[key] = {TBranch: listofbranches}
             # Not sure how to load these
             data = None
         data_dictionary[key] = data
-        directory_prefix=None #Reset here?
+        #directory_prefix=None #Reset here?
     return data_dictionary
 
 
@@ -185,7 +177,11 @@ def walk_directories(file_list, method, directory_dictionary, directory_prefix=N
     for directory_name, value in directory_dictionary.items():
         # Key is a DirectoryName
         # Value is a dictionary whose keys can be ['TTree' or 'TBranch']
-        data = walk_a_directory(file_list, method, directory_name=directory_name, directory_contents=value, directory_prefix=directory_prefix)
+        if directory_prefix is not None:
+            full_directory = directory_prefix + '/' + directory_name
+        else:
+            full_directory = directory_name
+        data = walk_a_directory(file_list, method, directory_name=directory_name, directory_contents=value, full_directory=full_directory)
         # root_dictionary['TDirectory'][directory] = {'TTree: {Tree1: list of branches, ..., Tree2: list of branches }, TBranch: list of branches}
         data_dictionary[directory_name] = data
     return data_dictionary
@@ -219,7 +215,7 @@ def readROOT_new(input_files, root_dictionary, read_method='chain'):
             data = walk_directories(input_files, read_method, directory_dictionary=value)
         if key == 'TTree':
             # Here value is a dictionary whose keys are TreeNames
-            data = walk_trees(input_files, read_method, directory_name=None, directory_prefix=None, tree_dictionary=value)
+            data = walk_trees(input_files, read_method, directory_name=None, tree_dictionary=value)
         if key == 'TBranch':
             # Here value is a list of branch names
             # TODO: How do we handle these? Can they exist?
