@@ -22,7 +22,7 @@ import matplotlib as mp
 from matplotlib import pyplot as plt
 
 import pandas as pan
-
+import seaborn as sns
 import iv_results
 import iv_resistance
 import squid_info
@@ -349,6 +349,7 @@ def process_waveform(waveform, time_values, sample_length, number_of_windows=1, 
     '''
     # Allocate numpy arrays. Note that if we made some assumptions we could pre-allocate instead of append...
     #print('The first entry contents of waveform are: {}'.format(waveform[0]))
+    print('Processing waveform with {} winodws...'.format(number_of_windows))
     mean_waveform = np.empty(0)
     rms_waveform = np.empty(0)
     new_time_values = np.empty(0)
@@ -670,7 +671,7 @@ def getStabTemp(vTime, vTemp, lenBuff=10, Tstep=5e-5):
     return tList
 
 
-def walk_normal(x, y, side, buffer_size=40):
+def walk_normal(x, y, side, buffer_size=200):
     '''Function to walk the normal branches and find the line fit
     To do this we will start at the min or max input current and compute a walking derivative
     If the derivative starts to change then this indicates we entered the biased region and should stop
@@ -679,8 +680,19 @@ def walk_normal(x, y, side, buffer_size=40):
     # Ensure we have the proper sorting of the data
     if np.all(x[:-1] <= x[1:]) == False:
         raise ArrayIsUnsortedException('Input argument x is unsorted')
+    # We should select only the physical data points for examination
+    diBias = np.gradient(x, edge_order=2)
+    cNtoSC_pos = np.logical_and(x > 0, diBias < 0)
+    cNtoSC_neg = np.logical_and(x <= 0, diBias > 0)
+    cNtoSC = np.logical_or(cNtoSC_pos, cNtoSC_neg)
+    
     # First let us compute the gradient (dy/dx)
     dydx = np.gradient(y, x, edge_order=2)
+    # Set data that is in the SC to N transition to NaN in here
+    x[~cNtoSC] = np.nan
+    y[~cNtoSC] = np.nan
+    dydx[~cNtoSC] = np.nan
+    
     if side == 'right':
         # Flip the array
         dydx = dydx[::-1]
@@ -694,10 +706,10 @@ def walk_normal(x, y, side, buffer_size=40):
     ev = buffer_size
     dMean = 0
     dev = 0
-    while dMean < 5e-1 and ev < dydx.size - 1:
-        currentMean = dbuff.get_mean()
+    while dMean < 1e-2 and ev < dydx.size - 1:
+        currentMean = dbuff.get_nanmean()
         dbuff.append(dydx[ev])
-        newMean = dbuff.get_mean()
+        newMean = dbuff.get_nanmean()
         dMean = np.abs((currentMean - newMean)/currentMean)
         ev += 1
         dev += 1
@@ -708,7 +720,7 @@ def walk_normal(x, y, side, buffer_size=40):
     return ev
 
 
-def walk_sc(x, y, buffer_size=4, plane='iv'):
+def walk_sc(x, y, buffer_size=5, plane='iv'):
     '''Function to walk the superconducting region of the IV curve and get the left and right edges
     Generally when ib = 0 we should be superconducting so we will start there and go up until the bias
     then return to 0 and go down until the bias
@@ -717,9 +729,20 @@ def walk_sc(x, y, buffer_size=4, plane='iv'):
     # Ensure we have the proper sorting of the data
     if np.all(x[:-1] <= x[1:]) == False:
         raise ArrayIsUnsortedException('Input argument x is unsorted')
-        
+    # We should select only the physical data points for examination
+    diBias = np.gradient(x, edge_order=2)
+    cNtoSC_pos = np.logical_and(x > 0, diBias < 0)
+    cNtoSC_neg = np.logical_and(x <= 0, diBias > 0)
+    cNtoSC = np.logical_or(cNtoSC_pos, cNtoSC_neg)
+    
+    # Also select data that is some fraction of the normal resistance, say 20%
     # First let us compute the gradient (i.e. dy/dx)
     dydx = np.gradient(y, x, edge_order=2)
+    
+    # Set data that is in the SC to N transition to NaN in here
+    x[~cNtoSC] = np.nan
+    y[~cNtoSC] = np.nan
+    dydx[~cNtoSC] = np.nan
     
     # In the sc region the gradient should be constant
     # So we will walk along and compute the average of N elements at a time. 
@@ -728,7 +751,7 @@ def walk_sc(x, y, buffer_size=4, plane='iv'):
     # First we should find whereabouts of (0,0)
     # This should roughly correspond to x = 0 since if we input nothing we should get out nothing. In reality there are parasitics of course
     if plane == 'tes':
-        index_min_x = np.argmin(np.abs(x))
+        index_min_x = np.nanargmin(np.abs(x))
         # Occasionally we may have a shifted curve that is not near 0 for some reason (SQUID jump)
         # So find the min and max iTES and then find the central point
     elif plane == 'iv':
@@ -742,7 +765,7 @@ def walk_sc(x, y, buffer_size=4, plane='iv'):
         #index_min_x = np.argmin(np.abs(x-mean_x))
         # wait...if we plot iBias as x, then by def iBias = 0 is 0 since we control it...
         ioffset = 0
-        index_min_x = np.argmin(np.abs(x+ioffset))
+        index_min_x = np.nanargmin(np.abs(x+ioffset))
         # NOTE: The above will fail for small SC regions where vOut normal > vOut sc!!!!
     # First go from index_min_x and increase
     # Create ring buffer of to store signal
@@ -750,15 +773,17 @@ def walk_sc(x, y, buffer_size=4, plane='iv'):
     #TODO: FIX THIS TO HANDLE SQUID JUMPS
     dbuff = RingBuffer(buffer_size, dtype=float)
     # Start by walking buffer_size events to the right from the minimum abs. voltage
+    if buffer_size + index_min_x >= dydx.size:
+        buffer_size = np.nanmax([dydx.size - index_min_x - 1, 0])
     for ev in range(buffer_size):
         dbuff.append(dydx[index_min_x + ev])
     # Now our buffer is initialized so loop over all events until we find a change
     ev = index_min_x + buffer_size
     dMean = 0
     while dMean < 1e-2 and ev < dydx.size - 1:
-        currentMean = dbuff.get_mean()
+        currentMean = dbuff.get_nanmean()
         dbuff.append(dydx[ev])
-        newMean = dbuff.get_mean()
+        newMean = dbuff.get_nanmean()
         dMean = np.abs((currentMean - newMean)/currentMean)
         ev += 1
     #print('The right deviation occurs at ev = {} with current = {} and voltage = {} with dMean = {}'.format(ev, current[ev], voltage[ev], dMean))
@@ -772,10 +797,10 @@ def walk_sc(x, y, buffer_size=4, plane='iv'):
     print('The min x index and buffer size are: {} and {}, with total array size {}'.format(index_min_x, buffer_size, dydx.size))
     ev = index_min_x - buffer_size
     dM = 0
-    while dMean < 1e-2 and ev >= 0:
-        currentMean = dbuff.get_mean()
+    while dMean < 5e-2 and ev >= 0:
+        currentMean = dbuff.get_nanmean()
         dbuff.append(dydx[ev])
-        newMean = dbuff.get_mean()
+        newMean = dbuff.get_nanmean()
         dMean = np.abs((currentMean - newMean)/currentMean)
         ev -= 1
     #print('The left deviation occurs at ev = {} with current = {} and voltage = {} with dMean = {}'.format(ev, current[ev], voltage[ev], dMean))
@@ -824,10 +849,10 @@ def test_steps(x, y, v, t0, xlab, ylab, fName):
 
 def generic_fitplot_with_errors(ax, x, y, labels, params, xScale=1, yScale=1, ylim=None, xlim=None, logx='linear', logy='linear'):
     '''A helper function that puts data on a specified axis'''
-    out = ax.errorbar(x*xScale, y*yScale, **params)
+    out = ax.errorbar(x*xScale, y*yScale, elinewidth=3, capsize=2, **params)
     ax.set_xscale(logx)
     ax.set_yscale(logy)
-    ax.set_xlabel(labels['xlabel'])
+    ax.set_xlabel(labels['xlabel'],horizontalalignment='right', x=1.0)
     ax.set_ylabel(labels['ylabel'])
     if ylim is not None:
         ax.set_ylim(ylim)
@@ -844,10 +869,10 @@ def generic_fitplot_with_errors(ax, x, y, labels, params, xScale=1, yScale=1, yl
 
 def add_model_fits(ax, x, y, model, xScale=1, yScale=1, model_function=lin_sq):
     '''Add model fits to plots'''
-    xModel = np.linspace(x.min(), x.max(), 100)
+    xModel = np.linspace(x.min(), x.max(), 10000)
     if model.left.result is not None:
         yFit = model_function(xModel, *model.left.result)
-        ax.plot(xModel*xScale, yFit*yScale, 'r-', marker='None', linewidth=2)
+        ax.plot(xModel*xScale, yFit*yScale, 'r-', marker='None', linewidth=4)
     if model.right.result is not None:
         yFit = model_function(xModel, *model.right.result)
         ax.plot(xModel*xScale, yFit*yScale, 'g-', marker='None', linewidth=2)
@@ -1614,13 +1639,16 @@ def dump2text(R,T,fileName):
     return None
 
 
-def get_iv_data_from_file(input_path, new_format=False):
+def get_iv_data_from_file(input_path, new_format=False, thermometer='EP'):
     '''Load IV data from specified directory'''
+    if thermometer == 'EP':
+        thermometer_name = 'EPCal_K'
+    else:
+        thermometer_name = 'NT'
     if new_format is False:
         tree = 'data_tree'
-        #branches = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform', 'EPCal_K']
-        branches = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform', 'NT']
-        method = 'single'
+        branches = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform', thermometer_name]
+        method = 'chain'
         rData = readROOT(input_path, tree, branches, method)
         # Make life easier:
         rData = rData['data']
@@ -1628,18 +1656,17 @@ def get_iv_data_from_file(input_path, new_format=False):
         chlist = 'ChList'
         channels = readROOT(input_path, None, None, method='single', tobject=chlist)
         channels = channels['data'][chlist]
-        branches = ['NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'NT'] + ['Waveform' + '{:03d}'.format(int(i)) for i in channels]
-        #branches = ['NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'EPCal_K'] + ['Waveform' + '{:03d}'.format(int(i)) for i in channels]
+        branches = ['NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', thermometer_name] + ['Waveform' + '{:03d}'.format(int(i)) for i in channels]
         print('Branches to be read are: {}'.format(branches))
         tree = 'data_tree'
-        method = 'single'
+        method = 'chain'
         rData = readROOT(input_path, tree, branches, method)
         rData = rData['data']
         rData['Channel'] = channels
     return rData
 
 
-def format_iv_data(iv_data, output_path, new_format=False):
+def format_iv_data(iv_data, output_path, new_format=False, number_of_windows=1, thermometer='EP'):
     '''Format the IV data into easy to use forms'''
     
     # Now data structure:
@@ -1656,9 +1683,11 @@ def format_iv_data(iv_data, output_path, new_format=False):
     # t[N] = Timestamp_s + Timestamp_mus*1e-6 + N*SamplingWidth_s
     # Note that there will be NEvents different values of Timestamp_s and Timestamp_mus, each of these containing 1/SamplingWidth_s samples
     # (Note that NEvents = NEntries/NChannels)
+    if thermometer == 'EP':
+        temperatures = iv_data['EPCal_K']
+    else:
+        temperatures = iv_data['NT']
     time_values = iv_data['Timestamp_s'] + iv_data['Timestamp_mus']/1e6
-    #temperatures = iv_data['EPCal_K']
-    temperatures = iv_data['NT']
     cut = temperatures >= -1
     # Get unique time values for valid temperatures
     time_values, idx = np.unique(time_values[cut], return_index=True)
@@ -1683,10 +1712,10 @@ def format_iv_data(iv_data, output_path, new_format=False):
         # So waveForms[ch][ev] will be a numpy array with size = NumberOfSamples.
         # The timestamp of waveForms[ch][ev][sample] is time_values[ev] + sample*SamplingWidth_s
         for channel in waveForms.keys():
-            mean_waveforms[channel], rms_waveforms[channel], mean_time_values = process_waveform(waveForms[channel], time_values, iv_data['SamplingWidth_s'][0], number_of_windows=1)
+            mean_waveforms[channel], rms_waveforms[channel], mean_time_values = process_waveform(waveForms[channel], time_values, iv_data['SamplingWidth_s'][0], number_of_windows=number_of_windows)
     else:
         for channel in iv_data['Channel']:
-            mean_waveforms[channel], rms_waveforms[channel], mean_time_values = process_waveform(iv_data['Waveform' + '{:03d}'.format(int(channel))], time_values, iv_data['SamplingWidth_s'][0], number_of_windows=1)
+            mean_waveforms[channel], rms_waveforms[channel], mean_time_values = process_waveform(iv_data['Waveform' + '{:03d}'.format(int(channel))], time_values, iv_data['SamplingWidth_s'][0], number_of_windows=number_of_windows)
     print('The number of things in the mean time values are: {} and the number of waveforms are: {}'.format(np.size(mean_time_values), len(mean_waveforms[5])))
     formatted_data = {'time_values': time_values,
                       'temperatures': temperatures,
@@ -1703,7 +1732,7 @@ def get_temperature_steps(output_path, time_values, temperatures, pid_log):
     attempt to find the temperature steps
     '''
     if pid_log is None:
-        timelist = find_temperature_steps(output_path, time_values, temperatures)
+        timelist = find_temperature_steps(output_path, time_values, temperatures, thermometer)
     else:
         timelist = parse_temperature_steps(output_path, time_values, temperatures, pid_log)
     return timelist
@@ -1749,7 +1778,7 @@ def parse_temperature_steps(output_path, time_values, temperatures, pid_log):
     return timeList
 
 
-def find_temperature_steps(output_path, time_values, temperatures):
+def find_temperature_steps(output_path, time_values, temperatures, thermometer='EP'):
     ''' Given an array of time and temperatures identify temperature steps and return the start, stop and mean Temp
     Will return these as a list of tuples
     '''
@@ -1766,7 +1795,7 @@ def find_temperature_steps(output_path, time_values, temperatures):
     # Now set some parameters for stablized temperatures
     # Define temperature steps to be larger than Tstep Kelvins
     # Define the rolling windows to contain lenBuff entries
-    temp_sensor = 'NT'
+    temp_sensor = 'EP_Cal' if thermometer == 'EP' else 'NT'
     if temp_sensor == 'EP_Cal':
         Tstep = 5e-5
         lenBuff = 10
@@ -1780,12 +1809,12 @@ def find_temperature_steps(output_path, time_values, temperatures):
     return timeList
 
 
-def get_pyIV_data(input_path, output_path, new_format=True):
+def get_pyIV_data(input_path, output_path, new_format=True, number_of_windows=1, thermometer='EP'):
     '''Function to gather iv data in correct format
     Returns time values, temperatures, mean waveforms, rms waveforms and the list of times for temperature jumps
     '''
-    iv_data = get_iv_data_from_file(input_path, new_format=new_format)
-    formatted_data = format_iv_data(iv_data, output_path, new_format=new_format)
+    iv_data = get_iv_data_from_file(input_path, new_format=new_format, thermometer=thermometer)
+    formatted_data = format_iv_data(iv_data, output_path, new_format=new_format, number_of_windows=number_of_windows, thermometer=thermometer)
     return formatted_data
 
 
@@ -2170,7 +2199,9 @@ def get_PT_curves(output_path, data_channel, iv_dictionary):
     uBounds = [1e-5, 10, 100e-3]
     cutT = T < 35e-3
     x0 = [5e-06, 5, 35e-3]
-    results, pcov = curve_fit(tes_power_polynomial, T[cutT], P[cutT], sigma=P_rms[cutT], p0=x0, bounds=(lBounds, uBounds), absolute_sigma=True, method='trf', max_nfev=1e4)
+    #results, pcov = curve_fit(tes_power_polynomial, T[cutT], P[cutT], sigma=P_rms[cutT], p0=x0, bounds=(lBounds, uBounds), absolute_sigma=True, method='trf', max_nfev=1e4)
+    results, pcov = curve_fit(tes_power_polynomial, T[cutT], P[cutT], sigma=P_rms[cutT], p0=x0, absolute_sigma=True, method='lm', maxfev=int(2e4))
+    print('The covariance matrix columns are: [k, n, T] and the matrix is: {}'.format(pcov))
     #results, pcov = curve_fit(tes_power_polynomial, T[cutT], P[cutT], sigma=P_rms[cutT], absolute_sigma=True, method='trf')
     perr = np.sqrt(np.diag(pcov))
     #results = [results[0], 5, results[1]]
@@ -2183,17 +2214,17 @@ def get_PT_curves(output_path, data_channel, iv_dictionary):
     
     fitResult = iv_results.FitParameters()
     fitResult.left.set_values(results, perr)
-    fitResult.right.set_values(x0, [0,0,0])
+    #fitResult.right.set_values(x0, [0,0,0])
     # Next make a P-T plot
     fig = plt.figure(figsize=(16,12))
     ax = fig.add_subplot(111)
     xScale = 1e3
     yScale = 1e15
-    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': P_rms*yScale}
+    params = {'marker': 'o', 'markersize': 6, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': P_rms*yScale}
     labels = {'xlabel': 'Temperature [mK]', 'ylabel': 'TES Power [fW]', 'title': 'Channel {} TES Power vs Temperature'.format(data_channel)}
     
     ax = generic_fitplot_with_errors(ax=ax, x=T, y=P, labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
-    #ax.set_ylim((-1,1))
+    ax.set_ylim((0,None))
     ax = add_model_fits(ax=ax, x=T, y=P, model=fitResult, xScale=xScale, yScale=yScale, model_function=tes_power_polynomial)
     ax = add_power_temperature_textbox(ax=ax, model=fitResult)
     
@@ -2215,8 +2246,9 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     # Rtes = R(i,T) really so select a fixed i and across multiple temperatures obtain values for R and then plot
     T = np.empty(0)
     R = np.empty(0)
+    fixed_value = 'iTES'
     for temperature, iv_data in iv_dictionary.items():
-        cut = np.logical_and(iv_data['iBias'] > 0.0e-6, iv_data['iBias'] < 1e-6)
+        cut = np.logical_and(iv_data[fixed_value] > 0.0e-6, iv_data[fixed_value] < 1e-6)
         if nsum(cut) > 0:
             T = np.append(T, float(temperature)*1e-3) # T in K
             R = np.append(R, np.mean(iv_data['rTES'][cut]))
@@ -2252,26 +2284,38 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     R_desc = np.empty(0)
     Rrms_desc = np.empty(0)
     fitResult = iv_results.FitParameters()
-    i_select = 1e-7
-    selector = 'vTES'
+    i_select = 0.4e-6
+    selector = 'iTES'
     for temperature, iv_data in iv_dictionary.items():
-        diBias = np.gradient(iv_data[selector], edge_order=2)
-        cut = np.logical_and(iv_data[selector] > i_select - 5e-8, iv_data[selector] < i_select + 5e-8)
+        cut = np.logical_and(iv_data[selector] > i_select - 0.2e-6, iv_data[selector] < i_select + 0.2e-6)
         print('the sum of cut is: {}'.format(nsum(cut)))
-        cut1 = np.logical_and(iv_data[selector] > 0, diBias < 0)
-        cut2 = np.logical_and(iv_data[selector] <= 0, diBias > 0)
+        # Cuts to select physical case where we go from Normal --> SC modes
+        diBias = np.gradient(iv_data['iBias'], edge_order=2)
+        cut1 = np.logical_and(iv_data['iBias'] > 0, diBias < 0)
+        cut2 = np.logical_and(iv_data['iBias'] <= 0, diBias > 0)
         dcut = np.logical_or(cut1, cut2)
         cut_desc = np.logical_and(cut, dcut)
         cut_asc = np.logical_and(cut, ~dcut)
         if nsum(cut_asc) > 0:
             T = np.append(T, float(temperature)*1e-3) # T in K
             R = np.append(R, np.mean(iv_data['rTES'][cut_asc]))
-            Rrms = np.append(Rrms, np.std(iv_data['rTES'][cut_asc]))
+            Rrms = np.append(Rrms, np.mean(iv_data['rTES_rms'][cut_asc]))
+            #Rrms = np.append(Rrms, np.std(iv_data['rTES'][cut_asc]))
         if nsum(cut_desc) > 0:
             T_desc = np.append(T_desc, float(temperature)*1e-3) # T in K
             R_desc = np.append(R_desc, np.mean(iv_data['rTES'][cut_desc]))
-            Rrms_desc = np.append(Rrms_desc, np.std(iv_data['rTES'][cut_desc]))
+            Rrms_desc = np.append(Rrms_desc, np.mean(iv_data['rTES_rms'][cut_desc]))
+            #Rrms_desc = np.append(Rrms_desc, np.std(iv_data['rTES'][cut_desc]))
     # Next make an R-T plot
+    # Add a T cut?
+    Tcut = T > 15e-3
+    Tcut_desc = T_desc > 15e-3
+    T = T[Tcut]
+    R = R[Tcut]
+    Rrms = Rrms[Tcut]
+    T_desc = T_desc[Tcut_desc]
+    R_desc = R_desc[Tcut_desc]
+    Rrms_desc = Rrms_desc[Tcut_desc]
     # Try a fit?
     # [Rn, Rp, Tc, Tw]
     # In new fit we have [C, D, B, A] --> A = 1/Tw, B = -Tc/Tw
@@ -2281,7 +2325,7 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     yScale = 1e3
     sortKey = np.argsort(T)
     
-    labels = {'xlabel': 'Temperature [mK]', 'ylabel': 'TES Resistance [m' + r'$\Omega$' +']', 'title': 'Channel {}'.format(data_channel) + ' TES Resistance vs Temperature for Bias Current = {}'.format(i_select*1e6)  + r'$\mu$' + 'A'}
+    labels = {'xlabel': 'Temperature [mK]', 'ylabel': 'TES Resistance [m' + r'$\Omega$' +']', 'title': 'Channel {}'.format(data_channel) + ' TES Resistance vs Temperature for TES Current = {}'.format(i_select*1e6)  + r'$\mu$' + 'A'}
     
     params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'red', 'markerfacecolor': 'red', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': Rrms[sortKey]*yScale}
     ax = generic_fitplot_with_errors(ax=ax, x=T[sortKey], y=R[sortKey], labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
@@ -2296,9 +2340,9 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     x0 = [1, 0, T[sortKey][np.gradient(R[sortKey], T[sortKey], edge_order=2).argmax()]*1.1, 1e-3]
     x0 = [1, 0, 20e-3, 1e-3]
     #x0 = [1, 0, -T[sortKey][np.gradient(R[sortKey], T[sortKey], edge_order=2).argmax()]/1e-3,  1/1e-3]
-    print('For ascending fit initial guess is {}'.format(x0))
+    print('For SN to N fit initial guess is {}'.format(x0))
     #result, pcov = curve_fit(tanh_tc, T, R, sigma=Rrms, absolute_sigma=True, p0=x0, method='trf')
-    result, pcov = curve_fit(tanh_tc, T, R, sigma=Rrms, absolute_sigma=True)
+    result, pcov = curve_fit(tanh_tc, T, R, sigma=Rrms, absolute_sigma=True, method='trf', max_nfev=5e4)
     perr = np.sqrt(np.diag(pcov))
     print('Ascending (SC -> N): Rn = {} mOhm, Rp = {} mOhm, Tc = {} mK, Tw = {} mK'.format(*[i*1e3 for i in result]))
     fitResult.left.set_values(result, perr)
@@ -2309,7 +2353,7 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     x0 = [1, 0, 20e-3, 1e-3]
     #x0 = [1, 0, -T_desc[sortKey][np.gradient(R_desc[sortKey], T_desc[sortKey], edge_order=2).argmax()]/1e-3, 1/1e-3]
     print('For descending fit (N->S) initial guess is {}'.format(x0))
-    result_desc, pcov_desc = curve_fit(tanh_tc, T_desc, R_desc, sigma=Rrms_desc, p0=x0, absolute_sigma=True, method='trf')
+    result_desc, pcov_desc = curve_fit(tanh_tc, T_desc, R_desc, sigma=Rrms_desc, p0=x0, absolute_sigma=True, method='lm', maxfev=int(5e4))
     perr_desc = np.sqrt(np.diag(pcov_desc))
     print('Descending (N -> SC): Rn = {} mOhm, Rp = {} mOhm, Tc = {} mK, Tw = {} mK'.format(*[i*1e3 for i in result_desc]))
     fitResult.right.set_values(result_desc, perr_desc)
@@ -2320,7 +2364,7 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     yScale = 1e3
     sortKey = np.argsort(T)
     
-    labels = {'xlabel': 'Temperature [mK]', 'ylabel': 'TES Resistance [m' + r'$\Omega$' +']', 'title': 'Channel {}'.format(data_channel) + ' TES Resistance vs Temperature for Bias Current = {}'.format(i_select*1e6)  + r'$\mu$' + 'A'}
+    labels = {'xlabel': 'Temperature [mK]', 'ylabel': 'TES Resistance [m' + r'$\Omega$' +']', 'title': 'Channel {}'.format(data_channel) + ' TES Resistance vs Temperature for TES Current = {}'.format(i_select*1e6)  + r'$\mu$' + 'A'}
     
     params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'red', 'markerfacecolor': 'red', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': Rrms[sortKey]*yScale}
     ax = generic_fitplot_with_errors(ax=ax, x=T[sortKey], y=R[sortKey], labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
@@ -2328,15 +2372,37 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     sortKey = np.argsort(T_desc)
     params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'green', 'markerfacecolor': 'green', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': Rrms_desc[sortKey]*yScale}
     ax = generic_fitplot_with_errors(ax=ax, x=T_desc[sortKey], y=R_desc[sortKey], labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
+    
     #ax.set_ylim((-1,1))
     ax = add_model_fits(ax=ax, x=T, y=R, model=fitResult, xScale=xScale, yScale=yScale, model_function=tanh_tc)
     ax = add_resistance_temperature_textbox(ax=ax, model=fitResult)
     ax.legend(['SC to N', 'N to SC'])
-    fName = output_path + '/' + 'rTES_vs_T_ch_' + str(data_channel) + '_descending_iBias_' + str(i_select*1e6) + 'uA'
+    fName = output_path + '/' + 'rTES_vs_T_ch_' + str(data_channel) + '_fixed_' + selector + '_' + str(i_select*1e6) + 'uA'
     for label in (ax.get_xticklabels() + ax.get_yticklabels()):
         label.set_fontsize(18)
     save_plot(fig, ax, fName)
     
+    
+    # Make a nicer plot
+    fig = plt.figure(figsize=(16,12))
+    ax = fig.add_subplot(111)
+    xScale = 1e3
+    yScale = 1e3
+    sortKey = np.argsort(T_desc)
+    NtoS_fitResult = iv_results.FitParameters()
+    NtoS_fitResult.right.set_values(result_desc, perr_desc)
+    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'green', 'markerfacecolor': 'green', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': Rrms_desc[sortKey]*yScale}
+    ax = generic_fitplot_with_errors(ax=ax, x=T_desc[sortKey], y=R_desc[sortKey], labels=labels, params=params, xScale=xScale, yScale=yScale, logx='linear', logy='linear')
+    # Let us pad the T values so they are smoooooooth
+    model_T = np.linspace(T_desc.min(), 36e-3, 100000)
+    ax = add_model_fits(ax=ax, x=model_T, y=R, model=NtoS_fitResult, xScale=xScale, yScale=yScale, model_function=tanh_tc)
+    ax = add_resistance_temperature_textbox(ax=ax, model=NtoS_fitResult)
+    #ax.legend(['SC to N', 'N to SC'])
+    fName = output_path + '/' + 'rTES_vs_T_ch_' + str(data_channel) + '_fixed_' + selector + '_' + str(np.round(i_select*1e6,3)) + 'uA_normal_to_sc_only'
+    ax.set_xlim((28, 36))
+    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+        label.set_fontsize(18)
+    save_plot(fig, ax, fName)
     
     # We can try to plot alpha vs R as well why not
     # alpha = To/Ro * dR/dT --> dln(R)/dln(T)
@@ -2399,8 +2465,9 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
         T = np.empty(0)
         R = np.empty(0)
         for temperature, iv_data in iv_dictionary.items():
+            cut = np.logical_and(iv_data['iTES'] > i*1e-6, iv_data['iTES'] < (i+1)*1e-6) # select 'constant' I0
+            # Select normal --> sc transition directions
             diBias = np.gradient(iv_data['iBias'], edge_order=2)
-            cut = np.logical_and(iv_data['iBias'] > i*1e-6, iv_data['iBias'] < (i+1)*1e-6)
             cut1 = np.logical_and(iv_data['iBias'] > 0, diBias < 0)
             cut2 = np.logical_and(iv_data['iBias'] <= 0, diBias > 0)
             dcut = np.logical_or(cut1, cut2)
@@ -2504,10 +2571,11 @@ def chop_data_by_temperature_steps(output_path, formatted_data, timelist, bias_c
     Rbias = squid_parameters.Rbias
     time_buffer = 0
     iv_dictionary = {}
+    expected_duration = 4200 #TODO: make this an input argument or auto-determined somehow
     for values in timelist:
         start_time, stop_time, mean_temperature = values
-        cut = np.logical_and(formatted_data['time_values'] >= start_time + time_buffer, formatted_data['time_values'] <= stop_time)
-        timestamps = formatted_data['time_values'][cut]
+        cut = np.logical_and(formatted_data['mean_time_values'] >= start_time + time_buffer, formatted_data['mean_time_values'] <= stop_time)
+        timestamps = formatted_data['mean_time_values'][cut]
         iBias = formatted_data['mean_waveforms'][bias_channel][cut]/Rbias
         iBias_rms = formatted_data['rms_waveforms'][bias_channel][cut]/Rbias
         vOut = formatted_data['mean_waveforms'][data_channel][cut]
@@ -2515,6 +2583,9 @@ def chop_data_by_temperature_steps(output_path, formatted_data, timelist, bias_c
         # Let us toss out T values wherein the digitizer rails
         if np.any(vOut_rms < 1e-9):
             print('Invalid digitizer response for T: {} mK'.format(np.round(mean_temperature*1e3, 3)))
+            continue
+        if stop_time - start_time > expected_duration:
+            print('Temperature step is too long for T: {} mK'.format(np.round(mean_temperature*1e3,3)))
             continue
         else:
             T = str(np.round(mean_temperature*1e3, 3))
@@ -2536,9 +2607,9 @@ def chop_data_by_temperature_steps(output_path, formatted_data, timelist, bias_c
     return iv_dictionary
 
 
-def get_iv_data(input_path, output_path, squid_run, bias_channel, data_channel, pid_log=None, new_format=False):
+def get_iv_data(input_path, output_path, squid_run, bias_channel, data_channel, pid_log=None, new_format=False, number_of_windows=1, thermometer='EP'):
     '''Function that returns a formatted iv dictionary from waveform root file'''
-    formatted_data = get_pyIV_data(input_path, output_path, new_format=new_format)
+    formatted_data = get_pyIV_data(input_path, output_path, new_format=new_format, number_of_windows=number_of_windows, thermometer=thermometer)
     timelist = get_temperature_steps(output_path, formatted_data['time_values'], formatted_data['temperatures'], pid_log=pid_log)
     iv_dictionary = chop_data_by_temperature_steps(output_path, formatted_data, timelist, bias_channel, data_channel)
     return iv_dictionary
@@ -2553,9 +2624,11 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--dataChannel', type=int, default=7, help='Specify the digitizer channel that corresponds to the output channel. Defaults to 7')
     parser.add_argument('-s', '--makeRoot', action='store_true', help='Specify whether to write data to a root file')
     parser.add_argument('-L', '--readROOT', action='store_true', help='Read IV data from processed root file. Stored in outputPath /root/iv_data.root')
-    parser.add_argument('-T', '--readTESROOT', action='store_true', help='Read IV and TES data from processed root file. Stored in outputPath /root/iv_data.root')
+    parser.add_argument('-l', '--readTESROOT', action='store_true', help='Read IV and TES data from processed root file. Stored in outputPath /root/iv_data.root')
     parser.add_argument('-n', '--newFormat', action='store_true', help='Specify whether or not to use the new ROOT format for file reading')
     parser.add_argument('-p', '--pidLog', default=None, help='Specify an optional PID log file to denote the step timestamps. If not supplied program will try to find them from Temperature data')
+    parser.add_argument('-w', '--numberOfWindows', default=1, type=int, help='Specify the number of windows to divide one waveform sample up into for averaging. Default is 1 window per waveform.')
+    parser.add_argument('-T', '--thermometer', default='EP', help='Specify the name of the thermometer to use. Can be either EP for EPCal (default) or NT for the noise thermometer')
     args = parser.parse_args()
 
     path = args.inputFile
@@ -2567,12 +2640,12 @@ if __name__ == '__main__':
     print('We will run with the following options:')
     print('The squid run is {}'.format(run))
     print('The output path is: {}'.format(output_path))
-    
+    #sns.set()
     # First step is to get basic IV data into a dictionary format. Either read raw files or load from a saved root file
     if args.readROOT is False and args.readTESROOT is False:
-        iv_dictionary = get_iv_data(input_path=args.inputFile, output_path=output_path, squid_run=args.run, bias_channel=args.biasChannel, data_channel=args.dataChannel, pid_log=args.pidLog, new_format=args.newFormat)
+        iv_dictionary = get_iv_data(input_path=args.inputFile, output_path=output_path, squid_run=args.run, bias_channel=args.biasChannel, data_channel=args.dataChannel, pid_log=args.pidLog, new_format=args.newFormat, number_of_windows=args.numberOfWindows, thermometer=args.thermometer)
         # Next try to correct squid jumps
-        #iv_dictionary = correct_squid_jumps(output_path, iv_dictionary)
+        iv_dictionary = correct_squid_jumps(output_path, iv_dictionary)
         iv_dictionary = compute_extra_quantities(iv_dictionary)
         # Next save the iv_curves
         save_iv_to_root(output_path, iv_dictionary)

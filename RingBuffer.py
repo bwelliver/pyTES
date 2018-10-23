@@ -25,6 +25,10 @@ class RingBuffer(object):
     def get_mean(self):
         '''mean of the current values.'''
         return(np.mean(self._data))
+    
+    def get_nanmean(self):
+        '''mean of the current values ignoring NaN values'''
+        return(np.nanmean(self._data))
 
     def get_med(self):
         '''median of the current values.'''
