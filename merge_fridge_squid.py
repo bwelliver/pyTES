@@ -177,9 +177,14 @@ if __name__ == '__main__':
     fData = readROOT(inFridgeFile, fTree, fBranches, 'single')
     # We also need to obtain the UnixTimestamps from the SQUID ROOT files.
     # This is tricky because they must be chained together
-    lof = glob.glob('{}/*{}*.root'.format(inSQUIDFile, squidRun))
-    lof.sort()
+    #lof = glob.glob('{}/*{}*.root'.format(inSQUIDFile, squidRun))
+    # No run number
+    lof = glob.glob('{}/*.root'.format(inSQUIDFile))
+    # NATURAL SORT
+    dre = re.compile(r'(\d+)')
+    lof.sort(key=lambda l: [int(s) if s.isdigit() else s.lower() for s in re.split(dre, l)])
     #lof = glob.glob('/Users/bwelliver/cuore/bolord/squid/*{0}*.root'.format(run))
+    print('There are {} files to merge'.format(len(lof)))
     if args.newFormat is False:
         tree = 'data_tree'
         branches = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform']

@@ -1634,19 +1634,49 @@ def get_PT_curves(output_path, data_channel, iv_dictionary):
         cNtoSC_neg = np.logical_and(iv_data['iBias'] <= 0, diBias > 0)
         cNtoSC = np.logical_or(cNtoSC_pos, cNtoSC_neg)
         # Also select data that is some fraction of the normal resistance, say 20%
-        R0 = 100e-3
-        cut = np.logical_and(iv_data['rTES'] > R0 - 10e-3, iv_data['rTES'] < R0 + 10e-3)
+        R0 = 200e-3
+        dR = 50e-3
+        cut = np.logical_and(iv_data['rTES'] > R0 - dR, iv_data['rTES'] < R0 + dR)
         cut = np.logical_and(cut, cNtoSC)
         if nsum(cut) > 0:
             T = np.append(T, float(temperature)*1e-3)
             P = np.append(P, np.mean(iv_data['pTES'][cut]))
             P_rms = np.append(P_rms, np.std(iv_data['pTES'][cut]))
+    print('The main T vector is: {}'.format(T))
+    # Remove the first half?
+#    T = T[T.size//2:-1]
+#    P = P[P.size//2:-1]
+#    P_rms = P_rms[P_rms.size//2:-1]
+#    T = T[0:T.size//2]
+#    P = P[0:P.size//2]
+#    P_rms = P_rms[0:P_rms.size//2]
+    print('The half T vector is: {}'.format(T))
+    # Make a plot without any fits to see what we have to work with...
+    cutT = T < 32e-3
+    cutP = P < 1000e-15
+    cutT = np.logical_and(cutT, cutP)
+    # Next make a P-T plot
+    fig = plt.figure(figsize=(16,12))
+    ax = fig.add_subplot(111)
+    xScale = 1e3
+    yScale = 1e15
+    params = {'marker': 'o', 'markersize': 6, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': P_rms[cutT]*yScale}
+    axoptions = {'xlabel': 'Temperature [mK]', 
+                 'ylabel': 'TES Power [fW]', 
+                 'title': 'Channel {} TES Power vs Temperature'.format(data_channel),
+                 'ylim': (0, None)
+                }
+    ax = ivp.generic_fitplot_with_errors(ax=ax, x=T[cutT], y=P[cutT], axoptions=axoptions, params=params, xScale=xScale, yScale=yScale)    
+    fName = output_path + '/' + 'pTES_vs_T_noFit_ch_' + str(data_channel)
+    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+        label.set_fontsize(18)
+    ivp.save_plot(fig, ax, fName)
     # Attempt to fit it to a power function
     lBounds = [1e-15, 0, 10e-3]
     uBounds = [1, 7, 100e-3]
-    cutT = T < 35e-3
     x0 = [5e-06, 5, 35e-3]
-    results, pcov = curve_fit(fitfuncs.tes_power_polynomial, T[cutT], P[cutT], sigma=P_rms[cutT], p0=x0, bounds=(lBounds, uBounds), absolute_sigma=True, method='trf', max_nfev=1e4)
+    print('The input value of T is {} and for P it is: {} and for Prms it is: {}'.format(T[cutT], P[cutT], P_rms[cutT]))
+    results, pcov = curve_fit(fitfuncs.tes_power_polynomial, T[cutT], P[cutT], p0=x0, sigma=P_rms[cutT], bounds=(lBounds, uBounds), absolute_sigma=True, method='trf', max_nfev=1e4)
     #results, pcov = curve_fit(fitfuncs.tes_power_polynomial, T[cutT], P[cutT], sigma=P_rms[cutT], p0=x0, absolute_sigma=True, method='lm', maxfev=int(2e4))
     print('The covariance matrix columns are: [k, n, T] and the matrix is: {}'.format(pcov))
     #results, pcov = curve_fit(fitfuncs.tes_power_polynomial, T[cutT], P[cutT], sigma=P_rms[cutT], absolute_sigma=True, method='trf')
@@ -1672,7 +1702,7 @@ def get_PT_curves(output_path, data_channel, iv_dictionary):
     axoptions = {'xlabel': 'Temperature [mK]', 
                  'ylabel': 'TES Power [fW]', 
                  'title': 'Channel {} TES Power vs Temperature'.format(data_channel),
-                 'ylim': (0, None)
+                 'ylim': (0, 400)
                 }
     ax = ivp.generic_fitplot_with_errors(ax=ax, x=T, y=P, axoptions=axoptions, params=params, xScale=xScale, yScale=yScale)
     ax = ivp.add_model_fits(ax=ax, x=T, y=P, model=fitResult, model_function=fitfuncs.tes_power_polynomial, xScale=xScale, yScale=yScale)
@@ -1760,6 +1790,13 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
             #Rrms_desc = np.append(Rrms_desc, np.std(iv_data['rTES'][cut_desc]))
     # Next make an R-T plot
     # Add a T cut?
+    # Remove half
+#    T = T[T.size//2:-1]
+#    R = R[R.size//2:-1]
+#    Rrms = Rrms[Rrms.size//2:-1]
+#    T_desc = T_desc[T_desc.size//2:-1]
+#    R_desc = R_desc[R_desc.size//2:-1]
+#    Rrms_desc = Rrms_desc[Rrms_desc.size//2:-1]
     Tcut = T > 8e-3
     Tcut_desc = T_desc > 8e-3
     T = T[Tcut]
@@ -2048,7 +2085,7 @@ def chop_data_by_temperature_steps(output_path, formatted_data, timelist, bias_c
     Rbias = squid_parameters.Rbias
     time_buffer = 0
     iv_dictionary = {}
-    expected_duration = 4200 #TODO: make this an input argument or auto-determined somehow
+    expected_duration = 6000 #TODO: make this an input argument or auto-determined somehow
     for values in timelist:
         start_time, stop_time, mean_temperature = values
         cut = np.logical_and(formatted_data['mean_time_values'] >= start_time + time_buffer, formatted_data['mean_time_values'] <= stop_time)
@@ -2122,7 +2159,7 @@ if __name__ == '__main__':
     if args.readROOT is False and args.readTESROOT is False:
         iv_dictionary = get_iv_data(input_path=args.inputFile, output_path=output_path, squid_run=args.run, bias_channel=args.biasChannel, data_channel=args.dataChannel, pid_log=args.pidLog, new_format=args.newFormat, number_of_windows=args.numberOfWindows, thermometer=args.thermometer)
         # Next try to correct squid jumps
-        iv_dictionary = correct_squid_jumps(output_path, iv_dictionary)
+        #iv_dictionary = correct_squid_jumps(output_path, iv_dictionary)
         iv_dictionary = compute_extra_quantities(iv_dictionary)
         # Next save the iv_curves
         save_iv_to_root(output_path, iv_dictionary)

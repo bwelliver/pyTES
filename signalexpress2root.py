@@ -8,6 +8,8 @@ import re
 import numpy as np
 import pandas as pan
 
+from joblib import Parallel, delayed
+import multiprocessing
 from writeROOT import writeROOT as write_root
 
 
@@ -78,16 +80,50 @@ def write_to_root(output_file, data_dictionary):
     return True
 
 
-def convert_logfile(inputDirectory, outputDirectory, runNumber, sampleDuration):
+def logfile_converter(outputDirectory, logfile, sampleDuration):
+    '''The actual function that converts a particular logfile into a root file
+    We should avoid putting all this into a for loop so we can parallelize it perhaps
+    '''
+    data_dictionary = load_signal_express_file(logfile, sampleDuration)
+    output_file = basename(logfile)
+    output_file = output_file.split('.')[0]
+    output_file = outputDirectory + '/' + output_file + '.root'
+    write_to_root(output_file, data_dictionary)
+    return True
+
+
+def convert_logfile(inputDirectory, outputDirectory, runNumber, sampleDuration, useParallel=False):
     '''Main function to convert a signal express logfile into a ROOT file of the format used in the PXIDAQ'''
-    list_of_files = glob.glob('{}/*{}*.txt'.format(inputDirectory, runNumber))
-    list_of_files.sort()
-    for logfile in list_of_files:
-        data_dictionary = load_signal_express_file(logfile, sampleDuration)
-        output_file = basename(logfile)
-        output_file = output_file.split('.')[0]
-        output_file = outputDirectory + '/' + output_file + '.root'
-        write_to_root(output_file, data_dictionary)
+    #list_of_files = glob.glob('{}/*{}*.txt'.format(inputDirectory, runNumber))
+    list_of_files = glob.glob('{}/*.txt'.format(inputDirectory))
+    print('After gobbing, the number of files is {}'.format(len(list_of_files)))
+    # NATURAL SORT
+    dre = re.compile(r'(\d+)')
+    list_of_files.sort(key=lambda l: [int(s) if s.isdigit() else s.lower() for s in re.split(dre, l)])
+    print('The list of files after sorting is: {}'.format(list_of_files))
+    print('The size of the file list is: {}'.format(len(list_of_files)))
+    if useParallel == False:
+        print('Performing conversions serially')
+        results = []
+        for logfile in list_of_files:
+            print('Converting file {}'.format(logfile))
+            result = logfile_converter(outputDirectory, logfile, sampleDuration)
+            results.append(result)
+    else:
+        # Attempt at using joblib
+        print('Performing conversions in parallel')
+        num_cores = multiprocessing.cpu_count()
+        results = Parallel(n_jobs=num_cores)(delayed(logfile_converter)(outputDirectory, logfile, sampleDuration) for logfile in list_of_files)
+    if np.all(results) == True:
+        if len(results) == len(list_of_files):
+            print('All files converted')
+        else:
+            print('Every file that was executed was converted, but not all files were recorded...')
+    else:
+        if len(results) == len(list_of_files):
+            print('All files have a record in the results array but not all of these files were actually converted')
+        else:
+            print('Not all files have a record and of those that were, not all were converted')
     return None
 
 
@@ -97,10 +133,11 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--outputDirectory', help='Specify output directory. If not a full path, it will be output in the same directory as the input directory')
     parser.add_argument('-s', '--sampleDuration', type=float, help='Specify the duration (in seconds) that a file lasts')
     parser.add_argument('-r', '--runNumber', help='Specify the run number in the log file to convert')
+    parser.add_argument('-p', '--useParallel', action='store_true', help='If flag is set use parallel dispatcher to process files as opposed to performing conversion serially')
     args = parser.parse_args()
     inputDirectory = args.inputDirectory
     outputDirectory = args.outputDirectory
     if not isabs(outputDirectory):
         outputDirectory = inputDirectory    
-    convert_logfile(inputDirectory, outputDirectory, args.runNumber, args.sampleDuration)
+    convert_logfile(inputDirectory, outputDirectory, args.runNumber, args.sampleDuration, args.useParallel)
     print('All done')
