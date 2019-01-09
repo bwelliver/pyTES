@@ -62,19 +62,24 @@ def gen_plot_line(x, y, xlab, ylab, title, fName, peaks=None, ylim=(1e-14, 1e-7)
     """Create generic plots that may be semilogx (default)"""
     fig2 = plt.figure(figsize=(32, 8))
     ax = fig2.add_subplot(111)
-    ax.plot(x, y, linestyle='-', linewidth=0.5)
+    ax.plot(x, y, linestyle='-', linewidth=1)
     if peaks is not None:
         # Let's get the highest 15 peaks
         ax.plot(peaks, y[peaks], 'x')
         for i, label in enumerate(peaks):
             ax.text(peaks[i], y[peaks[i]]*1.5, str(label) + ' Hz - ' + '{:2.3f} pV^2/Hz'.format(y[peaks[i]]*1e12))
     ax.set_xscale(logx)
-    ax.set_xlabel(xlab)
-    ax.set_ylabel(ylab)
+    fontsize=18
+    ax.set_xlabel(xlab, fontsize=fontsize)
+    ax.set_ylabel(ylab, fontsize=fontsize)
     ax.set_yscale(logy)
     ax.set_ylim((ylim))
-    ax.set_title(title)
+    ax.set_title(title, fontsize=fontsize)
     ax.grid(True)
+    ax.minorticks_on()
+    ax.grid(which='minor')
+    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+        label.set_fontsize(fontsize)
     fig2.savefig(fName, dpi=200)
     plt.close('all')
     return None
@@ -142,6 +147,8 @@ def compute_welch(time, data, number_segments=10):
     fs = 1/(time[-1] - time[-2])
     # Compute number of points per segment so we have N segments
     nperseg = int(time.size//number_segments)
+    print('Welch input using sampling frequency of {} Hz'.format(fs))
+    print('Welch using nperseg={}'.format(nperseg))
     f, Pxx_den = signal.welch(data, fs, window='hann', nperseg=nperseg)
     return f, Pxx_den
 
@@ -162,7 +169,7 @@ def compute_noise_spectra(input_directory, squid_run, mode='old'):
     else:
         branches = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform']
     method = 'chain'
-    data = readROOT(list_of_files, tree, branches, method)
+    data = readROOT(list_of_files[0:5], tree, branches, method)
     data = data['data']
     # Make output directory
     outdir = '/Users/bwelliver/cuore/bolord/noise_spectra/sr_' + str(squid_run)
@@ -230,9 +237,10 @@ def compute_noise_spectra(input_directory, squid_run, mode='old'):
     ax = fig.add_subplot(111)
     for channel in data_array.keys():
         print('Computing using welch')
-        freq, fdata = compute_welch(time_array[channel], data_array[channel], number_segments=50)
+        freq, fdata = compute_welch(time_array[channel], data_array[channel], number_segments=5)
         # Find peaks toooooooo
-        peaks = find_peaks_cwt(fdata, np.asarray([i+0.1 for i in range(10)]), noise_perc=10, min_snr=20)
+        #peaks = find_peaks_cwt(fdata, np.asarray([i+0.1 for i in range(10)]), noise_perc=10, min_snr=20)
+        peaks = None
         print('Making plot')
         xlab = 'Frequency (Hz)'
         ylab = 'PSD V^2/Hz'
@@ -252,42 +260,48 @@ def compute_noise_spectra(input_directory, squid_run, mode='old'):
     ax.set_title(title)
     ax.grid(True)
     ax.legend()
+    print('Saving both psd...')
     fig.savefig(fName, dpi=200)
     plt.close('all')
     # Get both overlapped
     #gen_plot_line_both(outdir, time_array, data_array, number_segments=50, logx='log', logy='log')
-#    # Try a spectrogram
-#    print('Trying to do a spectrogram')
-#    f, t, Sxx = signal.spectrogram(data_array[7], 250e3)
-#    plt.pcolormesh(t, f, np.log(Sxx))
-#    #print(Sxx)
-#    print('Max Sxx is: {}'.format(Sxx.max()))
-#    plt.ylabel('Frequency [Hz]')
-#    plt.xlabel('Time [sec]')
-#    plt.savefig(outdir + '/spectrogram_channel_7.png', dpi=200)
-#    
-#    plt.ylabel('Frequency [Hz]')
-#    plt.xlabel('Time [sec]')
-#    plt.yscale('log')
-#    plt.ylim((2e-2, 125e3))
-#    plt.savefig(outdir + '/spectrogram_channel_7_log.png', dpi=200)
-#    plt.close('all')
-#    
-#    print('Trying to do a spectrogram')
-#    f, t, Sxx = signal.spectrogram(data_array[5], 250e3)
-#    plt.pcolormesh(t, f, np.log(Sxx))
-#    #print(Sxx)
-#    print('Max Sxx is: {}'.format(Sxx.max()))
-#    plt.ylabel('Frequency [Hz]')
-#    plt.xlabel('Time [sec]')
-#    plt.savefig(outdir + '/spectrogram_channel_5.png', dpi=200)
-#    
-#    plt.ylabel('Frequency [Hz]')
-#    plt.xlabel('Time [sec]')
-#    plt.yscale('log')
-#    plt.ylim((2e-2, 125e3))
-#    plt.savefig(outdir + '/spectrogram_channel_5_log.png', dpi=200)
-#    plt.close('all')
+    # Try a spectrogram
+    print('Trying to do a spectrogram')
+    fsample = 250000 # for run 902 it is 250000 Hz
+    nperseg = int(data_array[7].size//2)
+    f, t, Sxx = signal.spectrogram(data_array[7], fsample, nperseg=nperseg)
+    plt.pcolormesh(t, f, np.log(Sxx))
+    #print(Sxx)
+    print('Max Sxx is: {}'.format(Sxx.max()))
+    plt.ylabel('Frequency [Hz]')
+    plt.xlabel('Time [sec]')
+    plt.savefig(outdir + '/spectrogram_channel_7.png', dpi=200)
+    plt.ylim((0,5))
+    plt.savefig(outdir + '/spectrogram_channel_7_lowF.png', dpi=200)
+    
+    
+    plt.ylabel('Frequency [Hz]')
+    plt.xlabel('Time [sec]')
+    plt.yscale('log')
+    plt.ylim((2e-2, 125e3))
+    plt.savefig(outdir + '/spectrogram_channel_7_log.png', dpi=200)
+    plt.close('all')
+    
+    print('Trying to do a spectrogram')
+    f, t, Sxx = signal.spectrogram(data_array[5], 250e3)
+    plt.pcolormesh(t, f, np.log(Sxx))
+    #print(Sxx)
+    print('Max Sxx is: {}'.format(Sxx.max()))
+    plt.ylabel('Frequency [Hz]')
+    plt.xlabel('Time [sec]')
+    plt.savefig(outdir + '/spectrogram_channel_5.png', dpi=200)
+    
+    plt.ylabel('Frequency [Hz]')
+    plt.xlabel('Time [sec]')
+    plt.yscale('log')
+    plt.ylim((2e-2, 125e3))
+    plt.savefig(outdir + '/spectrogram_channel_5_log.png', dpi=200)
+    plt.close('all')
     return None
         
 

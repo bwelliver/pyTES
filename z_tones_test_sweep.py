@@ -16,7 +16,7 @@ def poly_w_fit(f, a, n, x0):
     return a*np.power(f, n) + x0
 
 
-def complex_ratio_fit(f, Rn, Rl, L, C):
+def complex_ratio_fit_parallelC(f, Rn, Rl, L, C):
     '''Complex version of ratio fit'''
     #Rn = 0.543
     ZL = 1j*2*np.pi*f*L
@@ -30,10 +30,34 @@ def complex_ratio_fit(f, Rn, Rl, L, C):
     return ratio
 
 
-def ratio_fit(f, Rn, Rl, L, C):
+def complex_ratio_fit(f, Rn, Rl, L):
+    '''Complex version of ratio fit'''
+    #Rn = 0.543
+    ZL = 1j*2*np.pi*f*L
+    #ZLs = 1j*2*np.pi*f*Ls
+    #C = 1
+    #ZC = 1/(1j*2*np.pi*f*C)
+    
+    Z1 = Rn + Rl + ZL
+    Z2 = Rl + ZL
+    ratio = Z1/Z2
+    return ratio
+
+
+def ratio_fit_parallelC(f, Rn, Rl, L, C):
     '''flat version of ratio fit'''
     #Rn = 0.543
-    ratio = complex_ratio_fit(f, Rn, Rl, L, C)
+    ratio = complex_ratio_fit_parallelC(f, Rn, Rl, L, C)
+    
+    q = np.real(ratio)
+    q = np.append(q, np.imag(ratio))
+    return q
+
+
+def ratio_fit(f, Rn, Rl, L):
+    '''flat version of ratio fit'''
+    #Rn = 0.543
+    ratio = complex_ratio_fit(f, Rn, Rl, L)
     
     q = np.real(ratio)
     q = np.append(q, np.imag(ratio))
@@ -57,14 +81,41 @@ def complex_tes_one_block(f, I, R, g, T, a, b, C):
     L = TES loop gain
     t = TES time constant
     Z(w) = Rl + jwL + Ztes(w)
+    NOTE: Be sure to use VOLTAGE biased model!!!!!
     '''
     
     #T = 9e-3
-    P = I**2 * R
+    P = I*I*R
     L = P*a/(g*T)
-    t = C/g
-    ti = t/(1-L)
-    Ztes = R*(1+b) + (R*L/(1-L))*(2+b)/(1+ 1j*2*np.pi*f*ti)
+    ti = C/(g*(L-1))
+    Ztes = R*(1+b) + (L/(L-1))*R*(2+b)*1/(1 + 1j*np.pi*f*ti)
+    return Ztes
+
+
+def complex_tes_one_block_lindeman(f, I, R, g, T, a, b, C):
+    '''Simple 1 block model for Ztes
+    f = actual frequency data
+    Independent parameters shall be as follows:
+    I = current on TES
+    a = alpha (T/R*dR/dT)
+    b = beta (I/R)*dR/dI
+    R = TES resistance
+    g = TES thermal conductivity
+    C = TES heat capacity
+    T = TES temperature
+    Rl = TES circuit load resistance
+    Lin = TES input branch inductance
+    Also to keep in mind
+    L = TES loop gain
+    t = TES time constant
+    Z(w) = Rl + jwL + Ztes(w)
+    NOTE: Be sure to use VOLTAGE biased model!!!!!
+    '''
+    
+    #T = 9e-3
+    t = 1/((I*I*R/(C*T))*a - g/C)
+    #
+    Ztes = R*((1+b) + ((2+b)/2)*((I*I*R/(C*T))*a*t) * (-1 + (1+1j*2*np.pi*f*t)/(-1 + 1j*2*np.pi*f*t)))
     return Ztes
 
 def tes_one_block(f, I, R, g, T, a, b, C):
@@ -86,9 +137,10 @@ def tes_one_block(f, I, R, g, T, a, b, C):
     #R = 40e-3
     #g = 60e-12
     #T = 8e-3
-    Ztes = complex_tes_one_block(f, I, R, g, T, a, b, C)
+    Ztes = complex_tes_one_block_lindeman(f, I, R, g, T, a, b, C)
     q = np.real(Ztes)
     q = np.append(q, np.imag(Ztes))
+    #print(q)
     return q
 
 
@@ -107,11 +159,13 @@ def tes_one_block_fixed(f, a, b, C):
     L = TES loop gain
     t = TES time constant
     '''
-    I = 2.01e-6
-    R = 100e-3
-    g = 1.20e-12
-    T = 10.8e-3
-    Ztes = complex_tes_one_block(f, I, R, g, T, a, b, C)
+    I = 2.2e-6
+    R = 65e-3
+    g = 2e-12
+    T = 11e-3
+    #g = 37e-12
+    #T = 30.5e-3
+    Ztes = complex_tes_one_block_lindeman(f, I, R, g, T, a, b, C)
     q = np.real(Ztes)
     q = np.append(q, np.imag(Ztes))
     return q
@@ -252,6 +306,56 @@ def gen_plot_points_fit_ratio_components(tone, ratio, ratio_model, result, perr,
     return None
 
 
+def gen_plot_points_fit_z_components(tone, z, z_model, result, perr, xlab, ylab, title, fName, xlim=None, ylim=None, xlog='linear', ylog='linear', component='real'):
+    """Create generic plots that may be semilogx (default)
+    I, a, b, R, g, C, T, Rl, Lin
+    """
+    I, R, G, T, a, b, C = result
+    Ierr, Rerr, Gerr, Terr, aerr, berr, Cerr = perr
+    
+    fig2 = plt.figure(figsize=(16, 16))
+    ax = fig2.add_subplot(111)
+    if component == 'real':
+        ax.plot(tone, np.real(z), marker='o', markersize=4, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0.0, linestyle='None')
+        # Now the fit
+        ax.plot(tone, np.real(z_model), 'r-', marker='None', linewidth=2)
+    if component == 'imag':
+        ax.plot(tone, np.imag(z), marker='o', markersize=4, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0.0, linestyle='None')
+        # Now the fit
+        ax.plot(tone, np.imag(z_model), 'r-', marker='None', linewidth=2)
+    ax.set_xscale(xlog)
+    ax.set_xlabel(xlab)
+    ax.set_ylabel(ylab)
+    ax.set_yscale(ylog)
+    if xlim is not None:
+        ax.set_xlim(xlim)
+    if ylim is not None:
+        ax.set_ylim(ylim)
+    #ax.set_ylim([-1, 1])
+    #ax.set_xlim([-1, 1])
+    ax.grid()
+    ax.set_title(title)
+    
+    # Set up text strings for my fit
+    tI = r'$I_{0} = %.5f \pm %.5f \mathrm{\mu A}$'%(I*1e6, Ierr*1e6)
+    ta = r'$\alpha = %.5f \pm %.5f$'%(a, aerr)
+    tb = r'$\beta = %.5f \pm %.5f$'%(b, berr)
+    tR = r'$R_{0} = %.5f \pm %.5f \mathrm{m\Omega}$'%(R*1e3, Rerr*1e3)
+    tg = r'$G = %.5f \pm %.5f \mathrm{pW/K}$'%(G*1e12, Gerr*1e12)
+    tC = r'$C = %.5f \pm %.5f \mathrm{pJ/K}$'%(C*1e12, Cerr*1e12)
+    tT = r'$T_{0} = %.5f \pm %.5f \mathrm{mK}$'%(T*1e3, Terr*1e3)
+    #tRl = r'$R_{L} = %.5f \pm %.5f \mathrm{m\Omega}$'%(Rl*1e3, Rlerr*1e3)
+    #tLin = r'$L_{in} = %.5f \pm %.5f \mathrm{nH}$'%(Lin*1e9, Linerr*1e9)
+    text_string = tI + '\n' + tR + '\n' + tg + '\n' + ta + '\n' + tb + '\n' + tC + '\n' + tT
+        
+    props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
+    ax.text(0.7, 0.2, text_string, transform=ax.transAxes, fontsize=14, verticalalignment='top', horizontalalignment='left', bbox=props)
+    fig2.savefig(fName, dpi=200)
+    #plt.show()
+    #plt.draw()
+    plt.close('all')
+    return None
+
 def gen_plot_points_fit_poly(tone, y, y_model, result, perr, xlab, ylab, title, fName, xlog='linear', ylog='linear'):
     """Create generic plots that may be semilogx (default)
     I, a, b, R, g, C, T, Rl, Lin
@@ -290,7 +394,7 @@ def gen_plot_points_fit_poly(tone, y, y_model, result, perr, xlab, ylab, title, 
     return None
 
 
-def gen_plot_points(x, y, xlab, ylab, title, fName, xlim=None, ylim=None, xlog='linear', ylog='linear', figSize=(16,16)):
+def gen_plot_points(x, y, xlab, ylab, title, fName, xlim=None, ylim=None, xlog='linear', ylog='linear', figSize=(8,8)):
     """Create generic plots that may be semilogx (default)"""
     fig2 = plt.figure(figsize=figSize)
     ax = fig2.add_subplot(111)
@@ -334,7 +438,7 @@ def get_frequency_list(filename):
     for line in lines[eoh+n_lines_to_skip:]:
         line = line.strip('\n').split('\t')
         f.append(float(line[0]))
-    return np.asarray(f)
+    return np.unique(f)
 
 
 
@@ -486,6 +590,93 @@ def select_tones(tone_list, frequency, df):
     return frequency_cut
 
 
+def parse_file(file_name, list_of_frequencies, data):
+    '''Parse data from the specified file'''
+    # We have a file that has some data in it...what data is it and where does it go?
+    isReal = file_name.find('real') != -1
+    frequency_index = int(file_name.strip('.txt').split('_')[-1])
+    if frequency_index >= list_of_frequencies.size:
+        print('Frequency index of {} is found but frequency list is only {} entries long. Skipping...'.format(frequency_index, len(list_of_frequencies)))
+        return data
+    # Load the file
+    frequencies, response = parse_lvm_file(file_name)
+    # Now...what frequency are we looking for?
+    f0 = list_of_frequencies[frequency_index]
+    df = frequencies[1]
+    fcut = np.logical_and(frequencies > f0 - df/2, frequencies <= f0 + df/2)
+    fActual = np.mean(frequencies[fcut])
+    rActual = np.max(response[fcut])
+    
+    # Now we have a (f,A) point and we know if it is the real or imaginary part.
+    if isReal == True:
+        data['reRatio'][frequency_index] = rActual
+        data['real_freq'][frequency_index] = fActual
+    else:
+        data['imRatio'][frequency_index] = rActual
+        data['imag_freq'][frequency_index] = fActual
+    return data
+
+
+def get_frequencies(inFile):
+    '''Read in a frequency file to get a list of frequencies'''
+    f = parse_lvm_file(inFile, intype="frequency_list")
+    return f
+    
+
+def get_sweep_data_from_file(inputDirectory, temperature, current):
+    '''Get the sweep data for a given current value and assign to specific frequencies'''
+    list_of_files = glob.glob('{}/*_{}_{}*.txt'.format(inputDirectory, temperature, current))
+    # NATURAL SORT
+    dre = re.compile(r'(\d+)')
+    list_of_files.sort(key=lambda l: [int(s) if s.isdigit() else s.lower() for s in re.split(dre, l)])
+    # Now we have a list of files so let us go through them.
+    frequency_files = []
+    new_list_of_files = []
+    for f in list_of_files:
+        isFrequency = f.find('freq') > -1
+        if isFrequency == True:
+            frequency_files.append(f)
+        else:
+            new_list_of_files.append(f)
+    print('The frequency files are: {}'.format(frequency_files))
+    list_of_frequencies = get_frequencies(frequency_files[0])
+    print('The list of frequencies is {}'.format(list_of_frequencies))
+    data = {'reRatio': np.zeros(list_of_frequencies.size, dtype='float'),
+            'imRatio': np.zeros(list_of_frequencies.size, dtype='float'),
+            'real_freq': np.zeros(list_of_frequencies.size, dtype='float'),
+            'imag_freq': np.zeros(list_of_frequencies.size, dtype='float')
+            }
+    for f in new_list_of_files:
+        data = parse_file(f, list_of_frequencies, data)
+    # By this time we should have built up a frequency list and a complex data list.
+    return data
+
+
+def get_data_arrays_transfer_sweep(inputDirectory, temperature, sc_current, n_current=None, df=None, invert=True):
+    '''Get the data we want, in terms of the ratio and tones arrays'''
+    # Get the data for each component and we will combine it
+    data = get_sweep_data_from_file(inputDirectory, temperature, sc_current)
+    # If the ratio contained in data is not representative of fVin/fVout let's invert it so it is
+    scdata = invert_ratio(data, invert)
+    
+    # Get the data for each component and we will combine it
+    if n_current is not None:
+        data = get_sweep_data_from_file(inputDirectory, temperature, n_current)
+        # If the ratio contained in data is not representative of fVin/fVout let's invert it so it is
+        ndata = invert_ratio(data, invert)
+        # Because we read only the specific tone from each file these ARE our tone arrays
+        # In theory we can just take the ratio because only the DC bit will be special
+        ratio_tones = (ndata['reRatio'] + 1j*ndata['imRatio'])/(scdata['reRatio'] + 1j*scdata['imRatio'])
+        n_ratio_tones = (ndata['reRatio'] + 1j*ndata['imRatio'])
+        tones = ndata['real_freq']
+        return tones, ratio_tones, n_ratio_tones
+    else:
+        tones = scdata['real_freq']
+        ratio_tones = scdata['reRatio'] + 1j*scdata['imRatio']
+        return tones, ratio_tones
+    return None
+
+
 def fit_z_model_and_plot(inputDirectory, tones, z, p0=None, lbounds=None, ubounds=None, method='lm'):
     '''Helper function that attempts to fit'''
     zz = np.real(z)
@@ -494,27 +685,48 @@ def fit_z_model_and_plot(inputDirectory, tones, z, p0=None, lbounds=None, ubound
     if method == 'trf':
         print('The initial guess is {}'.format(p0))
         if lbounds is not None or ubounds is not None:
-            result, pcov = curve_fit(tes_one_block_fixed, tones, zz, p0=p0, bounds=(lbounds, ubounds), method=method, max_nfev=1e4)
+            result, pcov = curve_fit(tes_one_block, tones, zz, p0=p0, bounds=(lbounds, ubounds), method=method, max_nfev=1e4)
         else:
-            result, pcov = curve_fit(tes_one_block_fixed, tones, zz, p0=p0, method=method, max_nfev=1e4)
+            result, pcov = curve_fit(tes_one_block, tones, zz, p0=p0, method=method, max_nfev=1e4)
     if method == 'lm':
-        result, pcov = curve_fit(tes_one_block_fixed, tones, zz, p0=p0, method=method)
+        result, pcov = curve_fit(tes_one_block, tones, zz, p0=p0, method=method)
     perr = np.sqrt(np.diag(pcov))
     if len(result) < 7:
-        I = 2.01e-6
-        R = 100e-3
-        g = 1.20e-12
-        T = 10.8e-3
+        #I, R, g, T, a, b, C
+        I = 2.2e-6
+        R = 65e-3
+        g = 2e-12
+        T = 11e-3
+        #g = 37e-12
+        #T = 10.5e-3
+        #result = [I, R, *result]
         result = [I, R, g, T, *result]
         perr = [0, 0, 0, 0, *perr]
-    z_model = complex_tes_one_block(tones, *result)
+        #perr = [0, 0, 0, 0, *perr]
+    #result = [1.1e-6, 200e-3, 37e-12, 30e-3, 80, 1, 23e-12]
+    z_model = complex_tes_one_block_lindeman(tones, *result)
     xlab = 'real Z [Ohms]'
     ylab = 'imag Z [Ohms]'
     title = 'Nyquist plot of Z Model'
     fName = inputDirectory + '/nyquist_zmodel_tones.png'
     gen_plot_points_fit(z, z_model, result, perr, xlab, ylab, title, fName, xlog='linear', ylog='linear')
+    # Make component plots
+    xlab = 'Frequency [Hz]'
+    ylab = 'Real Part of Impedance'
+    title = 'Real Plot of Z Model'
+    fName = inputDirectory + '/real_z_model_tones.png'
+    gen_plot_points_fit_z_components(tones, z, z_model, result, perr, xlab, ylab, title, fName, ylim=[-0.5,0.5], xlog='log', ylog='linear', component='real')
+    
+    xlab = 'Frequency [Hz]'
+    ylab = 'Imag Part of Impedance'
+    title = 'Imag Plot of Z Model'
+    fName = inputDirectory + '/imag_z_model_tones.png'
+    gen_plot_points_fit_z_components(tones, z, z_model, result, perr, xlab, ylab, title, fName, ylim=[-0.3,0.1], xlog='log', ylog='linear', component='imag')
+    
+    
     print('Fit and plot done')
     return result, perr, z_model
+
 
 def fit_ratio_model_and_plot(inputDirectory, tones, ratio, p0=None, lbounds=None, ubounds=None, method='lm'):
     '''Helper function that attempts to fit ratio model for transfer function'''
@@ -523,6 +735,7 @@ def fit_ratio_model_and_plot(inputDirectory, tones, ratio, p0=None, lbounds=None
     print('Attempting to fit...')
     if method == 'trf':
         if lbounds is not None and ubounds is not None:
+            print('The value of tones is {} and the value of ratio is:{}'.format(tones, ratio))
             result, pcov = curve_fit(ratio_fit, tones, ratioratio, p0=p0, bounds=(lbounds, ubounds), method=method, max_nfev=1e4)
         else:
             result, pcov = curve_fit(ratio_fit, tones, ratioratio, p0=p0, method=method, max_nfev=1e4)
@@ -536,27 +749,27 @@ def fit_ratio_model_and_plot(inputDirectory, tones, ratio, p0=None, lbounds=None
     #result = [0.547, 32.5e-3, 2.089e-7]
     ratio_model = complex_ratio_fit(tones, *result)
     # Insert missing things
-    result = [result[0], result[1], result[2], 0, result[3]]
-    perr = [perr[0], perr[1], perr[2], 0, perr[3]]
+    result = [result[0], result[1], result[2], 0, 0]
+    perr = [perr[0], perr[1], perr[2], 0, 0]
     print('The values for the fit are: Rn = {} mOhm, Rl = {} mOhm, L = {} uH, Ls = {} uH, C = {} nF'.format(result[0]*1e3, result[1]*1e3, result[2]*1e6, result[3]*1e6, result[4]*1e9))
     xlab = 'Real Zn/Zsc'
     ylab = 'Imag Zn/Zsc'
     title = 'Nyquist plot of Ratio Model'
     fName = inputDirectory + '/nyquist_ratio_model_tones.png'
-    gen_plot_points_fit_ratio(ratio, ratio_model, result, perr, xlab, ylab, title, fName, xlim=[0, 20], ylim=[-10,10], xlog='linear', ylog='linear')
+    gen_plot_points_fit_ratio(ratio, ratio_model, result, perr, xlab, ylab, title, fName, xlim=[0, 20], ylim=[-10,1], xlog='linear', ylog='linear')
     
     # Make component plots
     xlab = 'Frequency [Hz]'
     ylab = 'Real Part of Impedance Ratio'
     title = 'Real Plot of Ratio Model'
     fName = inputDirectory + '/real_ratio_model_tones.png'
-    gen_plot_points_fit_ratio_components(tones, ratio, ratio_model, result, perr, xlab, ylab, title, fName, ylim=[0,30], xlog='log', ylog='linear', component='real')
+    gen_plot_points_fit_ratio_components(tones, ratio, ratio_model, result, perr, xlab, ylab, title, fName, ylim=[0,20], xlog='log', ylog='linear', component='real')
     
     xlab = 'Frequency [Hz]'
     ylab = 'Imag Part of Impedance Ratio'
     title = 'Imag Plot of Ratio Model'
     fName = inputDirectory + '/imag_ratio_model_tones.png'
-    gen_plot_points_fit_ratio_components(tones, ratio, ratio_model, result, perr, xlab, ylab, title, fName, ylim=[-10,10], xlog='log', ylog='linear', component='imag')
+    gen_plot_points_fit_ratio_components(tones, ratio, ratio_model, result, perr, xlab, ylab, title, fName, ylim=[-10,1], xlog='log', ylog='linear', component='imag')
     
     print('Fit and plot done')
     return result, perr, ratio_model
@@ -567,14 +780,10 @@ def compute_z(inputDirectory, G_tones, Rn, Rl, L, C):
     
     #inputDirectory = '/Users/bwelliver/cuore/bolord/complex_z/test_sd/z_8mK_hann'
     # Get low frequency scans
-    imag_suffix = 'zdata_10.8mK_12.7uA_allF_imag.txt'
-    real_suffix = 'zdata_10.8mK_12.7uA_allF_real.txt'
-    # Note for square waves set fStep = 2*f0
-    f0 = 7
-    fStep = 10
-    fMax = 19997
-    tones, ratio_tones = get_data_arrays_z(inputDirectory, imag_suffix, real_suffix, f0, fStep, fMax, df=None, invert=True)
-
+    temperature = '19.3mK'
+    bias_current = '12.5uA'
+    tones, ratio_tones = get_data_arrays_transfer_sweep(inputDirectory, temperature, bias_current, n_current=None, df=None, invert=True)
+    
     #
     xlab = 'Real Ratio'
     ylab = 'Imag Ratio'
@@ -616,7 +825,8 @@ def compute_z(inputDirectory, G_tones, Rn, Rl, L, C):
     #z = (M*Rfb*Rsh*(ratio_tones)/Zbias)/G_tones - Rl - 2*np.pi*1j*tones*L
     #1/(1/(z + Rl + 2*np.pi*1j*tones*L) + 1/ZC) = (M*Rfb*Rsh*(ratio_tones)/Zbias)/G_tones 
     ZC = 1/(2*np.pi*1j*tones*C)
-    z = 1/(1/((M*Rfb*Rsh*(ratio_tones)/Zbias)/G_tones) - 1/ZC) - Rl - 2*np.pi*1j*tones*L
+    #z = 1/(1/((M*Rfb*Rsh*(ratio_tones)/Zbias)/G_tones) - 1/ZC) - Rl - 2*np.pi*1j*tones*L
+    z = (M*Rfb*Rsh*(ratio_tones)/Zbias)/G_tones - Rl - 2*np.pi*1j*tones*L
     
     # Plot Things
     xlab = 'Real Z [Ohms]'
@@ -649,37 +859,40 @@ def compute_z(inputDirectory, G_tones, Rn, Rl, L, C):
 
 
     # Attempt to fit
-    # f, I, a, b, R0, g, C, T, Rl, Lin
+    # f, I, R, g, T, a, b, C
     loI = 0.0
     loR = 21e-3
     loG = 1e-14
-    loa = 0.1
-    lob = 0.1
-    loC = 1e-13
-    loT = 7e-3
-    #lbounds = [loI, loR, loG, loT, loa, lob, loC]
+    loT = 1e-3
+    loa = 0
+    lob = 0
+    loC = 1e-14
     lbounds = [loa, lob, loC]
+    lbounds = [loI, loR, loG, loT, loa, lob, loC]
+    
     
     #ubounds = [1, 1e6, 1e6, 1, 1, 1, 40e-3]
-    hiI = 13e-6
-    hiR = 140e-3
-    hiG = 70e-12
-    hia = 300.0
+    hiI = 20e-6
+    hiR = 1
+    hiG = 1e-10
+    hiT = 37e-3
+    hia = 1e4
     hib = 10.0
-    hiC = 50e-12
-    hiT = 34e-3
-    #ubounds = [hiI, hiR, hiG, hiT, hia, hib, hiC]
+    hiC = 5e-10
     ubounds = [hia, hib, hiC]
+    ubounds = [hiI, hiR, hiG, hiT, hia, hib, hiC]
     
-    I0 = 2.2e-6
-    R0 = 90e-3
-    G0 = 0.8e-12
-    a0 = 20.5
-    b0 = 1.0
-    C0 = 20e-12
-    T0 = 8e-3
-    #x0 = [I0, R0, G0, T0, a0, b0, C0]
+    
+    I0 = 1e-6
+    R0 = 200e-3
+    g0 = 10e-12
+    T0 = 20e-3
+    a0 = 2000
+    b0 = 1
+    C0 = 25e-12
     x0 = [a0, b0, C0]
+    x0 = [I0, R0, g0, T0, a0, b0, C0]
+    
     result, perr, z_model = fit_z_model_and_plot(inputDirectory, tones, z, p0=x0, lbounds=lbounds, ubounds=ubounds, method='trf')
     return None
 
@@ -758,85 +971,10 @@ def compute_z(inputDirectory, G_tones, Rn, Rl, L, C):
 #    title = 'Power spectrum of Im Z'
 #    fName = inputDirectory + '/psd_imag_z_tones_fromTime.png'
 #    gen_plot_points(tones, z.imag, xlab, ylab, title, fName, xlog='log', ylog='linear')
-    
-def parse_file(file_name, list_of_frequencies, data):
-    '''Parse data from the specified file'''
-    # We have a file that has some data in it...what data is it and where does it go?
-    isReal = file_name.find('real') != -1
-    frequency_index = int(file_name.strip('.txt').split('_')[-1])
-    if frequency_index >= list_of_frequencies.size:
-        print('Frequency index of {} is found but frequency list is only {} entries long. Skipping...'.format(frequency_index, len(list_of_frequencies)))
-        return data
-    # Load the file
-    frequencies, response = parse_lvm_file(file_name)
-    # Now...what frequency are we looking for?
-    f0 = list_of_frequencies[frequency_index]
-    df = frequencies[1]
-    fcut = np.logical_and(frequencies > f0 - df/2, frequencies <= f0 + df/2)
-    fActual = np.mean(frequencies[fcut])
-    rActual = np.max(response[fcut])
-    
-    # Now we have a (f,A) point and we know if it is the real or imaginary part.
-    if isReal == True:
-        data['reRatio'][frequency_index] = rActual
-        data['real_freq'][frequency_index] = fActual
-    else:
-        data['imRatio'][frequency_index] = rActual
-        data['imag_freq'][frequency_index] = fActual
-    return data
-    
-def get_frequencies(inFile):
-    '''Read in a frequency file to get a list of frequencies'''
-    f = parse_lvm_file(inFile, intype="frequency_list")
-    return f
-    
-def get_sweep_data_from_file(inputDirectory, current):
-    '''Get the sweep data for a given current value and assign to specific frequencies'''
-    list_of_files = glob.glob('{}/*_{}*.txt'.format(inputDirectory, current))
-    # NATURAL SORT
-    dre = re.compile(r'(\d+)')
-    list_of_files.sort(key=lambda l: [int(s) if s.isdigit() else s.lower() for s in re.split(dre, l)])
-    # Now we have a list of files so let us go through them.
-    frequency_files = []
-    new_list_of_files = []
-    for f in list_of_files:
-        isFrequency = f.find('freq') > -1
-        if isFrequency == True:
-            frequency_files.append(f)
-        else:
-            new_list_of_files.append(f)
-    print('The frequency files are: {}'.format(frequency_files))
-    list_of_frequencies = get_frequencies(frequency_files[0])
-    print('The list of frequencies is {}'.format(list_of_frequencies))
-    data = {'reRatio': np.zeros(list_of_frequencies.size, dtype='float'),
-            'imRatio': np.zeros(list_of_frequencies.size, dtype='float'),
-            'real_freq': np.zeros(list_of_frequencies.size, dtype='float'),
-            'imag_freq': np.zeros(list_of_frequencies.size, dtype='float')
-            }
-    for f in new_list_of_files:
-        data = parse_file(f, list_of_frequencies, data)
-    # By this time we should have built up a frequency list and a complex data list.
-    return data
         
 
 
-def get_data_arrays_transfer_sweep(inputDirectory, sc_current, n_current, df=None, invert=True):
-    '''Get the data we want, in terms of the ratio and tones arrays'''
-    # Get the data for each component and we will combine it
-    data = get_sweep_data_from_file(inputDirectory, sc_current)
-    # If the ratio contained in data is not representative of fVin/fVout let's invert it so it is
-    scdata = invert_ratio(data, invert)
-    
-    # Get the data for each component and we will combine it
-    data = get_sweep_data_from_file(inputDirectory, n_current)
-    # If the ratio contained in data is not representative of fVin/fVout let's invert it so it is
-    ndata = invert_ratio(data, invert)
-    # Because we read only the specific tone from each file these ARE our tone arrays
-    # In theory we can just take the ratio because only the DC bit will be special
-    ratio_tones = (ndata['reRatio'] + 1j*ndata['imRatio'])/(scdata['reRatio'] + 1j*scdata['imRatio'])
-    n_ratio_tones = (ndata['reRatio'] + 1j*ndata['imRatio'])
-    tones = ndata['real_freq']
-    return tones, ratio_tones, n_ratio_tones 
+
 
 
 def get_data_arrays_transfer(inputDirectory, sc_imag_suffix, sc_real_suffix, n_imag_suffix, n_real_suffix, f0, fStep, fMax, df=None, invert=True):
@@ -927,72 +1065,14 @@ def get_data_arrays_z(inputDirectory, imag_suffix, real_suffix, f0, fStep, fMax,
 
 
 def compute_transfer_function(inputDirectory):
-    '''Compute the transfer function'''
-    ############# Let us look at the transfer function
-#    inputDirectory = '/Users/bwelliver/cuore/bolord/complex_z/test_sd/z_8mK'
-#    # Get low frequency scans
-#    sc_imag_suffix = 'zdata_10.8mK_0uA_3Hz_imag.txt'
-#    sc_real_suffix = 'zdata_10.8mK_0uA_3Hz_real.txt'
-#
-#    n_imag_suffix = 'zdata_10.8mK_125uA_3Hz_imag.txt'
-#    n_real_suffix = 'zdata_10.8mK_125uA_3Hz_real.txt'
-#    # Note for square waves set fStep = 2*f0
-#    f0 = 3
-#    fStep = 2*f0
-#    fMax = (f0 + 20*fStep)
-#    low_tones, low_tones_ratio, n_low_tones_ratio = get_data_arrays_transfer(inputDirectory, sc_imag_suffix, sc_real_suffix, n_imag_suffix, n_real_suffix, f0, fStep, fMax, df=None, invert=True)
-#    
-#    # Get med frequency scans
-#    sc_imag_suffix = 'zdata_10.8mK_0uA_17Hz_imag.txt'
-#    sc_real_suffix = 'zdata_10.8mK_0uA_17Hz_real.txt'
-#
-#    n_imag_suffix = 'zdata_10.8mK_125uA_17Hz_imag.txt'
-#    n_real_suffix = 'zdata_10.8mK_125uA_17Hz_real.txt'
-#    # Note for square waves set fStep = 2*f0
-#    f0 = 17
-#    fStep = 2*f0
-#    fMax = (f0 + 20*fStep)
-#    mid_tones, mid_tones_ratio, n_mid_tones_ratio = get_data_arrays_transfer(inputDirectory, sc_imag_suffix, sc_real_suffix, n_imag_suffix, n_real_suffix, f0, fStep, fMax, df=None, invert=True)
-#    
-#    # Get hi frequency scans
-#    sc_imag_suffix = 'zdata_10.8mK_0uA_500Hz_imag.txt'
-#    sc_real_suffix = 'zdata_10.8mK_0uA_500Hz_real.txt'
-#
-#    n_imag_suffix = 'zdata_10.8mK_125uA_500Hz_imag.txt'
-#    n_real_suffix = 'zdata_10.8mK_125uA_500Hz_real.txt'
-#    # Note for square waves set fStep = 2*f0
-#    f0 = 500
-#    fStep = 2*f0
-#    fMax = (f0 + 20*fStep)
-#    hi_tones, hi_tones_ratio, n_hi_tones_ratio = get_data_arrays_transfer(inputDirectory, sc_imag_suffix, sc_real_suffix, n_imag_suffix, n_real_suffix, f0, fStep, fMax, df=None, invert=True)
-#    
-#    # Combine the three
-#    tones = np.append(low_tones, mid_tones)
-#    ratio_tones = np.append(low_tones_ratio, mid_tones_ratio)
-#    n_ratio_tones = np.append(n_low_tones_ratio, n_low_tones_ratio)
-#    
-#    tones = np.append(tones, hi_tones)
-#    ratio_tones = np.append(ratio_tones, hi_tones_ratio)
-#    n_ratio_tones = np.append(n_ratio_tones, n_hi_tones_ratio)
-
-#    #inputDirectory = '/Users/bwelliver/cuore/bolord/complex_z/test_sd/z_8mK_hann'
-#    # Get low frequency scans
-#    sc_imag_suffix = 'zdata_10.8mK_0uA_allF_imag.txt'
-#    sc_real_suffix = 'zdata_10.8mK_0uA_allF_real.txt'
-#
-#    n_imag_suffix = 'zdata_10.8mK_125uA_allF_imag.txt'
-#    n_real_suffix = 'zdata_10.8mK_125uA_allF_real.txt'
-#    # Note for square waves set fStep = 2*f0
-#    f0 = 7
-#    fStep = 10
-#    fMax = 19997
-#    tones, ratio_tones, n_ratio_tones = get_data_arrays_transfer(inputDirectory, sc_imag_suffix, sc_real_suffix, n_imag_suffix, n_real_suffix, f0, fStep, fMax, df=None, invert=True)
-    
+    '''Compute the transfer function'''    
     # Ok in the sweep mode we have a list of known good frequencies. The partial index
     # of the file is the index in the array to look for the desired frequency.
     sc_current = '0uA'
     n_current = '100uA'
-    tones, ratio_tones, n_ratio_tones = get_data_arrays_transfer_sweep(inputDirectory, sc_current, n_current, df=None, invert=True)
+    temperature = '19.3mK'
+    
+    tones, ratio_tones, n_ratio_tones = get_data_arrays_transfer_sweep(inputDirectory, temperature, sc_current, n_current, df=None, invert=True)
     
     # Plot the nyquist
     xlab = 'Real Zn/Zs'
@@ -1021,9 +1101,9 @@ def compute_transfer_function(inputDirectory):
     gen_plot_points(tones, ratio_tones.imag, xlab, ylab, title, fName, xlog='log', ylog='linear')
     
     # Attempt to fit
-    x0 = [0.545, 33e-3, 0.8e-6, 1e-12]
-    lbounds = [0.5, 21e-3, 6e-9, 0]
-    ubounds = [0.6, 100e-3, 2e-6, 1e-3]
+    x0 = [0.545, 33e-3, 0.8e-6]
+    lbounds = [0.5, 21e-3, 6e-9]
+    ubounds = [0.6, 100e-3, 2e-6]
     result, perr, ratio_model = fit_ratio_model_and_plot(inputDirectory, tones, ratio_tones, p0=x0, lbounds=lbounds, ubounds=ubounds, method='trf')
     
     # Now we can create G(w)
@@ -1065,9 +1145,9 @@ def compute_transfer_function(inputDirectory):
 
 runType = 'transfer'
 if runType == 'transfer' or runType == 'both':
-    inputDirectory = '/Users/bwelliver/cuore/bolord/complex_z/test_sd/z_10.5mK_sweep'
+    inputDirectory = '/Users/bwelliver/cuore/bolord/complex_z/test_sd/z_10.5mK_2mV_50avg_sweep'
     G, Rn, Rl, L, C = compute_transfer_function(inputDirectory)
-    if runType == 'transfer':
+    if runType == 'both':
         compute_z(inputDirectory, G, Rn, Rl, L, C)
 
 #    # Test a simple polynomial fit to a mid-to-high range frequency of the Im part

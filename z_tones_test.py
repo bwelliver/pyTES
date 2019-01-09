@@ -14,24 +14,24 @@ def poly_w_fit(f, a, n, x0):
     return a*np.power(f, n) + x0
 
 
-def complex_ratio_fit(f, Rn, Rl, L, C):
+def complex_ratio_fit(f, Rn, Rl, L):
     '''Complex version of ratio fit'''
     #Rn = 0.543
     ZL = 1j*2*np.pi*f*L
     #ZLs = 1j*2*np.pi*f*Ls
     #C = 1
-    ZC = 1/(1j*2*np.pi*f*C)
+    #ZC = 1/(1j*2*np.pi*f*C)
     
-    Z1 = 1/(1/(Rn + Rl + ZL) + 1/ZC)
-    Z2 = 1/(1/(Rl + ZL) + 1/ZC)
+    Z1 = Rn + Rl + ZL
+    Z2 = Rl + ZL
     ratio = Z1/Z2
     return ratio
 
 
-def ratio_fit(f, Rn, Rl, L, C):
+def ratio_fit(f, Rn, Rl, L):
     '''flat version of ratio fit'''
     #Rn = 0.543
-    ratio = complex_ratio_fit(f, Rn, Rl, L, C)
+    ratio = complex_ratio_fit(f, Rn, Rl, L)
     
     q = np.real(ratio)
     q = np.append(q, np.imag(ratio))
@@ -174,8 +174,8 @@ def gen_plot_points_fit_ratio(ratio, ratio_model, result, perr, xlab, ylab, titl
     # Now the fit
     ax.plot(np.real(ratio_model), np.imag(ratio_model), 'r-', marker='None', linewidth=2)
     ax.set_xscale(xlog)
-    ax.set_xlabel(xlab)
-    ax.set_ylabel(ylab)
+    ax.set_xlabel(xlab, fontsize=18)
+    ax.set_ylabel(ylab, fontsize=18)
     ax.set_yscale(ylog)
     if xlim is not None:
         ax.set_xlim(xlim)
@@ -184,7 +184,7 @@ def gen_plot_points_fit_ratio(ratio, ratio_model, result, perr, xlab, ylab, titl
     #ax.set_ylim([-1, 1])
     #ax.set_xlim([-1, 1])
     ax.grid()
-    ax.set_title(title)
+    ax.set_title(title, fontsize=18)
     
     # Set up text strings for my fit
     tRn = r'$R_{n} = %.5f \pm %.5f \mathrm{m\Omega}$'%(Rn*1e3, Rnerr*1e3)
@@ -192,10 +192,12 @@ def gen_plot_points_fit_ratio(ratio, ratio_model, result, perr, xlab, ylab, titl
     tLin = r'$L_{in} = %.5f \pm %.5f \mathrm{\mu H}$'%(Lin*1e6, Linerr*1e6)
     tLs = r'$L_{s} = %.5f \pm %.5f \mathrm{\mu H}$'%(Ls*1e6, Lserr*1e6)
     tC = r'$C_{in} = %.5f \pm %.5f \mathrm{nF}$'%(C*1e9, Cerr*1e9)
-    text_string = tRn + '\n' + tRl + '\n' + tLin + '\n' + tLs + '\n' + tC
+    text_string = tRn + '\n' + tRl + '\n' + tLin #+ '\n' + tLs + '\n' + tC
         
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
-    ax.text(0.7, 0.2, text_string, transform=ax.transAxes, fontsize=14, verticalalignment='top', horizontalalignment='left', bbox=props)
+    ax.text(0.3, 0.6, text_string, transform=ax.transAxes, fontsize=14, verticalalignment='top', horizontalalignment='left', bbox=props)
+    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+        label.set_fontsize(18)
     fig2.savefig(fName, dpi=200)
     #plt.show()
     #plt.draw()
@@ -221,8 +223,8 @@ def gen_plot_points_fit_ratio_components(tone, ratio, ratio_model, result, perr,
         # Now the fit
         ax.plot(tone, np.imag(ratio_model), 'r-', marker='None', linewidth=2)
     ax.set_xscale(xlog)
-    ax.set_xlabel(xlab)
-    ax.set_ylabel(ylab)
+    ax.set_xlabel(xlab, fontsize=18)
+    ax.set_ylabel(ylab, fontsize=18)
     ax.set_yscale(ylog)
     if xlim is not None:
         ax.set_xlim(xlim)
@@ -231,7 +233,7 @@ def gen_plot_points_fit_ratio_components(tone, ratio, ratio_model, result, perr,
     #ax.set_ylim([-1, 1])
     #ax.set_xlim([-1, 1])
     ax.grid()
-    ax.set_title(title)
+    ax.set_title(title, fontsize=18)
     
     # Set up text strings for my fit
     tRn = r'$R_{n} = %.5f \pm %.5f \mathrm{m\Omega}$'%(Rn*1e3, Rnerr*1e3)
@@ -239,10 +241,12 @@ def gen_plot_points_fit_ratio_components(tone, ratio, ratio_model, result, perr,
     tLin = r'$L_{in} = %.5f \pm %.5f \mathrm{\mu H}$'%(Lin*1e6, Linerr*1e6)
     tLs = r'$L_{s} = %.5f \pm %.5f \mathrm{\mu H}$'%(Ls*1e6, Lserr*1e6)
     tC = r'$C_{in} = %.5f \pm %.5f \mathrm{nF}$'%(C*1e9, Cerr*1e9)
-    text_string = tRn + '\n' + tRl + '\n' + tLin + '\n' + tLs + '\n' + tC
+    text_string = tRn + '\n' + tRl + '\n' + tLin #+ '\n' + tLs + '\n' + tC
         
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
-    ax.text(0.7, 0.2, text_string, transform=ax.transAxes, fontsize=14, verticalalignment='top', horizontalalignment='left', bbox=props)
+    ax.text(0.3, 0.2, text_string, transform=ax.transAxes, fontsize=14, verticalalignment='top', horizontalalignment='left', bbox=props)
+    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+        label.set_fontsize(18)
     fig2.savefig(fName, dpi=200)
     #plt.show()
     #plt.draw()
@@ -505,27 +509,27 @@ def fit_ratio_model_and_plot(inputDirectory, tones, ratio, p0=None, lbounds=None
     #result = [0.547, 32.5e-3, 2.089e-7]
     ratio_model = complex_ratio_fit(tones, *result)
     # Insert missing things
-    result = [result[0], result[1], result[2], 0, result[3]]
-    perr = [perr[0], perr[1], perr[2], 0, perr[3]]
+    result = [result[0], result[1], result[2], 0, 0]
+    perr = [perr[0], perr[1], perr[2], 0, 0]
     print('The values for the fit are: Rn = {} mOhm, Rl = {} mOhm, L = {} uH, Ls = {} uH, C = {} nF'.format(result[0]*1e3, result[1]*1e3, result[2]*1e6, result[3]*1e6, result[4]*1e9))
     xlab = 'Real Zn/Zsc'
     ylab = 'Imag Zn/Zsc'
     title = 'Nyquist plot of Ratio Model'
     fName = inputDirectory + '/nyquist_ratio_model_tones.png'
-    gen_plot_points_fit_ratio(ratio, ratio_model, result, perr, xlab, ylab, title, fName, xlim=[0, 20], ylim=[-10,10], xlog='linear', ylog='linear')
+    gen_plot_points_fit_ratio(ratio, ratio_model, result, perr, xlab, ylab, title, fName, xlim=[0, 20], ylim=[-10,1], xlog='linear', ylog='linear')
     
     # Make component plots
     xlab = 'Frequency [Hz]'
     ylab = 'Real Part of Impedance Ratio'
     title = 'Real Plot of Ratio Model'
     fName = inputDirectory + '/real_ratio_model_tones.png'
-    gen_plot_points_fit_ratio_components(tones, ratio, ratio_model, result, perr, xlab, ylab, title, fName, ylim=[0,30], xlog='log', ylog='linear', component='real')
+    gen_plot_points_fit_ratio_components(tones, ratio, ratio_model, result, perr, xlab, ylab, title, fName, ylim=[0,20], xlog='log', ylog='linear', component='real')
     
     xlab = 'Frequency [Hz]'
     ylab = 'Imag Part of Impedance Ratio'
     title = 'Imag Plot of Ratio Model'
     fName = inputDirectory + '/imag_ratio_model_tones.png'
-    gen_plot_points_fit_ratio_components(tones, ratio, ratio_model, result, perr, xlab, ylab, title, fName, ylim=[-10,10], xlog='log', ylog='linear', component='imag')
+    gen_plot_points_fit_ratio_components(tones, ratio, ratio_model, result, perr, xlab, ylab, title, fName, ylim=[-10,1], xlog='log', ylog='linear', component='imag')
     
     print('Fit and plot done')
     return result, perr, ratio_model
@@ -905,9 +909,9 @@ def compute_transfer_function(inputDirectory):
     gen_plot_points(tones, ratio_tones.imag, xlab, ylab, title, fName, xlog='log', ylog='linear')
     
     # Attempt to fit
-    x0 = [0.545, 33e-3, 0.8e-6, 1e-12]
-    lbounds = [0.5, 21e-3, 6e-9, 0]
-    ubounds = [0.6, 100e-3, 2e-6, 1e-3]
+    x0 = [0.545, 33e-3, 0.8e-6]
+    lbounds = [0.5, 21e-3, 6e-9]
+    ubounds = [0.6, 100e-3, 2e-6]
     result, perr, ratio_model = fit_ratio_model_and_plot(inputDirectory, tones, ratio_tones, p0=x0, lbounds=lbounds, ubounds=ubounds, method='trf')
     
     # Now we can create G(w)
@@ -949,9 +953,9 @@ def compute_transfer_function(inputDirectory):
 
 runType = 'transfer'
 if runType == 'transfer' or runType == 'both':
-    inputDirectory = '/Users/bwelliver/cuore/bolord/complex_z/test_sd/z_10mK_test'
+    inputDirectory = '/Users/bwelliver/cuore/bolord/complex_z/test_sd/z_8mK_100_vavg'
     G, Rn, Rl, L, C = compute_transfer_function(inputDirectory)
-    if runType == 'transfer':
+    if runType == 'both':
         compute_z(inputDirectory, G, Rn, Rl, L, C)
 
 #    # Test a simple polynomial fit to a mid-to-high range frequency of the Im part

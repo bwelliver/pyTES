@@ -49,160 +49,17 @@ class RequiredValueNotSetException(Exception):
     pass
 
 
-class IV:
-    '''A Class to contain IV data and some methods in a compact form.
-    All current, voltage, resistance and power is stored as an IVData class (value, RMS properties)
-    Inputs:
-        channel: The SQUID channel to use for proper transfer relationships
-    Properties:
-        bias current
-        output voltage
-        TES current
-        TES voltage
-        TES resistance
-        TES (Joule) power dissipation
-    Methods:
-    This class contains methods to compute the TES values
-    '''
-
-    def __init__(self, channel=2):
-        self.iBias = IVData()
-        self.vOut = IVData()
-        self.iTES = IVData()
-        self.vTES = IVData()
-        self.rTES = IVData()
-        self.pTES = IVData()
-        self.squid = squid_info.SQUIDParameters(channel)
-        self.Rp = IVData()
-        return None
-    
-    
-    @staticmethod
-    def compute_iTES(v, Rfb, M):
-        '''Computes the TES current and TES current RMS in Amps'''
-        i = v/(Rfb*M)
-        return i
-    
-    
-    @staticmethod
-    def compute_vTES(iBias, vOut, Rfb, Rsh, M, Rp=0):
-        '''Computes the TES voltage in V'''
-        vTES = iBias*Rsh - (vOut/(M*Rfb))*Rsh - (vOut/(M*Rfb))*Rp
-        return vTES
-    
-    
-    @staticmethod
-    def compute_vTES_rms(iBias_rms, vOut, vOut_rms, Rfb, Rsh, M, Rp=0, Rp_rms=0):
-        '''Computes the TES voltage RMS in V'''
-        # The error is composed of 3 terms: The iBias term, the vOut term, and the parasitic term
-        dV_iBias = Rsh*iBias_rms
-        dV_vOut = ((Rp + Rsh)/(M*Rfb))*vOut_rms
-        dV_Rp = (vOut/(M*Rfb))*Rp_rms
-        dV = sqrt(pow2(dV_iBias) + pow2(dV_vOut) + pow2(dV_Rp))
-        return dV
-    
-    
-    @staticmethod
-    def compute_rTES(vTES, iTES):
-        '''Compute the TES resistance in Ohms'''
-        rTES = vTES/iTES
-        return rTES
-    
-    
-    @staticmethod
-    def compute_rTES_rms(vTES, vTES_rms, iTES, iTES_rms):
-        '''Compute the RMS of the TES resistance in Ohms'''
-        # This is composed of the RMS of vTES in one part and the RMS of iTES in the other
-        dR_v = vTES_rms/iTES
-        dR_i = -1*(vTES/iTES)*(iTES_rms/iTES)
-        dR = sqrt(pow2(dR_v) + pow2(dR_i))
-        return dR
-    
-    
-    @staticmethod
-    def compute_pTES(vTES, iTES):
-        '''Compute the TES power'''
-        pTES = vTES*iTES
-        return pTES
-    
-    
-    @staticmethod
-    def compute_pTES_rms(vTES, vTES_rms, iTES, iTES_rms):
-        '''Compute the RMS of the TES power'''
-        # This is composed of the portion due to the vTES and the iTES RMS
-        dP_v = vTES_rms*iTES
-        dP_i = vTES*iTES_rms
-        dP = sqrt(pow2(dP_v) + pow2(dP_i))
-        return dP
-
-    
-    def set_parasitic_resistance(self, R):
-        '''Takes as input an IVData object for the parasitic resistance value'''
-        if isinstance(R, IVData):
-            self.Rp = R
-        else:
-            raise InvalidObjectTypeException("Input object R is of type {}. Must be of type IVData".format(type(R)))
-        return None
-    
-    
-    def get_iTES(self):
-        '''Assign iTES data values and RMS values'''
-        iTES = self.compute_iTES(self.vOut.data, self.squid.Rfb, self.squid.M)
-        iTES_rms = self.compute_iTES(self.vOut.rms, self.Rfb, self.M)
-        self.iTES.set_values(iTES, iTES_rms)
-        return None
-    
-    
-    def get_vTES(self):
-        '''Assign vTES data values and vTES RMS values'''
-        vTES = self.compute_vTES(self.iBias.data, self.vOut.data, self.squid.Rfb, self.squid.Rsh, self.squid.M, self.Rp.data)
-        vTES_rms = self.compute_vTES_rms(self.iBias.rms, self.vOut.data, self.vOut.rms, self.squid.Rfb, self.squid.Rsh, self.squid.M, self.Rp.data, self.Rp.rms)
-        self.vTES.set_values(vTES, vTES_rms)
-        return None
-    
-    
-    def get_rTES(self):
-        '''Assign rTES values and rTES RMS values'''
-        rTES = self.compute_rTES(self.vTES.data, self.iTES.data)
-        rTES_rms = self.compute_rTES_rms(self.vTES.data, self.vTES.rms, self.iTES.data, self.iTES.rms)
-        self.rTES.set_values(rTES, rTES_rms)
-        return None
-    
-    
-    def get_pTES(self):
-        '''Assign pTES values and pTES RMS values'''
-        pTES = self.compute_pTES(self.vTES.data, self.iTES.data)
-        pTES_rms = self.compute_pTES_rms(self.vTES.data, self.vTES.rms, self.iTES.data, self.iTES.rms)
-        self.pTES.set_data(pTES, pTES_rms)
-        return None
-
-    
-    def get_all_TES(self):
-        '''Obtains and assigns all TES values'''
-        if self.Rp.data is None:
-            raise RequiredValueNotSetException('Required series parasitic values are not set')
-        if self.iBias.data is None:
-            raise RequiredValueNotSetException('Required bias current values are not set')
-        if self.vOut.data is None:
-            raise RequiredValueNotSetException('Required output voltage values are not set')
-        self.get_iTES()
-        self.get_vTES()
-        self.get_rTES()
-        self.get_pTES()
-        return None
-
-
 class IVData:
     '''Class for IV Data objects. A simple container for the quantity and its RMS'''
-    
+
     def __init__(self):
         self.data = None
         self.rms = None
-        return None
+
     def set_values(self, data=None, rms=None):
         self.data = data
         self.rms = rms
-        return None
+
     def __repr__(self):
         '''Return a string representation'''
         s = '\t' + 'Data:\t' + str(self.data) + '\n' + '\t' + 'RMS:\t' + str(self.rms)
@@ -217,7 +74,9 @@ def mkdpaths(dirpath):
 
 def get_treeNames(input_file):
     '''Quick and dirty function to get name of trees'''
-    tFile = rt.TFile.Open(input_file)
+    TFile = getattr(rt, 'TFile') # avoids pylint complaining rt.TFile doesn't exist
+    tFile = TFile.Open(input_file)
+    # tFile = TFile.Open(input_file)
     #tDir = tFile.Get(directory)
     keys = tFile.GetListOfKeys()
     keyList = [key.GetName() for key in keys]
@@ -251,20 +110,22 @@ def process_waveform(waveform, time_values, sample_length, number_of_windows=1, 
     # Allocate numpy arrays. Note that if we made some assumptions we could pre-allocate instead of append...
     #print('The first entry contents of waveform are: {}'.format(waveform[0]))
     print('Processing waveform with {} winodws...'.format(number_of_windows))
-    mean_waveform = np.empty(0)
-    rms_waveform = np.empty(0)
-    new_time_values = np.empty(0)
+    # Pre-allocation size
+    number_of_entries = len(waveform) * number_of_windows
+    mean_waveform = np.empty(number_of_entries)
+    rms_waveform = np.empty(number_of_entries)
+    new_time_values = np.empty(number_of_entries)
     if process_type == 'mean':
         for event, samples in waveform.items():
-            number_of_samples = samples.size
             base_index = samples.size // number_of_windows
             event_time = time_values[event]
             for n in range(number_of_windows):
                 lower_index = n*base_index
                 upper_index = (n+1)*base_index
-                mean_waveform = np.append(mean_waveform, np.mean(samples[lower_index:upper_index]))
-                rms_waveform = np.append(rms_waveform, np.std(samples[lower_index:upper_index]))
-                new_time_values = np.append(new_time_values, event_time + ((upper_index + lower_index)/2)*sample_length)
+                entry_index = n + number_of_windows*event
+                mean_waveform[entry_index] = np.mean(samples[lower_index:upper_index])
+                rms_waveform[entry_index] = np.std(samples[lower_index:upper_index])
+                new_time_values[entry_index] = event_time + ((upper_index + lower_index)/2)*sample_length
     return mean_waveform, rms_waveform, new_time_values
 
 
@@ -284,14 +145,14 @@ def find_and_fix_squid_jumps(output_path, temperature, iv_data, evStart=0, buffe
     # One way to identify them is to first identify the "jump" whatever it is and then look at the slope on either side
     # If the slope on either side of a jump is approximately the same, it is a SQUID jump since the SC to N transition
     # results in a large change in slope.
-    
+
     # The walk normal function should handle this fairly well with some modifications.
     # Note that once a jump is identified we should apply a correction to subsequent data
-    
+
     # We will examine the data in the IV plane, after we have processed waveforms.
     # There will of course be a 'point' where the jump happens when we obtain the mean and RMS of the window
     # This point can be discarded.
-    
+
     # Let us walk along the waveform to see if there are any squid jumps
     # Ensure we have the proper sorting of the data
     t = iv_data['timestamps']
@@ -306,7 +167,7 @@ def find_and_fix_squid_jumps(output_path, temperature, iv_data, evStart=0, buffe
     dxdt = np.gradient(x, t, edge_order=2)
     # Next construct dydx in time ordered sense
     dydx = dydt/dxdt
-    # So we will walk along and compute the average of N elements at a time. 
+    # So we will walk along and compute the average of N elements at a time.
     # If the new average differs from the previous by some amount mark that as the boundary of a SQUID jump
     # This should not be a subtle thing.
     # Make a plot of what we are testing
@@ -387,7 +248,7 @@ def find_and_fix_squid_jumps(output_path, temperature, iv_data, evStart=0, buffe
         # Cycle through again until we hit the end of the list.
         iv_data = find_and_fix_squid_jumps(output_path, temperature, iv_data, evStart=ev)
     return iv_data
-    
+
 
 #@obsolete
 #def process_waveform(dWaveform, procType='mean'):
@@ -586,19 +447,19 @@ def walk_normal(x, y, side, buffer_size=200):
     cNtoSC_pos = np.logical_and(x > 0, diBias < 0)
     cNtoSC_neg = np.logical_and(x <= 0, diBias > 0)
     cNtoSC = np.logical_or(cNtoSC_pos, cNtoSC_neg)
-    
+
     # First let us compute the gradient (dy/dx)
     dydx = np.gradient(y, x, edge_order=2)
     # Set data that is in the SC to N transition to NaN in here
     x[~cNtoSC] = np.nan
     y[~cNtoSC] = np.nan
     dydx[~cNtoSC] = np.nan
-    
+
     if side == 'right':
         # Flip the array
         dydx = dydx[::-1]
     # In the normal region the gradient should be constant
-    # So we will walk along and compute the average of N elements at a time. 
+    # So we will walk along and compute the average of N elements at a time.
     # If the new average differs from the previous by some amount mark that as the boundary to the bias region
     dbuff = RingBuffer(buffer_size, dtype=float)
     for ev in range(buffer_size):
@@ -635,20 +496,20 @@ def walk_sc(x, y, buffer_size=5, plane='iv'):
     cNtoSC_pos = np.logical_and(x > 0, diBias < 0)
     cNtoSC_neg = np.logical_and(x <= 0, diBias > 0)
     cNtoSC = np.logical_or(cNtoSC_pos, cNtoSC_neg)
-    
+
     # Also select data that is some fraction of the normal resistance, say 20%
     # First let us compute the gradient (i.e. dy/dx)
     dydx = np.gradient(y, x, edge_order=2)
-    
+
     # Set data that is in the SC to N transition to NaN in here
     x[~cNtoSC] = np.nan
     y[~cNtoSC] = np.nan
     dydx[~cNtoSC] = np.nan
-    
+
     # In the sc region the gradient should be constant
-    # So we will walk along and compute the average of N elements at a time. 
+    # So we will walk along and compute the average of N elements at a time.
     # If the new average differs from the previous by some amount mark that as the end.
-    
+
     # First we should find whereabouts of (0,0)
     # This should roughly correspond to x = 0 since if we input nothing we should get out nothing. In reality there are parasitics of course
     if plane == 'tes':
@@ -762,7 +623,7 @@ def save_iv_to_root(output_directory, iv_dictionary):
             data['TTree']['T' + temperature]['TBranch'][key] = value
     #print(data)
     # We should also make an object that tells us what the other tree values are
-    #data['TDirectory']['iv']['TTree']['names']['TBranch'] = 
+    #data['TDirectory']['iv']['TTree']['names']['TBranch'] =
     mkdpaths(output_directory + '/root')
     outFile = output_directory + '/root/iv_data.root'
     writeROOT(outFile, data)
@@ -772,7 +633,7 @@ def save_iv_to_root(output_directory, iv_dictionary):
 def make_tes_multiplot(output_path, data_channel, iv_dictionary, fit_parameters):
     '''Make a plot of all temperatures at once
     rTES vs iBias
-    
+
     '''
     # Convert fit parameters to R values
     #R = convert_fit_to_resistance(fit_parameters, fit_type='tes')
@@ -783,8 +644,8 @@ def make_tes_multiplot(output_path, data_channel, iv_dictionary, fit_parameters)
     yScale = 1e3
     for temperature, data in iv_dictionary.items():
         params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': None}
-        axoptions = {'xlabel': 'Bias Current [uA]', 
-                     'ylabel': r'TES Resistance [m \Omega]', 
+        axoptions = {'xlabel': 'Bias Current [uA]',
+                     'ylabel': r'TES Resistance [m \Omega]',
                      'title': 'Channel {} TES Resistance vs Bias Current'.format(data_channel)
                     }
         ax = ivp.generic_fitplot_with_errors(ax=ax, x=data['iBias'], y=data['rTES'], params=params, axoptions=axoptions, xScale=xScale, yScale=yScale)
@@ -796,6 +657,54 @@ def make_tes_multiplot(output_path, data_channel, iv_dictionary, fit_parameters)
     for label in (ax.get_xticklabels() + ax.get_yticklabels()):
         label.set_fontsize(18)
     ivp.save_plot(fig, ax, fName)
+
+    # Overlay multiple IV plots
+    fig = plt.figure(figsize=(8,6))
+    ax = fig.add_subplot(111)
+    xScale = 1e6
+    yScale = 1e6
+    tNames = []
+    for temperature, data in iv_dictionary.items():
+        if temperature not in ['9.908']:
+            tNames.append(temperature)
+            params = {'marker': 'o', 'markersize': 2, 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': None}
+            axoptions = {'xlabel': r'TES Voltage [$\mu$V]',
+                         'ylabel': r'TES Current [$\mu$A]',
+                         'title': 'Channel {} TES Current vs Voltage'.format(data_channel)
+                        }
+            ax = ivp.generic_fitplot_with_errors(ax=ax, x=data['vTES'], y=data['iTES'], params=params, axoptions=axoptions, xScale=xScale, yScale=yScale)
+    # Add legend?
+    ax.legend(['T = {} mK'.format(temperature) for temperature in tNames], markerscale=3)
+    ax.set_ylim((0, 3))
+    ax.set_xlim((-0.5, 2))
+    fName = output_path + '/' + 'iTES_vs_vTES_ch_' + str(data_channel)
+    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+        label.set_fontsize(18)
+    ivp.save_plot(fig, ax, fName, dpi=150)
+
+    # Overlay multiple IV plots
+    fig = plt.figure(figsize=(8,6))
+    ax = fig.add_subplot(111)
+    xScale = 1e6
+    yScale = 1e3
+    tNames = []
+    for temperature, data in iv_dictionary.items():
+        if temperature not in ['9.908']:
+            tNames.append(temperature)
+            params = {'marker': 'o', 'markersize': 2, 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': None}
+            axoptions = {'xlabel': r'TES Voltage [$\mu$V]',
+                         'ylabel': r'TES Resistance [m$\Omega$]',
+                         'title': 'Channel {} TES Resistance vs Voltage'.format(data_channel)
+                        }
+            ax = ivp.generic_fitplot_with_errors(ax=ax, x=data['vTES'], y=data['rTES'], params=params, axoptions=axoptions, xScale=xScale, yScale=yScale)
+    # Add legend?
+    ax.legend(['T = {} mK'.format(temperature) for temperature in tNames], markerscale=3)
+    ax.set_ylim((0, 600))
+    ax.set_xlim((0, 2))
+    fName = output_path + '/' + 'rTES_vs_vTES_ch_' + str(data_channel)
+    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+        label.set_fontsize(18)
+    ivp.save_plot(fig, ax, fName, dpi=200)
     return None
 
 
@@ -808,7 +717,7 @@ def tes_plots(output_path, data_channel, temperature, data, fit_parameters):
     pTES vs rTES
     pTES vs vTES
     '''
-    
+
     # Convert fit parameters to R values
     R = convert_fit_to_resistance(fit_parameters, fit_type='tes')
     # Current vs Voltage
@@ -817,18 +726,18 @@ def tes_plots(output_path, data_channel, temperature, data, fit_parameters):
     xScale = 1e6
     yScale = 1e6
     params = {'marker': 'o', 'markersize': 2, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': data['vTES_rms']*xScale, 'yerr': data['iTES_rms']*yScale}
-    axoptions = {'xlabel': 'TES Voltage [uV]', 'ylabel': 'TES Current [uA]', 
+    axoptions = {'xlabel': 'TES Voltage [uV]', 'ylabel': 'TES Current [uA]',
                  'title': 'Channel {} TES Current vs TES Voltage for T = {} mK'.format(data_channel, temperature)}
-    
+
     ax = ivp.generic_fitplot_with_errors(ax=ax, x=data['vTES'], y=data['iTES'], axoptions=axoptions, params=params, xScale=xScale, yScale=yScale)
     ax = ivp.add_model_fits(ax=ax, x=data['vTES'], y=data['iTES'], model=fit_parameters, model_function=fitfuncs.lin_sq, xScale=xScale, yScale=yScale)
     ax = ivp.iv_fit_textbox(ax=ax, R=R, model=fit_parameters)
-    
+
     fName = output_path + '/' + 'iTES_vs_vTES_ch_' + str(data_channel) + '_' + temperature + 'mK'
     for label in (ax.get_xticklabels() + ax.get_yticklabels()):
         label.set_fontsize(18)
     ivp.save_plot(fig, ax, fName)
-    
+
     # Resistance vs Current
     fig = plt.figure(figsize=(16,12))
     ax = fig.add_subplot(111)
@@ -836,15 +745,15 @@ def tes_plots(output_path, data_channel, temperature, data, fit_parameters):
     yScale = 1e3
     ylim = (0, 1*yScale)
     params = {'marker': 'o', 'markersize': 2, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': data['iTES_rms']*xScale, 'yerr': data['rTES_rms']*yScale}
-    axoptions = {'xlabel': 'TES Current [uA]', 
-                 'ylabel': 'TES Resistance [mOhm]', 
-                 'title': 'Channel {} TES Resistance vs TES Current for T = {} mK'.format(data_channel, temperature), 
+    axoptions = {'xlabel': 'TES Current [uA]',
+                 'ylabel': 'TES Resistance [mOhm]',
+                 'title': 'Channel {} TES Resistance vs TES Current for T = {} mK'.format(data_channel, temperature),
                  'ylim': ylim
                 }
     ax = ivp.generic_fitplot_with_errors(ax=ax, x=data['iTES'], y=data['rTES'], axoptions=axoptions, params=params, xScale=xScale, yScale=yScale)
     fName = output_path + '/' + 'rTES_vs_iTES_ch_' + str(data_channel) + '_' + temperature + 'mK'
     ivp.save_plot(fig, ax, fName)
-    
+
     # Resistance vs Voltage
     fig = plt.figure(figsize=(16,12))
     ax = fig.add_subplot(111)
@@ -861,15 +770,15 @@ def tes_plots(output_path, data_channel, temperature, data, fit_parameters):
         'xerr': data['vTES_rms']*xScale,
         'yerr': data['rTES_rms']*yScale
     }
-    axoptions = {'xlabel': 'TES Voltage [uV]', 
-                 'ylabel': 'TES Resistance [mOhm]', 
-                 'title': 'Channel {} TES Resistance vs TES Voltage for T = {} mK'.format(data_channel, temperature), 
+    axoptions = {'xlabel': 'TES Voltage [uV]',
+                 'ylabel': 'TES Resistance [mOhm]',
+                 'title': 'Channel {} TES Resistance vs TES Voltage for T = {} mK'.format(data_channel, temperature),
                  'ylim': ylim
                 }
     ax = ivp.generic_fitplot_with_errors(ax=ax, x=data['vTES'], y=data['rTES'], axoptions=axoptions, params=params, xScale=xScale, yScale=yScale)
     fName = output_path + '/' + 'rTES_vs_vTES_ch_' + str(data_channel) + '_' + temperature + 'mK'
     ivp.save_plot(fig, ax, fName)
-    
+
     # Resistance vs Bias Current
     fig = plt.figure(figsize=(16,12))
     ax = fig.add_subplot(111)
@@ -877,15 +786,15 @@ def tes_plots(output_path, data_channel, temperature, data, fit_parameters):
     yScale = 1e3
     ylim = (0, 1*yScale)
     params = {'marker': 'o', 'markersize': 2, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': data['iBias_rms']*xScale, 'yerr': data['rTES_rms']*yScale}
-    axoptions = {'xlabel': 'Bias Current [uA]', 
-                 'ylabel': 'TES Resistance [mOhm]', 
-                 'title': 'Channel {} TES Resistance vs Bias Current for T = {} mK'.format(data_channel, temperature), 
+    axoptions = {'xlabel': 'Bias Current [uA]',
+                 'ylabel': 'TES Resistance [mOhm]',
+                 'title': 'Channel {} TES Resistance vs Bias Current for T = {} mK'.format(data_channel, temperature),
                  'ylim': ylim
                 }
     ax = ivp.generic_fitplot_with_errors(ax=ax, x=data['iBias'], y=data['rTES'], axoptions=axoptions, params=params, xScale=xScale, yScale=yScale)
     fName = output_path + '/' + 'rTES_vs_iBias_ch_' + str(data_channel) + '_' + temperature + 'mK'
     ivp.save_plot(fig, ax, fName)
-    
+
     # Power vs rTES
     fig = plt.figure(figsize=(16,12))
     ax = fig.add_subplot(111)
@@ -893,15 +802,15 @@ def tes_plots(output_path, data_channel, temperature, data, fit_parameters):
     yScale = 1e12
     xlim = (0, 1*xScale)
     params = {'marker': 'o', 'markersize': 2, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': data['rTES_rms']*xScale, 'yerr': data['pTES_rms']*yScale}
-    axoptions = {'xlabel': 'TES Resistance [mOhm]', 
-                 'ylabel': 'TES Power [pW]', 
-                 'title': 'Channel {} TES Power vs TES Resistance for T = {} mK'.format(data_channel, temperature), 
+    axoptions = {'xlabel': 'TES Resistance [mOhm]',
+                 'ylabel': 'TES Power [pW]',
+                 'title': 'Channel {} TES Power vs TES Resistance for T = {} mK'.format(data_channel, temperature),
                  'xlim': xlim
                 }
     ax = ivp.generic_fitplot_with_errors(ax=ax, x=data['rTES'], y=data['pTES'], axoptions=axoptions, params=params, xScale=xScale, yScale=yScale)
     fName = output_path + '/' + 'pTES_vs_rTES_ch_' + str(data_channel) + '_' + temperature + 'mK'
     ivp.save_plot(fig, ax, fName)
-    
+
     # Power vs vTES
     # Note this ideally is a parabola
     cut = np.logical_and(data['rTES'] > 500e-3, data['rTES'] < 2*500e-3)
@@ -920,25 +829,26 @@ def tes_plots(output_path, data_channel, temperature, data, fit_parameters):
     xScale = 1e6
     yScale = 1e12
     params = {'marker': 'o', 'markersize': 2, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': data['vTES_rms']*xScale, 'yerr': data['pTES_rms']*yScale}
-    axoptions = {'xlabel': 'TES Voltage [uV]', 
-                 'ylabel': 'TES Power [pW]', 
+    axoptions = {'xlabel': 'TES Voltage [uV]',
+                 'ylabel': 'TES Power [pW]',
                  'title': 'Channel {} TES Power vs TES Resistance for T = {} mK'.format(data_channel, temperature)
                 }
-    
+
     ax = ivp.generic_fitplot_with_errors(ax=ax, x=data['vTES'], y=data['pTES'], axoptions=axoptions, params=params, xScale=xScale, yScale=yScale)
     ax = ivp.add_model_fits(ax=ax, x=data['vTES'], y=data['pTES'], model=fitResult, model_function=fitfuncs.quad_sq, xScale=xScale, yScale=yScale)
     ax = ivp.pr_fit_textbox(ax=ax, model=fitResult)
-    
+
     fName = output_path + '/' + 'pTES_vs_vTES_ch_' + str(data_channel) + '_' + temperature + 'mK'
     ivp.save_plot(fig, ax, fName)
     return None
 
 
-def make_tes_plots(output_path, data_channel, iv_dictionary, fit_dictionary):
+def make_tes_plots(output_path, data_channel, iv_dictionary, fit_dictionary, individual=False):
     '''Loop through data to generate TES specific plots'''
-    
-    for temperature, data in iv_dictionary.items():
-        tes_plots(output_path, data_channel, temperature, data, fit_dictionary[temperature])
+
+    if individual == True:
+        for temperature, data in iv_dictionary.items():
+            tes_plots(output_path, data_channel, temperature, data, fit_dictionary[temperature])
     # Make a for all temperatures here
     make_tes_multiplot(output_path=output_path, data_channel=data_channel, iv_dictionary=iv_dictionary, fit_parameters=fit_dictionary)
     return None
@@ -1010,7 +920,7 @@ def get_TES_fits(tes_values):
     #TODO: determine if we want to get slopes of V = m*I+ b or I = m*V + b and if we want to plot I vs V or V vs I
     # First umpack. These are sorted by vTES value
     iTES, iTES_rms, vTES, vTES_rms, rTES, rTES_rms = tes_values
-    
+
     # Get the superconducting branch first. This will tell us what the parasitic series resistance is
     # And will let us knwo the correction shift needed so iTES = 0 when vTES = 0
     # Get SC branch
@@ -1036,7 +946,7 @@ def get_TES_fits(tes_values):
     perr = np.sqrt(np.diag(pcov))
     vFit = fitfuncs.lin_sq(iTES, result[0], result[1])
     vF_right = {'result': result, 'perr': perr, 'model': vFit*1e6}
-    
+
     # Adjust data based on intersection of SC and Normal data
     # V = Rn*I + Bn
     # V = Rs*I + Bs
@@ -1046,7 +956,7 @@ def get_TES_fits(tes_values):
     print('The current and voltage intersections are {} uA and {} uV'.format(current_intersection*1e6, voltage_intersection*1e6))
     iTES = iTES - current_intersection
     vTES = vTES - voltage_intersection
-    
+
     # Redo walks
     (evLeft, evRight) = walk_sc(vTES, iTES)
     # From here let us make a fit of the form y = m*x+b where y = vTES and x = iTES
@@ -1111,7 +1021,7 @@ def get_iv_data_from_file(input_path, new_format=False, thermometer='EP'):
 
 def format_iv_data(iv_data, output_path, new_format=False, number_of_windows=1, thermometer='EP'):
     '''Format the IV data into easy to use forms'''
-    
+
     # Now data structure:
     # Everything is recorded on an event level but some events are globally the same (i.e., same timestamp)
     # In general for example channel could be [5,6,7,5,6,7...]
@@ -1120,7 +1030,7 @@ def format_iv_data(iv_data, output_path, new_format=False, number_of_windows=1, 
     # WARNING!!! Because entries are written for each waveform for each EVENT things like time or temperature
     # will contain N(unique channels) duplicates
     # The things we need to return: Time, Temperature, Vin, Vout
-    
+
     # Construct the complete timestamp from the s and mus values
     # For a given waveform the exact timestamp of sample number N is as follows:
     # t[N] = Timestamp_s + Timestamp_mus*1e-6 + N*SamplingWidth_s
@@ -1140,7 +1050,7 @@ def format_iv_data(iv_data, output_path, new_format=False, number_of_windows=1, 
     ivp.test_plot(time_values, temperatures, 'Unix Time', 'Temperature [K]', output_path + '/' + 'quick_look_Tvt.png')
     print('Processing IV waveforms...')
     # Next process waveforms into input and output arrays
-    
+
     # Ultimately let us collapse the finely sampled waveforms into more coarse waveforms.
     mean_waveforms = {}
     rms_waveforms = {}
@@ -1191,7 +1101,7 @@ def parse_temperature_steps(output_path, time_values, temperatures, pid_log):
     # Each index of times is now the starting time of a temperature step. Include an appropriate offset for mean computation BUT only a softer one for time boundaries
     # timeList is a list of tuples.
     timeList = []
-    start_offset = 600
+    start_offset = 40*60
     end_offset = 60
     if times.size > 1:
         for index in range(times.size - 1):
@@ -1202,8 +1112,8 @@ def parse_temperature_steps(output_path, time_values, temperatures, pid_log):
             timeList.append((start_time, stop_time, mT))
         # Handle the last step
         # How long was the previous step?
-        dt = times[1] - times[0]
-        start_time = times[-1]
+        dt = timeList[-1][1] - timeList[-1][0]
+        start_time = timeList[-1][1] + start_offset
         end_time = start_time + dt - end_offset
         cut = np.logical_and(time_values > start_time, time_values < end_time)
         mT = np.mean(temperatures[cut])
@@ -1227,7 +1137,7 @@ def find_temperature_steps(output_path, time_values, temperatures, thermometer='
     '''
     # At this point we should only process data further based on unique IV time blocks so here we must find
     # the list of time tuples (tStart, tEnd, tTemp) that define a particular IV-curve temperature set
-    
+
     # First construct dT/dt and set time values to start at 0
     dT = np.gradient(temperatures, time_values)
     dt = time_values-time_values[0]
@@ -1416,19 +1326,19 @@ def correct_offsets(fitParams, iv_data, branch='normal'):
 
 def convert_fit_to_resistance(fit_parameters, fit_type='iv', Rp=None, Rp_rms=None):
     '''Given a iv_results.FitParameters object convert to Resistance and Resistance error iv_resistance.TESResistance objects
-    
+
     If a parasitic resistance is provided subtract it from the normal and superconducting branches and assign it
     to the parasitic property.
-    
+
     If no parasitic resistance is provided assume that the superconducting region values are purely parasitic
     and assign the resulting value to both properties.
-    
+
     '''
     squid_parameters = squid_info.SQUIDParameters(2)
     Rsh = squid_parameters.Rsh
     M = squid_parameters.M
     Rfb = squid_parameters.Rfb
-    
+
     R = iv_resistance.TESResistance()
     # The interpretation of the fit parameters depends on what plane we are in
     if fit_type == 'iv':
@@ -1489,7 +1399,7 @@ def fit_iv_regions(x, y, sigmaY, fittype='iv', plane='iv'):
     Rsh = squid_parameters.Rsh
     M = squid_parameters.M
     Rfb = squid_parameters.Rfb
-    
+
     fitParams = iv_results.FitParameters()
     # We need to walk and fit the superconducting region first since there RTES = 0
     result, perr = fit_sc_branch(x, y, sigmaY, plane)
@@ -1540,32 +1450,32 @@ def get_parasitic_resistances(iv_dictionary):
 def process_iv_curves(output_path, data_channel, iv_dictionary):
     '''Processes the IV data to obtain electrical parameters
     The IV curve has 3 regions -- normal, biased, superconducting
-    When the temperature becomes warm enough the superconducting 
+    When the temperature becomes warm enough the superconducting
     and biased regions will vanish leaving just a normal resistance line
-    
+
     In an ideal circuit the slope of the superconducting region will be infinity
     denoting 0 resistance. There is actually some parasitic resistance in series with the TES
     and so there is a slope in the superconducting region. This slope will gradually align with the normal
     region slope as temperature increases due to the TES becoming partially normal.
-    
+
     At the coldest temperature we can assume the TES resistance = 0 and so the slope is purely parasitic.
     This fitted parasitic resistance will be subtracted from resistances in the normal region to give a proper
     estimate of the normal resistance and an estimate of the residual TES resistance in the 'superconducting' region.
-    
+
     Additionally the IV curve must be corrected so that iBias = 0 corresponds to vOut = 0.
     '''
-    
+
     squid_parameters = squid_info.SQUIDParameters(2)
     Rsh = squid_parameters.Rsh
     M = squid_parameters.M
     Rfb = squid_parameters.Rfb
     fit_parameters_dictionary = {}
-    
+
     # First we should try to obtain a measure of the parasitic series resistance. This value will be subtracted from
     # subsequent fitted values of the TES resistance
     parasitic_dictionary, minT = get_parasitic_resistances(iv_dictionary)
     Rp, Rp_rms = parasitic_dictionary[minT].value, parasitic_dictionary[minT].rms
-    
+
     # Loop through the iv data now and obtain fit parameters and correct alignment
     for temperature, iv_data in iv_dictionary.items():
         fit_parameters_dictionary[temperature] = fit_iv_regions(x=iv_data['iBias'], y=iv_data['vOut'], sigmaY=iv_data['vOut_rms'], fittype='iv', plane='iv')
@@ -1661,12 +1571,12 @@ def get_PT_curves(output_path, data_channel, iv_dictionary):
     xScale = 1e3
     yScale = 1e15
     params = {'marker': 'o', 'markersize': 6, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': P_rms[cutT]*yScale}
-    axoptions = {'xlabel': 'Temperature [mK]', 
-                 'ylabel': 'TES Power [fW]', 
+    axoptions = {'xlabel': 'Temperature [mK]',
+                 'ylabel': 'TES Power [fW]',
                  'title': 'Channel {} TES Power vs Temperature'.format(data_channel),
                  'ylim': (0, None)
                 }
-    ax = ivp.generic_fitplot_with_errors(ax=ax, x=T[cutT], y=P[cutT], axoptions=axoptions, params=params, xScale=xScale, yScale=yScale)    
+    ax = ivp.generic_fitplot_with_errors(ax=ax, x=T[cutT], y=P[cutT], axoptions=axoptions, params=params, xScale=xScale, yScale=yScale)
     fName = output_path + '/' + 'pTES_vs_T_noFit_ch_' + str(data_channel)
     for label in (ax.get_xticklabels() + ax.get_yticklabels()):
         label.set_fontsize(18)
@@ -1688,7 +1598,7 @@ def get_PT_curves(output_path, data_channel, iv_dictionary):
     #perr = results.x/100
     #results = results.x
     #results, pcov = curve_fit(fitfuncs.tes_power_polynomial, T[cutT], P[cutT], method='dogbox')
-    
+
     fitResult = iv_results.FitParameters()
     fitResult.left.set_values(results, perr)
     #fitResult.right.set_values([results[0], 5, results[2]], [perr[0], 0, perr[2]])
@@ -1699,15 +1609,15 @@ def get_PT_curves(output_path, data_channel, iv_dictionary):
     xScale = 1e3
     yScale = 1e15
     params = {'marker': 'o', 'markersize': 6, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': P_rms*yScale}
-    axoptions = {'xlabel': 'Temperature [mK]', 
-                 'ylabel': 'TES Power [fW]', 
+    axoptions = {'xlabel': 'Temperature [mK]',
+                 'ylabel': 'TES Power [fW]',
                  'title': 'Channel {} TES Power vs Temperature'.format(data_channel),
                  'ylim': (0, 400)
                 }
     ax = ivp.generic_fitplot_with_errors(ax=ax, x=T, y=P, axoptions=axoptions, params=params, xScale=xScale, yScale=yScale)
     ax = ivp.add_model_fits(ax=ax, x=T, y=P, model=fitResult, model_function=fitfuncs.tes_power_polynomial, xScale=xScale, yScale=yScale)
     ax = ivp.pt_fit_textbox(ax=ax, model=fitResult)
-    
+
     fName = output_path + '/' + 'pTES_vs_T_ch_' + str(data_channel)
     for label in (ax.get_xticklabels() + ax.get_yticklabels()):
         label.set_fontsize(18)
@@ -1719,7 +1629,7 @@ def get_PT_curves(output_path, data_channel, iv_dictionary):
     print('G(Ttes) = {} pW/K'.format(results[0]*results[1]*np.power(results[2],results[1]-1)*1e12))
     print('G(10 mK) = {} pW/K'.format(results[0]*results[1]*np.power(10e-3, results[1]-1)*1e12))
     return None
-    
+
 
 def get_RT_curves(output_path, data_channel, iv_dictionary):
     '''Generate a resistance vs temperature curve for a TES'''
@@ -1739,20 +1649,20 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     xScale = 1e3
     yScale = 1e3
     params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': None}
-    axoptions = {'xlabel': 'Temperature [mK]', 
-                 'ylabel': 'TES Resistance [m' + r'$\Omega$' +']', 
+    axoptions = {'xlabel': 'Temperature [mK]',
+                 'ylabel': 'TES Resistance [m' + r'$\Omega$' +']',
                  'title': 'Channel {} TES Resistance vs Temperature'.format(data_channel)
                 }
     ax = ivp.generic_fitplot_with_errors(ax=ax, x=T, y=R, axoptions=axoptions, params=params, xScale=xScale, yScale=yScale)
     #ax.set_ylim((-1,1))
     #ax = ivp.add_model_fits(ax=ax, x=data['vTES'], y=data['iTES'], model=fit_parameters, model_function=fitfuncs.lin_sq, sc_bounds=sc_bounds, xScale=xScale, yScale=yScale)
     #ax = ivp.iv_fit_textbox(ax=ax, R=data['R'], Rerr=data['Rerr'], model=fit_parameters)
-    
+
     fName = output_path + '/' + 'rTES_vs_T_ch_' + str(data_channel)
     for label in (ax.get_xticklabels() + ax.get_yticklabels()):
         label.set_fontsize(18)
     ivp.save_plot(fig, ax, fName)
-    
+
     # Make R vs T only for times we are going from higher iBias to lower iBias values
     # One way, assuming noise does not cause overlaps, is to only select points where iBias[i] > iBias[i+1]
     # If I take the diff array I get the following: diBias[i] = iBias[i] - iBias[i-1]. If diBias[i] < 0 then iBias is descending
@@ -1766,10 +1676,10 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     R_desc = np.empty(0)
     Rrms_desc = np.empty(0)
     fitResult = iv_results.FitParameters()
-    i_select = 0.8e-6
+    i_select = 0.7e-6
     selector = 'iTES'
     for temperature, iv_data in iv_dictionary.items():
-        cut = np.logical_and(iv_data[selector] > i_select - 0.05e-6, iv_data[selector] < i_select + 0.01e-6)
+        cut = np.logical_and(iv_data[selector] > i_select - 0.1e-6, iv_data[selector] < i_select + 0.0e-6)
         print('the sum of cut is: {}'.format(nsum(cut)))
         # Cuts to select physical case where we go from Normal --> SC modes
         diBias = np.gradient(iv_data['iBias'], edge_order=2)
@@ -1780,7 +1690,7 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
         cut_asc = np.logical_and(cut, ~dcut)
         if nsum(cut_asc) > 0:
             T = np.append(T, float(temperature)*1e-3) # T in K
-            R = np.append(R, np.mean(iv_data['rTES'][cut_asc]))
+            R = np.append(R, np.median(iv_data['rTES'][cut_asc]))
             Rrms = np.append(Rrms, np.mean(iv_data['rTES_rms'][cut_asc]))
             #Rrms = np.append(Rrms, np.std(iv_data['rTES'][cut_asc]))
         if nsum(cut_desc) > 0:
@@ -1808,8 +1718,8 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     # Try a fit?
     # [Rn, Rp, Tc, Tw]
     # In new fit we have [C, D, B, A] --> A = 1/Tw, B = -Tc/Tw
-    
-    
+
+
     fig = plt.figure(figsize=(16,12))
     ax = fig.add_subplot(111)
     xScale = 1e3
@@ -1817,7 +1727,7 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     sortKey = np.argsort(T)
     nice_current = np.round(i_select*1e6,3)
     axoptions = {'xlabel': 'Temperature [mK]',
-              'ylabel': 'TES Resistance [m' + r'$\Omega$' +']', 
+              'ylabel': 'TES Resistance [m' + r'$\Omega$' +']',
               'title': 'Channel {}'.format(data_channel) +  ' TES Resistance vs Temperature for TES Current = {}'.format(nice_current)  + r'$\mu$' + 'A'}
     params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'red',
               'markerfacecolor': 'red', 'markeredgewidth': 0, 'linestyle': 'None',
@@ -1834,7 +1744,7 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     #x0 = [1, 0, -T[sortKey][np.gradient(R[sortKey], T[sortKey], edge_order=2).argmax()]/1e-3,  1/1e-3]
     print('For SN to N fit initial guess is {}'.format(x0))
     #result, pcov = curve_fit(fitfuncs.tanh_tc, T, R, sigma=Rrms, absolute_sigma=True, p0=x0, method='trf')
-    
+
     result, pcov = curve_fit(fitfuncs.tanh_tc, T, R, sigma=Rrms, absolute_sigma=True, method='trf', max_nfev=5e4)
     perr = np.sqrt(np.diag(pcov))
     print('Ascending (SC -> N): Rn = {} mOhm, Rp = {} mOhm, Tc = {} mK, Tw = {} mK'.format(*[i*1e3 for i in result]))
@@ -1845,7 +1755,7 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     x0 = [1, 0, 20e-3, 1e-3]
     #x0 = [1, 0, -T_desc[sortKey][np.gradient(R_desc[sortKey], T_desc[sortKey], edge_order=2).argmax()]/1e-3, 1/1e-3]
     print('For descending fit (N->S) initial guess is {}'.format(x0))
-    
+
     result_desc, pcov_desc = curve_fit(fitfuncs.tanh_tc, T_desc, R_desc, sigma=Rrms_desc, p0=x0, absolute_sigma=True, method='lm', maxfev=int(5e4))
     perr_desc = np.sqrt(np.diag(pcov_desc))
     print('Descending (N -> SC): Rn = {} mOhm, Rp = {} mOhm, Tc = {} mK, Tw = {} mK'.format(*[i*1e3 for i in result_desc]))
@@ -1858,22 +1768,22 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     yScale = 1e3
     sortKey = np.argsort(T)
     nice_current = np.round(i_select*1e6,3)
-    axoptions = {'xlabel': 'Temperature [mK]', 
-                 'ylabel': 'TES Resistance [m' + r'$\Omega$' +']', 
+    axoptions = {'xlabel': 'Temperature [mK]',
+                 'ylabel': 'TES Resistance [m' + r'$\Omega$' +']',
                  'title': 'Channel {}'.format(data_channel) + ' TES Resistance vs Temperature for TES Current = {}'.format(nice_current)  + r'$\mu$' + 'A'
                 }
-    
-    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'red', 
+
+    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'red',
               'markerfacecolor': 'red', 'markeredgewidth': 0, 'linestyle': 'None',
               'xerr': None, 'yerr': Rrms[sortKey]*yScale}
     ax = ivp.generic_fitplot_with_errors(ax=ax, x=T[sortKey], y=R[sortKey], axoptions=axoptions, params=params, xScale=xScale, yScale=yScale)
-    
+
     sortKey = np.argsort(T_desc)
-    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'green', 
+    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'green',
               'markerfacecolor': 'green', 'markeredgewidth': 0, 'linestyle': 'None',
               'xerr': None, 'yerr': Rrms_desc[sortKey]*yScale}
     ax = ivp.generic_fitplot_with_errors(ax=ax, x=T_desc[sortKey], y=R_desc[sortKey], axoptions=axoptions, params=params, xScale=xScale, yScale=yScale)
-    
+
     #ax.set_ylim((-1,1))
     ax = ivp.add_model_fits(ax=ax, x=T, y=R, model=fitResult, model_function=fitfuncs.tanh_tc, xScale=xScale, yScale=yScale)
     ax = ivp.rt_fit_textbox(ax=ax, model=fitResult)
@@ -1882,8 +1792,8 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     for label in (ax.get_xticklabels() + ax.get_yticklabels()):
         label.set_fontsize(18)
     ivp.save_plot(fig, ax, fName)
-    
-    
+
+
     # Make a nicer plot
     fig = plt.figure(figsize=(16,12))
     ax = fig.add_subplot(111)
@@ -1892,11 +1802,11 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     sortKey = np.argsort(T_desc)
     NtoS_fitResult = iv_results.FitParameters()
     NtoS_fitResult.right.set_values(result_desc, perr_desc)
-    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'green', 
+    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'green',
               'markerfacecolor': 'green', 'markeredgewidth': 0, 'linestyle': 'None',
               'xerr': None, 'yerr': Rrms_desc[sortKey]*yScale}
-    axoptions = {'xlabel': 'Temperature [mK]', 
-                 'ylabel': 'TES Resistance [m' + r'$\Omega$' +']', 
+    axoptions = {'xlabel': 'Temperature [mK]',
+                 'ylabel': 'TES Resistance [m' + r'$\Omega$' +']',
                  'title': 'Channel {}'.format(data_channel) + ' TES Resistance vs Temperature for TES Current = {}'.format(np.round(i_select*1e6,3))  + r'$\mu$' + 'A'
                 }
     ax = ivp.generic_fitplot_with_errors(ax=ax, x=T_desc[sortKey], y=R_desc[sortKey], axoptions=axoptions, params=params, xScale=xScale, yScale=yScale)
@@ -1906,7 +1816,7 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     ax = ivp.rt_fit_textbox(ax=ax, model=NtoS_fitResult)
     #ax.legend(['SC to N', 'N to SC'])
     fName = output_path + '/' + 'rTES_vs_T_ch_' + str(data_channel) + '_fixed_' + selector + '_' + str(np.round(i_select*1e6,3)) + 'uA_normal_to_sc_only'
-    ax.set_xlim((15, 36))
+    ax.set_xlim((10, 36))
     for label in (ax.get_xticklabels() + ax.get_yticklabels()):
         label.set_fontsize(18)
     ivp.save_plot(fig, ax, fName)
@@ -1929,8 +1839,8 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     xScale = 1e3
     yScale = 1
     params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'red', 'markerfacecolor': 'red', 'markeredgewidth': 0, 'linestyle': '-', 'xerr': None, 'yerr': None}
-    axoptions = {'xlabel': 'TES Resistance [m' + 'r$\Omega$' + ']', 
-                 'ylabel': r'$\alpha$', 
+    axoptions = {'xlabel': 'TES Resistance [m' + 'r$\Omega$' + ']',
+                 'ylabel': r'$\alpha$',
                  'title': 'Channel {} TES '.format(data_channel) + r'$\alpha$' +' vs Resistance'
                 }
     ax = ivp.generic_fitplot_with_errors(ax=ax, x=modelR[model_sortKey], y=model_alpha, axoptions=axoptions, params=params, xScale=xScale, yScale=yScale)
@@ -1950,8 +1860,8 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     xScale = 1e3
     yScale = 1
     params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': None}
-    axoptions = {'xlabel': 'Temperature [mK]', 
-                 'ylabel': r'$\alpha$', 
+    axoptions = {'xlabel': 'Temperature [mK]',
+                 'ylabel': r'$\alpha$',
                  'title': 'Channel {} TES '.format(data_channel) + r'$\alpha$' +' vs Temperature'
                 }
     ax = ivp.generic_fitplot_with_errors(ax=ax, x=T[sortKey], y=alpha, axoptions=axoptions, params=params, xScale=xScale, yScale=yScale)
@@ -1963,7 +1873,7 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     for label in (ax.get_xticklabels() + ax.get_yticklabels()):
         label.set_fontsize(18)
     ivp.save_plot(fig, ax, fName)
-    
+
     # We can get R-T curves for multiple current selections as well :)
     # Proceed to do 0-1, 1-2, 2-3, up to 9-10
     fig = plt.figure(figsize=(16,12))
@@ -1971,8 +1881,8 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     xScale = 1e3
     yScale = 1e3
     params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': '-', 'xerr': None, 'yerr': None}
-    axoptions = {'xlabel': 'Temperature [mK]', 
-                 'ylabel': 'TES Resistance [m' + r'$\Omega$' + ']', 
+    axoptions = {'xlabel': 'Temperature [mK]',
+                 'ylabel': 'TES Resistance [m' + r'$\Omega$' + ']',
                  'title': 'Channel {} TES Resistance vs Temperature'.format(data_channel)
                 }
     for i in range(10):
@@ -1995,7 +1905,7 @@ def get_RT_curves(output_path, data_channel, iv_dictionary):
     for label in (ax.get_xticklabels() + ax.get_yticklabels()):
         label.set_fontsize(18)
     ivp.save_plot(fig, ax, fName)
-    
+
     return None
 
 
@@ -2038,13 +1948,13 @@ def get_TES_values(output_path, data_channel, iv_dictionary, parasitic_dictionar
     for temperature, iv_data in iv_dictionary.items():
         iv_data['iTES'] = get_iTES(iv_data['vOut'], Rfb, M)
         iv_data['iTES_rms'] = get_iTES(iv_data['vOut_rms'], Rfb, M)
-        
+
         iv_data['vTES'] = get_vTES(iv_data['iBias'], iv_data['vOut'], Rfb, M, Rsh, Rp)
         iv_data['vTES_rms'] = get_vTES_rms(iv_data['iBias_rms'], iv_data['vOut'], iv_data['vOut_rms'], Rfb, M, Rsh, Rp, Rp_rms)
-        
+
         iv_data['rTES'] = get_rTES(iv_data['iTES'], iv_data['vTES'])
         iv_data['rTES_rms'] = get_rTES_rms(iv_data['iTES'], iv_data['iTES_rms'], iv_data['vTES'], iv_data['vTES_rms'])
-        
+
         iv_data['pTES'] = get_pTES(iv_data['iTES'], iv_data['vTES'])
         iv_data['pTES_rms'] = get_pTES_rms(iv_data['iTES'], iv_data['iTES_rms'], iv_data['vTES'], iv_data['vTES_rms'])
     return iv_dictionary
@@ -2074,7 +1984,7 @@ def compute_extra_quantities(iv_dictionary):
         iv_dictionary[T]['dvdi'] = dvdi
         iv_dictionary[T]['Ratio'] = Ratio
         iv_dictionary[T]['fakeRtes'] = ertes
-        
+
         iv_dictionary[T]['iBiasDetrend'] = detrend_iBias
     return iv_dictionary
 
@@ -2149,7 +2059,7 @@ if __name__ == '__main__':
     run = args.run
     output_path = args.outputPath if args.outputPath else dirname(path) + '/' + basename(path).replace('.root', '')
     if not isabs(output_path):
-        output_path = dirname(path) + '/' + output_path    
+        output_path = dirname(path) + '/' + output_path
     mkdpaths(output_path)
     print('We will run with the following options:')
     print('The squid run is {}'.format(run))
@@ -2177,14 +2087,14 @@ if __name__ == '__main__':
     if args.readTESROOT is True:
         iv_dictionary = read_from_ivroot(output_path + '/root/iv_data.root', branches=['iBias', 'iBias_rms', 'vOut', 'vOut_rms', 'timestamps', 'iTES', 'iTES_rms', 'vTES', 'vTES_rms', 'rTES', 'rTES_rms', 'pTES', 'pTES_rms'])
         # Note: We would need to also save or re-generate the fit_parameters dictionary?
-    
+
     # This step onwards assumes iv_dictionary contains TES values
     iv_dictionary, fit_dictionary = process_tes_curves(output_path, args.dataChannel, iv_dictionary)
     # Make TES Plots
-    make_tes_plots(output_path=output_path, data_channel=args.dataChannel, iv_dictionary=iv_dictionary, fit_dictionary=fit_dictionary)
-    
+    make_tes_plots(output_path=output_path, data_channel=args.dataChannel, iv_dictionary=iv_dictionary, fit_dictionary=fit_dictionary, individual=False)
+
     # Next let's do some special processing...R vs T, P vs T type of thing
     get_PT_curves(output_path, args.dataChannel, iv_dictionary)
     get_RT_curves(output_path, args.dataChannel, iv_dictionary)
-    
+
     print('done')

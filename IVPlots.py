@@ -73,6 +73,19 @@ def generic_fitplot_with_errors(ax, x, y, params, axoptions, xScale=1, yScale=1)
     return ax
 
 
+def fancy_fitplot_with_errors(ax, x, y, params, axoptions, xScale=1, yScale=1):
+    '''A function that puts data on a specified axis with error bars'''
+    out = ax.errorbar(x*xScale, y*yScale, elinewidth=3, capsize=2, **params)
+    # Parse options
+    ax = axis_option_parser(ax, axoptions)
+    ax.yaxis.label.set_size(18)
+    ax.xaxis.label.set_size(18)
+    ax.grid(True)
+    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+        label.set_fontsize(18)
+    return ax
+
+
 def add_model_fits(ax, x, y, model, model_function, xScale=1, yScale=1):
     '''Add model fits to plots'''
     xModel = np.linspace(x.min(), x.max(), 10000)
@@ -181,12 +194,12 @@ def pt_fit_textbox(ax, model):
     return ax
 
 
-def save_plot(fig, ax, fName):
+def save_plot(fig, ax, fName, dpi=150):
     '''Save a specified plot'''
     fName = fName + '.png' if fName.split('.png') != 2 else fName
     for label in (ax.get_xticklabels() + ax.get_yticklabels()):
         label.set_fontsize(18)
-    fig.savefig(fName, dpi=150, bbox_inches='tight')
+    fig.savefig(fName, dpi=dpi, bbox_inches='tight')
     plt.close('all')
     return None
     
