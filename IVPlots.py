@@ -9,29 +9,29 @@ from pyTESFitFunctions import lin_sq
 import ROOT as rt
 
 # Container for IV related plot functions
-def axis_option_parser(ax, options):
+def axis_option_parser(axes, options):
     '''A function to parse some common plot options for limits and scales and log/linear'''
-    ax.set_xscale(options.get('logx', 'linear'))
-    ax.set_yscale(options.get('logy', 'linear'))
-    ax.set_xlim(options.get('xlim', None))
-    ax.set_ylim(options.get('ylim', None))
-    ax.set_xlabel(options.get('xlabel', None), fontsize=18, horizontalalignment='right', x=1.0)
-    ax.set_ylabel(options.get('ylabel', None), fontsize=18)
-    ax.set_title(options.get('title', None), fontsize=18)
-    return ax
+    axes.set_xscale(options.get('logx', 'linear'))
+    axes.set_yscale(options.get('logy', 'linear'))
+    axes.set_xlim(options.get('xlim', None))
+    axes.set_ylim(options.get('ylim', None))
+    axes.set_xlabel(options.get('xlabel', None), fontsize=18, horizontalalignment='right', x=1.0)
+    axes.set_ylabel(options.get('ylabel', None), fontsize=18)
+    axes.set_title(options.get('title', None), fontsize=18)
+    return axes
 
 
 def test_plot(x, y, xlab, ylab, fName):
     """Create generic plots that may be semilogx (default)"""
     fName = fName + '.png' if fName.split('.png') != 2 else fName
     fig = plt.figure(figsize=(8, 6))
-    ax = fig.add_subplot(111)
-    ax.plot(x, y, marker='o', markersize=2, markeredgecolor='black', markeredgewidth=0.0, linestyle='None')
-    #ax.set_xscale(log)
-    ax.set_xlabel(xlab)
-    ax.set_ylabel(ylab)
-    #ax.set_title(title)
-    ax.grid()
+    axes = fig.add_subplot(111)
+    axes.plot(x, y, marker='o', markersize=2, markeredgecolor='black', markeredgewidth=0.0, linestyle='None')
+    #axes.set_xscale(log)
+    axes.set_xlabel(xlab)
+    axes.set_ylabel(ylab)
+    #axes.set_title(title)
+    axes.grid()
     fig.savefig(fName, dpi=150, bbox_inches='tight')
     plt.close('all')
     #plt.draw()
@@ -43,16 +43,16 @@ def test_steps(x, y, v, t0, xlab, ylab, fName):
     """Create generic plots that may be semilogx (default)"""
     fName = fName + '.png' if fName.split('.png') != 2 else fName
     fig = plt.figure(figsize=(8, 6))
-    ax = fig.add_subplot(111)
-    ax.plot(x, y, marker='o', markersize=1, markeredgecolor='black', markeredgewidth=0.0, linestyle='None')
+    axes = fig.add_subplot(111)
+    axes.plot(x, y, marker='o', markersize=1, markeredgecolor='black', markeredgewidth=0.0, linestyle='None')
     # Next add horizontal lines for each step it thinks it found
     for item in v:
-        ax.plot([item[0]-t0,item[1]-t0], [item[2], item[2]], marker='.', linestyle='-', color='r')
-    #ax.set_xscale(log)
-    ax.set_xlabel(xlab)
-    ax.set_ylabel(ylab)
-    #ax.set_title(title)
-    ax.grid()
+        axes.plot([item[0]-t0,item[1]-t0], [item[2], item[2]], marker='.', linestyle='-', color='r')
+    #axes.set_xscale(log)
+    axes.set_xlabel(xlab)
+    axes.set_ylabel(ylab)
+    #axes.set_title(title)
+    axes.grid()
     fig.savefig(fName, dpi=150, bbox_inches='tight')
     plt.close('all')
     #plt.draw()
@@ -60,92 +60,92 @@ def test_steps(x, y, v, t0, xlab, ylab, fName):
     return None
 
 
-def generic_fitplot_with_errors(ax, x, y, params, axoptions, xScale=1, yScale=1):
+def generic_fitplot_with_errors(axes, x, y, params, axes_options, xScale=1, yScale=1):
     '''A function that puts data on a specified axis with error bars'''
-    out = ax.errorbar(x*xScale, y*yScale, elinewidth=3, capsize=2, **params)
+    out = axes.errorbar(x*xScale, y*yScale, elinewidth=3, capsize=2, **params)
     # Parse options
-    ax = axis_option_parser(ax, axoptions)
-    ax.yaxis.label.set_size(18)
-    ax.xaxis.label.set_size(18)
-    ax.grid(True)
-    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+    axes = axis_option_parser(axes, axes_options)
+    axes.yaxis.label.set_size(18)
+    axes.xaxis.label.set_size(18)
+    axes.grid(True)
+    for label in (axes.get_xticklabels() + axes.get_yticklabels()):
         label.set_fontsize(18)
-    return ax
+    return axes
 
 
-def fancy_fitplot_with_errors(ax, x, y, params, axoptions, xScale=1, yScale=1):
+def fancy_fitplot_with_errors(axes, x, y, params, axes_options, xScale=1, yScale=1):
     '''A function that puts data on a specified axis with error bars'''
-    out = ax.errorbar(x*xScale, y*yScale, elinewidth=3, capsize=2, **params)
+    out = axes.errorbar(x*xScale, y*yScale, elinewidth=3, capsize=2, **params)
     # Parse options
-    ax = axis_option_parser(ax, axoptions)
-    ax.yaxis.label.set_size(18)
-    ax.xaxis.label.set_size(18)
-    ax.grid(True)
-    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+    axes = axis_option_parser(axes, axes_options)
+    axes.yaxis.label.set_size(18)
+    axes.xaxis.label.set_size(18)
+    axes.grid(True)
+    for label in (axes.get_xticklabels() + axes.get_yticklabels()):
         label.set_fontsize(18)
-    return ax
+    return axes
 
 
-def add_model_fits(ax, x, y, model, model_function, xScale=1, yScale=1):
+def add_model_fits(axes, x, y, model, model_function, xScale=1, yScale=1):
     '''Add model fits to plots'''
     xModel = np.linspace(x.min(), x.max(), 10000)
     if model.left.result is not None:
         yFit = model_function(xModel, *model.left.result)
-        ax.plot(xModel*xScale, yFit*yScale, 'r-', marker='None', linewidth=4)
+        axes.plot(xModel*xScale, yFit*yScale, 'r-', marker='None', linewidth=4)
     if model.right.result is not None:
         yFit = model_function(xModel, *model.right.result)
-        ax.plot(xModel*xScale, yFit*yScale, 'g-', marker='None', linewidth=2)
+        axes.plot(xModel*xScale, yFit*yScale, 'g-', marker='None', linewidth=2)
     if model.sc.result is not None:
         yFit = model_function(x, *model.sc.result)
         cut = np.logical_and(yFit < y.max(), yFit > y.min())
-        ax.plot(x[cut]*xScale, yFit[cut]*yScale, 'b-', marker='None', linewidth=2)
-    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+        axes.plot(x[cut]*xScale, yFit[cut]*yScale, 'b-', marker='None', linewidth=2)
+    for label in (axes.get_xticklabels() + axes.get_yticklabels()):
         label.set_fontsize(18)
-    return ax
+    return axes
 
 
-def iv_fit_textbox(ax, R, model):
+def iv_fit_textbox(axes, R, model):
     '''old: add_fit_textbox'''
     '''Add decoration textbox to a plot'''
-    
+
     lR = r'$\mathrm{Left R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.left.value*1e3, R.left.rms*1e3)
     lOff = r'$\mathrm{Left V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.left.result[1]*1e3, model.left.error[1]*1e3)
-    
+
     sR = r'$\mathrm{SC R_{p}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.parasitic.value*1e3, R.parasitic.rms*1e3)
     sOff = r'$\mathrm{SC V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.sc.result[1]*1e3, model.sc.error[1]*1e3)
-    
+
     rR = r'$\mathrm{Right R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.right.value*1e3, R.right.rms*1e3)
     rOff = r'$\mathrm{Right V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.right.result[1]*1e3, model.right.error[1]*1e3)
-    
+
     textStr = lR + '\n' + lOff + '\n' + sR + '\n' + sOff + '\n' + rR + '\n' + rOff
     # these are matplotlib.patch.Patch properties
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
     #anchored_text = AnchoredText(textstr, loc=4)
-    #ax.add_artist(anchored_text)
+    #axes.add_artist(anchored_text)
     # place a text box in upper left in axes coords
-    out = ax.text(0.65, 0.9, textStr, transform=ax.transAxes, fontsize=14, verticalalignment='top', bbox=props)
-    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+    out = axes.text(0.65, 0.9, textStr, transform=axes.transAxes, fontsize=14, verticalalignment='top', bbox=props)
+    for label in (axes.get_xticklabels() + axes.get_yticklabels()):
         label.set_fontsize(18)
-    return ax
+    return axes
 
 
-def pr_fit_textbox(ax, model):
+def pr_fit_textbox(axes, model):
     '''old: add_power_voltage_textbox'''
     '''Add dectoration textbox for a power vs resistance fit'''
     lR = r'$\mathrm{R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(1/model.left.result[0]*1e3, model.left.error[0]/pow2(model.left.result[0])*1e3)
     lI = r'$\mathrm{I_{para}} = %.5f \pm %.5f \mathrm{uA}$'%(model.left.result[1]*1e6, model.left.error[1]*1e6)
     lP = r'$\mathrm{P_{para}} = %.5f \pm %.5f \mathrm{fW}$'%(model.left.result[2]*1e15, model.left.error[2]*1e15)
-    
+
     textStr = lR + '\n' + lI + '\n' + lP
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
-    ax.text(0.65, 0.9, textStr, transform=ax.transAxes, fontsize=14, verticalalignment='top', bbox=props)
-    return ax
+    axes.text(0.65, 0.9, textStr, transform=axes.transAxes, fontsize=14, verticalalignment='top', bbox=props)
+    return axes
 
 
-def rt_fit_textbox(ax, model):
+def rt_fit_textbox(axes, model):
     '''old: add_resistance_temperature_textbox'''
     '''Add dectoration textbox for a power vs resistance fit'''
-    
+
     # First is the ascending (SC to N) parameters
     textStr = ''
     if model.left.result is not None:
@@ -161,14 +161,14 @@ def rt_fit_textbox(ax, model):
         rTc = r'N to SC: $\mathrm{T_{c}} = %.5f \pm %.5f \mathrm{mK}$'%(model.right.result[2]*1e3, model.right.error[2]*1e3)
         rTw = r'N to SC: $\mathrm{\Delta T_{c}} = %.5f \pm %.5f \mathrm{mK}$'%(model.right.result[3]*1e3, model.right.error[3]*1e3)
         if textStr is not '':
-            textStr += '\n' 
+            textStr += '\n'
         textStr += rR + '\n' + rRp + '\n' + rTc + '\n' + rTw
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
-    ax.text(0.10, 0.9, textStr, transform=ax.transAxes, fontsize=14, verticalalignment='top', bbox=props)
-    return ax
+    axes.text(0.10, 0.9, textStr, transform=axes.transAxes, fontsize=14, verticalalignment='top', bbox=props)
+    return axes
 
 
-def pt_fit_textbox(ax, model):
+def pt_fit_textbox(axes, model):
     '''old: add_power_temperature_textbox'''
     '''Add decoration textbox for a power vs temperature fit'''
     k = model.left.result[0]
@@ -190,64 +190,64 @@ def pt_fit_textbox(ax, model):
     lG = r'$G(T_{TES}) = %.5f \pm %.5f \mathrm{pW/K}$'%(G*1e12, dG*1e12)
     textStr = lk + '\n' + ln + '\n' + lTt + '\n' + lG
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
-    ax.text(0.65, 0.9, textStr, transform=ax.transAxes, fontsize=14, verticalalignment='top', bbox=props)
-    return ax
+    axes.text(0.65, 0.9, textStr, transform=axes.transAxes, fontsize=14, verticalalignment='top', bbox=props)
+    return axes
 
 
-def save_plot(fig, ax, fName, dpi=150):
+def save_plot(fig, axes, fName, dpi=150):
     '''Save a specified plot'''
     fName = fName + '.png' if fName.split('.png') != 2 else fName
-    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+    for label in (axes.get_xticklabels() + axes.get_yticklabels()):
         label.set_fontsize(18)
     fig.savefig(fName, dpi=dpi, bbox_inches='tight')
     plt.close('all')
     return None
-    
 
-def iv_fitplot(data, model, R, Rp, fName, axoptions, xScale=1, yScale=1):
+
+def iv_fitplot(data, model, R, Rp, fName, axes_options, xScale=1, yScale=1):
     '''Wrapper for plotting an iv curve with fit parameters'''
     x,y,xerr,yerr = data
     fName = fName + '.png' if fName.split('.png') != 2 else fName
     fig = plt.figure(figsize=(16,12))
-    ax = fig.add_subplot(111)
+    axes = fig.add_subplot(111)
     yFit1 = lin_sq(x, *model.right.result)
-    ax.errorbar(x*xScale, y*yScale, marker='o', markersize=2, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0, linestyle='None', xerr=xerr*xScale, yerr=yerr*yScale)
+    axes.errorbar(x*xScale, y*yScale, marker='o', markersize=2, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0, linestyle='None', xerr=xerr*xScale, yerr=yerr*yScale)
     if model.left.result is not None:
         yFit = lin_sq(x, *model.left.result)
-        ax.plot(x*xScale, yFit*yScale, 'r-', marker='None', linewidth=2)
+        axes.plot(x*xScale, yFit*yScale, 'r-', marker='None', linewidth=2)
     if model.right.result is not None:
         yFit = lin_sq(x, *model.right.result)
-        ax.plot(x*xScale, yFit*yScale, 'g-', marker='None', linewidth=2)
+        axes.plot(x*xScale, yFit*yScale, 'g-', marker='None', linewidth=2)
     if model.sc.result is not None:
         # Need to plot only a subset of data
         yFit = lin_sq(x, *model.sc.result)
         cut = np.logical_and(yFit < y.max(), yFit > y.min())
-        ax.plot(x[cut]*xScale, yFit[cut]*yScale, 'b-', marker='None', linewidth=2)
-    ax = axis_option_parser(ax, axoptions)
-    ax.grid()
-    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+        axes.plot(x[cut]*xScale, yFit[cut]*yScale, 'b-', marker='None', linewidth=2)
+    axes = axis_option_parser(axes, axes_options)
+    axes.grid()
+    for label in (axes.get_xticklabels() + axes.get_yticklabels()):
         label.set_fontsize(18)
     # Now generate text strings
     # model values are [results, perr] --> [[m, b], [merr, berr]]
     #R = convert_fit_to_resistance(model, fit_type='iv', Rp=Rp.value, Rp_rms=Rp.rms)
     lR = r'$\mathrm{Left \ R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.left.value*1e3, R.left.rms*1e3)
     lOff = r'$\mathrm{Left \ V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.left.result[1]*1e3, model.left.error[1]*1e3)
-    
+
     sR = r'$\mathrm{R_{sc} - R_{p}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.sc.value*1e3, R.sc.rms*1e3)
     sOff = r'$\mathrm{V_{sc,off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.sc.result[1]*1e3, model.sc.error[1]*1e3)
-    
+
     rR = r'$\mathrm{Right \ R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.right.value*1e3, R.right.rms*1e3)
     rOff = r'$\mathrm{Right \ V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.right.result[1]*1e3, model.right.error[1]*1e3)
-    
+
     pR = r'$\mathrm{R_{p}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(Rp.value*1e3, Rp.rms*1e3)
-    
+
     textStr = lR + '\n' + lOff + '\n' + pR + '\n' + sR + '\n' + sOff + '\n' + rR + '\n' + rOff
     # these are matplotlib.patch.Patch properties
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
     #anchored_text = AnchoredText(textstr, loc=4)
-    #ax.add_artist(anchored_text)
+    #axes.add_artist(anchored_text)
     # place a text box in upper left in axes coords
-    ax.text(0.65, 0.9, textStr, transform=ax.transAxes, fontsize=14, verticalalignment='top', bbox=props)
+    axes.text(0.65, 0.9, textStr, transform=axes.transAxes, fontsize=14, verticalalignment='top', bbox=props)
     fig.savefig(fName, dpi=150, bbox_inches='tight')
     plt.close('all')
     return None
@@ -260,23 +260,23 @@ def make_root_plot(output_path, data_channel, temperature, iv_data, model, Rp, x
     Create a TMultiGraph
     Create a TGraph - adjust its parameters and plant it in the TMultiGraph (which now owns the TGraph)
     Finish styling for the TMultiGraph and then save the canvas as .png and .C
-    
+
     There will be 4 TGraphs
         vOut vs iBias
         Left Normal fit
         Right Normal fit
         SC fit
     '''
-    
+
     # Create TCanvas
     w = 1600
-    h = 1200 
+    h = 1200
     c = rt.TCanvas("iv", "iv", w, h)
     c.SetWindowSize(w + (w - c.GetWw()), h + (h - c.GetWh()))
     c.cd()
     c.SetGrid()
     mg = rt.TMultiGraph()
-    
+
     # Now let us generate some TGraphs!
     x = iv_data['iBias']
     xrms = iv_data['iBias_rms']
@@ -288,9 +288,9 @@ def make_root_plot(output_path, data_channel, temperature, iv_data, model, Rp, x
     g0.SetLineWidth(1)
     g0.SetName("vOut_iBias")
     g0.SetTitle("OutputVoltage vs Bias Current")
-    
+
     mg.Add(g0)
-    
+
     # Next up let's add the fit lines
     if model.left.result is not None:
         yFit = lin_sq(x, *model.left.result)
@@ -312,7 +312,7 @@ def make_root_plot(output_path, data_channel, temperature, iv_data, model, Rp, x
         mg.Add(gRight)
     if model.sc.result is not None:
         yFit = lin_sq(x, *model.sc.result)
-        cut = np.logical_and(yFit < y.max(), yFit > y.min()) 
+        cut = np.logical_and(yFit < y.max(), yFit > y.min())
         gSC = rt.TGraph(x[cut].size, x[cut]*xScale, yFit[cut]*yScale)
         gSC.SetMarkerSize(0)
         gSC.SetLineWidth(2)
@@ -353,21 +353,21 @@ def make_root_plot(output_path, data_channel, temperature, iv_data, model, Rp, x
     tN.SetTextAlign(12)
     tN.SetTextAngle(343)
     tN.DrawLatex(0.14, 0.66, "Normal Branch")
-    
+
     tB = rt.TLatex()
     tB.SetNDC()
     tB.SetTextSize(0.025)
     tB.SetTextAlign(12)
     tB.SetTextAngle(0)
     tB.DrawLatex(0.55, 0.41, "Biased Region")
-    
+
     tS = rt.TLatex()
     tS.SetNDC()
     tS.SetTextSize(0.025)
     tS.SetTextAlign(12)
     tS.SetTextAngle(282)
     tS.DrawLatex(0.49, 0.77, "SC Region")
-    
+
 #    t = new TLatex();
 #    t->SetNDC();
 #    t->SetTextFont(62);
