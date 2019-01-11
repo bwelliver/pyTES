@@ -60,9 +60,9 @@ def test_steps(x, y, v, t0, xlab, ylab, fName):
     return None
 
 
-def generic_fitplot_with_errors(axes, x, y, params, axes_options, xScale=1, yScale=1):
+def generic_fitplot_with_errors(axes, x, y, params, axes_options, xscale=1, yscale=1):
     '''A function that puts data on a specified axis with error bars'''
-    out = axes.errorbar(x*xScale, y*yScale, elinewidth=3, capsize=2, **params)
+    out = axes.errorbar(x*xscale, y*yscale, elinewidth=3, capsize=2, **params)
     # Parse options
     axes = axis_option_parser(axes, axes_options)
     axes.yaxis.label.set_size(18)
@@ -73,9 +73,9 @@ def generic_fitplot_with_errors(axes, x, y, params, axes_options, xScale=1, ySca
     return axes
 
 
-def fancy_fitplot_with_errors(axes, x, y, params, axes_options, xScale=1, yScale=1):
+def fancy_fitplot_with_errors(axes, x, y, params, axes_options, xscale=1, yscale=1):
     '''A function that puts data on a specified axis with error bars'''
-    out = axes.errorbar(x*xScale, y*yScale, elinewidth=3, capsize=2, **params)
+    out = axes.errorbar(x*xscale, y*yscale, elinewidth=3, capsize=2, **params)
     # Parse options
     axes = axis_option_parser(axes, axes_options)
     axes.yaxis.label.set_size(18)
@@ -86,19 +86,19 @@ def fancy_fitplot_with_errors(axes, x, y, params, axes_options, xScale=1, yScale
     return axes
 
 
-def add_model_fits(axes, x, y, model, model_function, xScale=1, yScale=1):
+def add_model_fits(axes, x, y, model, model_function, xscale=1, yscale=1):
     '''Add model fits to plots'''
     xModel = np.linspace(x.min(), x.max(), 10000)
     if model.left.result is not None:
         yFit = model_function(xModel, *model.left.result)
-        axes.plot(xModel*xScale, yFit*yScale, 'r-', marker='None', linewidth=4)
+        axes.plot(xModel*xscale, yFit*yscale, 'r-', marker='None', linewidth=4)
     if model.right.result is not None:
         yFit = model_function(xModel, *model.right.result)
-        axes.plot(xModel*xScale, yFit*yScale, 'g-', marker='None', linewidth=2)
+        axes.plot(xModel*xscale, yFit*yscale, 'g-', marker='None', linewidth=2)
     if model.sc.result is not None:
         yFit = model_function(x, *model.sc.result)
         cut = np.logical_and(yFit < y.max(), yFit > y.min())
-        axes.plot(x[cut]*xScale, yFit[cut]*yScale, 'b-', marker='None', linewidth=2)
+        axes.plot(x[cut]*xscale, yFit[cut]*yscale, 'b-', marker='None', linewidth=2)
     for label in (axes.get_xticklabels() + axes.get_yticklabels()):
         label.set_fontsize(18)
     return axes
@@ -204,25 +204,25 @@ def save_plot(fig, axes, fName, dpi=150):
     return None
 
 
-def iv_fitplot(data, model, R, Rp, fName, axes_options, xScale=1, yScale=1):
+def iv_fitplot(data, model, R, Rp, fName, axes_options, xscale=1, yscale=1):
     '''Wrapper for plotting an iv curve with fit parameters'''
     x,y,xerr,yerr = data
     fName = fName + '.png' if fName.split('.png') != 2 else fName
     fig = plt.figure(figsize=(16,12))
     axes = fig.add_subplot(111)
     yFit1 = lin_sq(x, *model.right.result)
-    axes.errorbar(x*xScale, y*yScale, marker='o', markersize=2, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0, linestyle='None', xerr=xerr*xScale, yerr=yerr*yScale)
+    axes.errorbar(x*xscale, y*yscale, marker='o', markersize=2, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0, linestyle='None', xerr=xerr*xscale, yerr=yerr*yscale)
     if model.left.result is not None:
         yFit = lin_sq(x, *model.left.result)
-        axes.plot(x*xScale, yFit*yScale, 'r-', marker='None', linewidth=2)
+        axes.plot(x*xscale, yFit*yscale, 'r-', marker='None', linewidth=2)
     if model.right.result is not None:
         yFit = lin_sq(x, *model.right.result)
-        axes.plot(x*xScale, yFit*yScale, 'g-', marker='None', linewidth=2)
+        axes.plot(x*xscale, yFit*yscale, 'g-', marker='None', linewidth=2)
     if model.sc.result is not None:
         # Need to plot only a subset of data
         yFit = lin_sq(x, *model.sc.result)
         cut = np.logical_and(yFit < y.max(), yFit > y.min())
-        axes.plot(x[cut]*xScale, yFit[cut]*yScale, 'b-', marker='None', linewidth=2)
+        axes.plot(x[cut]*xscale, yFit[cut]*yscale, 'b-', marker='None', linewidth=2)
     axes = axis_option_parser(axes, axes_options)
     axes.grid()
     for label in (axes.get_xticklabels() + axes.get_yticklabels()):
@@ -253,7 +253,7 @@ def iv_fitplot(data, model, R, Rp, fName, axes_options, xScale=1, yScale=1):
     return None
 
 
-def make_root_plot(output_path, data_channel, temperature, iv_data, model, Rp, xScale=1, yScale=1):
+def make_root_plot(output_path, data_channel, temperature, iv_data, model, Rp, xscale=1, yscale=1):
     '''A helper function to generate a TMultiGraph for the IV curve
     Recipe for this type of plot:
     Create a TCanvas object and adjust its parameters
@@ -283,7 +283,7 @@ def make_root_plot(output_path, data_channel, temperature, iv_data, model, Rp, x
     y = iv_data['vOut']
     yrms = iv_data['vOut_rms']
     # First up: vOut vs iBias
-    g0 = rt.TGraphErrors(x.size, x*xScale, y*yScale, xrms*xScale, yrms*yScale)
+    g0 = rt.TGraphErrors(x.size, x*xscale, y*yscale, xrms*xscale, yrms*yscale)
     g0.SetMarkerSize(0.5)
     g0.SetLineWidth(1)
     g0.SetName("vOut_iBias")
@@ -294,7 +294,7 @@ def make_root_plot(output_path, data_channel, temperature, iv_data, model, Rp, x
     # Next up let's add the fit lines
     if model.left.result is not None:
         yFit = lin_sq(x, *model.left.result)
-        gLeft = rt.TGraph(x.size, x*xScale, yFit*yScale)
+        gLeft = rt.TGraph(x.size, x*xscale, yFit*yscale)
         gLeft.SetMarkerSize(0)
         gLeft.SetLineWidth(2)
         gLeft.SetLineColor(rt.kRed)
@@ -303,7 +303,7 @@ def make_root_plot(output_path, data_channel, temperature, iv_data, model, Rp, x
         mg.Add(gLeft)
     if model.right.result is not None:
         yFit = lin_sq(x, *model.right.result)
-        gRight = rt.TGraph(x.size, x*xScale, yFit*yScale)
+        gRight = rt.TGraph(x.size, x*xscale, yFit*yscale)
         gRight.SetMarkerSize(0)
         gRight.SetLineWidth(2)
         gRight.SetLineColor(rt.kGreen)
@@ -313,7 +313,7 @@ def make_root_plot(output_path, data_channel, temperature, iv_data, model, Rp, x
     if model.sc.result is not None:
         yFit = lin_sq(x, *model.sc.result)
         cut = np.logical_and(yFit < y.max(), yFit > y.min())
-        gSC = rt.TGraph(x[cut].size, x[cut]*xScale, yFit[cut]*yScale)
+        gSC = rt.TGraph(x[cut].size, x[cut]*xscale, yFit[cut]*yscale)
         gSC.SetMarkerSize(0)
         gSC.SetLineWidth(2)
         gSC.SetLineColor(rt.kBlue)
