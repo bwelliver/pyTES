@@ -15,7 +15,6 @@ class RingBuffer:
         self._data.fill(default_value)
         self.size = 0
 
-
     def append(self, value):
         '''append an element'''
         self._data = np.roll(self._data, 1)
@@ -60,6 +59,15 @@ class RingBuffer:
     def get_size(self):
         '''Returns the size of the RingBuffer'''
         return np.size(self._data)
+
+    def insert_array(self, data, flipped=True):
+        '''Adds contents of array to the buffer via append'''
+        if flipped is True:
+            for value in np.flip(data, 0):
+                self.append(value)
+        else:
+            for value in data:
+                self.append(value)
 
     def __getitem__(self, key):
         '''get element'''
