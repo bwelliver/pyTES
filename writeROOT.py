@@ -1,111 +1,124 @@
-import ROOT as rt
-from array import array
-import numpy as np
-#rt.gROOT.ProcessLine("#include<vector>")
-#rt.gROOT.ProcessLine("std::vector<double> vec;")
-#from ROOT import vec
+'''Module to write root files based on an input dictionary that mimics the data structure to be written'''
 
-def writeTDir(source, dirData):
+from array import array
+import ROOT as rt
+# rt.gROOT.ProcessLine("#include<vector>")
+# rt.gROOT.ProcessLine("std::vector<double> vec;")
+# from ROOT import vec
+
+
+def writeTDir(source, dir_data):
     '''Write contents of current TDirectory into file
-    dirData is a dictionary whose keys are the directory names
+    dir_data is a dictionary whose keys are the directory names
     The values of each key represent data structures to put INTO the directory
     '''
-    for key,value in dirData.items():
-        tDir = source.mkdir(key)
-        tDir.cd()
+    for key, value in dir_data.items():
+        tdir = source.mkdir(key)
+        tdir.cd()
         for subkey, subvalue in value.items():
             if subkey == 'TDirectoryFile':
-                result = writeTDirF(tDir, subvalue)
+                result = writeTDirF(subvalue)
             elif subkey == 'TDirectory':
-                result = writeTDir(tDir, subvalue)
+                result = writeTDir(tdir, subvalue)
             elif subkey == 'TTree':
-                result = writeTTree(tDir, subvalue)
-        del tDir
+                result = writeTTree(subvalue)
+            else:
+                result = None
+        del tdir
         source.cd()
-        #print(rt.gDirectory.pwd())
-    return True
+        # print(rt.gDirectory.pwd())
+    return result
 
 
-def writeTVectorT(tFile, tData):
+def writeTVectorT(tdata):
     '''Write a TObject into the ROOT file'''
-    for key, value in tData.items():
-        tVector = rt.TVectorT("double")(value.size, value.astype('double'))
-        tVector.Write(key)
-        del tVector
+    for key, value in tdata.items():
+        TVectorT = getattr(rt, 'TVectorT')
+        tvector = TVectorT("double")(value.size, value.astype('double'))
+        tvector.Write(key)
+        del tvector
     return True
 
 
-def writeTDirF(tDir, data):
+def writeTDirF(data):
     '''Write contents of TDirectoryFile dictionary to a particular directory
     Directory file dictionary has list of TNamed objects that can be written
     Structure is a dictionary that contains 2 keys: TDirFileName and TNamed
     TDirFileName is used to create the TDirectoryFile and contains a tuple
     TNamed is a list of tuples, each tuple gives the file name and file data
     '''
-    tDF = rt.TDirectoryFile(data['TDirFileName'][0], data['TDirFileName'][1])
+    TDirectoryFile = getattr(rt, 'TDirectoryFile')
+    tdirfile = TDirectoryFile(data['TDirFileName'][0], data['TDirFileName'][1])
     for item in data['TNamed']:
-        tDF.Add(rt.TNamed(item[0], item[1]))
-    tDF.Write()
+        TNamed = getattr(rt, 'TNamed')
+        tdirfile.Add(TNamed(item[0], item[1]))
+    tdirfile.Write()
     return True
 
 
-def writeTTree(tFile, tData):
+def writeTTree(tdata):
     '''Create and write a tree to the root file in whatever directory we are in
-    Incoming tData is a dictionary whose keys specify the tree names
+    Incoming tdata is a dictionary whose keys specify the tree names
     The value of a tree is a dictionary whose keys are branch names and values are branch values
     '''
-    for key, value in tData.items():
-        tTree = rt.TTree(key, key)
+    for key, value in tdata.items():
+        TTree = getattr(rt, 'TTree')
+        tree = TTree(key, key)
         for subkey, subvalue in value.items():
             if subkey == 'TBranch':
-                writeTBranch(tTree, subvalue)
-        del tTree
+                writeTBranch(tree, subvalue)
+        del tree
     return True
 
 
-def writeTBranch(tTree, bData):
+def writeTBranch(tree, branch_data):
     '''Create and write branches to the root file in whatever tree we have
-    Incoming bData is a dictionary where the key specifies the branch name and the value is the branch value
-    If the incoming bData[key] is itself an array it will be a vector<double> branch.
+    Incoming branch_data is a dictionary where the key specifies the branch name and the value is the branch value
+    If the incoming branch_data[key] is itself an array it will be a vector<double> branch.
     '''
-    dLoc = {}
-    for branchKey in bData.keys():
-        if isinstance(bData[branchKey], dict):
-            #v = vec
-            print('Vector found')
-            nEntries = bData[branchKey][0].size
-            dLoc[branchKey] = rt.std.vector('double')()
-            #dLoc[branchKey] = v
+    dloc = {}
+    for branchkey in branch_data.keys():
+        if isinstance(branch_data[branchkey], dict):
+            # v = vec
+            # print('Vector found')
+            nentries = branch_data[branchkey][0].size
+            std = getattr(rt, 'std')
+            # We can try to pre-allocate the vector by putting nentries at the end
+            dloc[branchkey] = std.vector('double')(nentries)
+            # dloc[branchkey] = v
             # Caution: We may need to do something else here about the vectors
-            print('The address of the vector is {}'.format(dLoc[branchKey]))
-            tTree.Branch(branchKey, 'std::vector<double>', rt.AddressOf(dLoc[branchKey]))
+            # print('The address of the vector is {}'.format(dloc[branchkey]))
+            AddressOf = getattr(rt, 'AddressOf')
+            tree.Branch(branchkey, 'std::vector<double>', AddressOf(dloc[branchkey]))
         else:
-            nEntries = bData[branchKey].size
-            dLoc[branchKey] = array('d', [0.0])
-            tTree.Branch(branchKey, dLoc[branchKey], branchKey + '/D')
+            nentries = branch_data[branchkey].size
+            dloc[branchkey] = array('d', [0.0])
+            tree.Branch(branchkey, dloc[branchkey], branchkey + '/D')
     # Now loop over the branches and fill them
-    for event in range(nEntries):
-        for branchKey in bData.keys():
-            if isinstance(bData[branchKey], dict):
-                #keys of bData[branchKey] are event
-                #To get values of event: waveform = bData[branchKey][event]
-                if dLoc[branchKey].size() == 0:
-                    for value in bData[branchKey][event]:
-                        dLoc[branchKey].push_back(float(value))
+    for event in range(nentries):
+        for branchkey in branch_data.keys():
+            if isinstance(branch_data[branchkey], dict):
+                # keys of branch_data[branchkey] are event
+                # To get values of event: waveform = branch_data[branchkey][event]
+                if dloc[branchkey].size() == 0:
+                    # print('Using push_back for branch {} and event {}'.format(branchkey, event))
+                    for value in branch_data[branchkey][event]:
+                        dloc[branchkey].push_back(float(value))
                 else:
-                    for idx,value in enumerate(bData[branchKey][event]):
-                        dLoc[branchKey][idx] = float(value)
-                        #print(dLoc[branchKey][idx])
+                    # print('Using indexed assignment for branch {} and event {}'.format(branchkey, event))
+                    for idx, value in enumerate(branch_data[branchkey][event]):
+                        dloc[branchkey][idx] = float(value)
+                        # print(dloc[branchkey][idx])
             else:
-                dLoc[branchKey][0] = bData[branchKey][event]
-        tTree.Fill()
-    tTree.Write()
+                dloc[branchkey][0] = branch_data[branchkey][event]
+        tree.Fill()
+    tree.Write()
     return True
 
 
-def writeROOT(inFile, data):
-    '''Write a root file. This function works by passing in data as a dictionary. Dictionary keys should be "TDirectory", "TTree", "TBranch", and "TObject". Nested inside each can be appropriate items. For example a TTree key may contain as a value a dictionary of branches, or a TDirectory can contain a list of trees and other such things. 
-    Example: 
+def writeROOT(input_file, data):
+    '''Write a root file. This function works by passing in data as a dictionary. Dictionary keys should be "TDirectory", "TTree", "TBranch", and "TObject". Nested inside each can be appropriate items. For example a TTree key may contain as a value a dictionary of branches, or a TDirectory can contain a list of trees and other such things.
+    Example:
     dict = {'TDirectory': {
                 'topLevel': {},
                 'newDir': {
@@ -127,21 +140,24 @@ def writeROOT(inFile, data):
                 }
             }
     dict = {'TDirectory': {'topLevel': {},'newDir': {'TTree':{'newTree': {'TBranch': {'branchA': 'branchA'}}}}},'TTree':{'tree1': {'TBranch': {'branch1': 'branch1', 'branch2': 'branch2'}}}}
-    
+
     In this way we basically encode the ROOT hiearchy into a dictionary'''
-    
+
     # Make the ROOT file first
-    tFile = rt.TFile(inFile, 'RECREATE')
+    TFile = getattr(rt, 'TFile')
+    tfile = TFile(input_file, 'RECREATE')
     # Now we parse the dictionary. It is a good idea here to separate things by type
     for key, value in data.items():
         if key == 'TDirectoryFile':
-            result = writeTDirF(tFile, value)
+            result = writeTDirF(value)
         if key == 'TDirectory':
-            result = writeTDir(tFile, value)
+            result = writeTDir(tfile, value)
         elif key == 'TTree':
-            result = writeTTree(tFile, value)
+            result = writeTTree(value)
         elif key == 'TVectorT':
-            result = writeTVectorT(tFile, value)
-        tFile.cd()
-    del tFile
-    return True
+            result = writeTVectorT(value)
+        else:
+            result = None
+        tfile.cd()
+    del tfile
+    return result
