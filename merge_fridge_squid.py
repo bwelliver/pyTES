@@ -381,7 +381,7 @@ if __name__ == '__main__':
     RESULT = merge_fridge_squid_data(ARGS.inputSQUIDFile, ARGS.outputFile, ARGS.inputFridgeFile,
                                      ARGS.squidrun, ARGS.interpType, ARGS.interpDegree, ARGS.inputNTFile, ARGS.newFormat)
     if RESULT:
-        if ARGS.inNTFile != '':
+        if ARGS.inputNTFile != '':
             print("Noise thermometer and EPCal data have been interpolated and added to SQUID data")
         else:
             print('EPCal data has been interpolated and added to SQUID data.')

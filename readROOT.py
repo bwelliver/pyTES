@@ -4,14 +4,14 @@ import ROOT as rt
 #TODO: REPLACE ROOT_DICTIONARY WITH A CLASS
 #class ROOTDictionary:
 #    '''A class to store root objects'''
-#    
+#
 #    def __init__(self):
 #        self = PYTDirectory()
 #        return None
 #
 #class PYTDirectory:
 #    '''Class to store TDirectories within'''
-#    
+#
 #    def __init__(self):
 #        self.TTree = PYTree()
 #        self.TBranch = PYBranch()
@@ -19,20 +19,20 @@ import ROOT as rt
 #
 #class PYTree:
 #    '''Class to store TTrees'''
-#    
+#
 #    def __init__(self):
 #        self.TBranch = PYBranch()
 #        return None
-#    
+#
 #class PYBranch:
 #    '''Class to store branch names'''
-#    
+#
 #    def __init__(self, list_of_branch_names):
 #        self.branches = self.branch_names(list_of_branch_names)
 #        return Noned
 #    def branch_names(list_of_branch_names):
 #        return list_of_branch_names
-#    
+#
 
 
 
@@ -192,21 +192,21 @@ def readROOT_new(input_files, root_dictionary, read_method='chain'):
     This function reads from an input root file
     The root_dictionary is a specially formatted dictionary of names, similar to the interface in writeROOT.
     root_dictionary = {'TDirectory': {DirectoryName1: {'TTree': {Tree1: [Branch1, Branch2, Branch3 ...], 'TBranch': [BranchA, BranchB, ...]} } }, 'TTree': {...} }
-    
+
     As an example we can get a list of branch names in Dir/TreeA as follows:
     branches = root_dictionary['TDirectory'][Dir]['TTree'][TreeA]
-    
+
     read_method defines if we are opening the TFile directly (single, deprecated) or using a TChain (chain).
-    
+
     '''
-    
+
     # The course of action depends if we are chaining or not
     # If we have a TChain note that these chain together *TREES* across files.
     # The standard format is to call the chain as "dirName/treeName"
     # Therefore we must iterate through as follows:
     # iterate_tdir --> iterate_ttree --> construct chain names --> get associated branches
     # So let's recreate the hiearchy as need be then I guess
-    
+
     # root_dictionary.keys() can be any of ['TDirectory', 'TTree', or 'TBranch']
     data_dictionary = {}
     for key, value in root_dictionary.items():
@@ -305,7 +305,10 @@ def readROOT(inFile, tree, branches, method='single', tobject=None, directory=No
         npData = {}
         vectorDict = {}
         for branch in branches:
+            print('The branch name is: {}'.format(branch))
             tBranch = obj.GetBranch(branch)
+            print('The branch object is: {}'.format(tBranch))
+            print('The class name: {}'.format(tBranch.GetClassName()))
             if tBranch.GetClassName() == 'vector<double>':
                 # Create std vector double. It is SUPER important that we pass the ADDRESS OF THE POINTER TO THE VECTOR AND NOT THE ADDRESS OF THE VECTOR!!!!!
                 # NOTE: If you just make var = rt.std.vector('double')() and the address of that in each loop, python WILL point to the same vector each time

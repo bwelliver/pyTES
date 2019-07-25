@@ -86,7 +86,8 @@ def write_to_root(output_file, data_dictionary):
     for key, value in data_dictionary.items():
         root_dict['TTree']['data_tree']['TBranch'][key] = value
     # Add in the ChList Tvector
-    root_dict['TVectorT'] = {'ChList': np.array([5, 7])}
+    chArray = [int(st.split('Waveform')[1]) for st in data_dictionary.keys() if st.startswith('Waveform')]
+    root_dict['TVectorT'] = {'ChList': np.array(chArray)}
     write_root(output_file, root_dict)
     return True
 
