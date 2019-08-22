@@ -2,6 +2,7 @@
 
 from os.path import isabs
 from os.path import basename
+from os import makedirs
 import argparse
 import glob
 import re
@@ -11,6 +12,12 @@ import numpy as np
 import pandas as pan
 from joblib import Parallel, delayed
 from writeROOT import writeROOT as write_root
+
+
+def mkdpaths(dirpath):
+    '''Function to make a directory path if it is not present'''
+    makedirs(dirpath, exist_ok=True)
+    return True
 
 
 def load_signal_express_file(fname, sample_duration):
@@ -157,6 +164,8 @@ def get_args():
     args = parser.parse_args()
     if not isabs(args.outputDirectory):
         args.outputDirectory = args.inputDirectory
+    if not mkdpaths(args.outputDirectory):
+        raise Exception('Could not make output directory {}'.format(args.outputDirectory))
     return args
 
 

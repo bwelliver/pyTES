@@ -42,6 +42,7 @@ class InputArguments:
         self.makeROOT = False
         self.readROOT = False
         self.readTESROOT = False
+        self.plotTES = False
         self.newFormat = False
         self.pidLog = ''
         self.numberOfWindows = 1
@@ -118,7 +119,7 @@ def process_waveform(waveform, time_values, sample_length, number_of_windows=1, 
     '''
     # Allocate numpy arrays. Note that if we made some assumptions we could pre-allocate instead of append...
     # print('The first entry contents of waveform are: {}'.format(waveform[0]))
-    print('Processing waveform with {} winodws...'.format(number_of_windows))
+    print('Processing waveform with {} windows...'.format(number_of_windows))
     # Pre-allocation size
     number_of_entries = len(waveform) * number_of_windows
     # mean_waveform = np.empty(number_of_entries)
@@ -534,7 +535,7 @@ def get_sc_endpoints(buffer_size, index_min_x, dydx):
     return (ev_left, ev_right)
 
 
-def walk_sc(xdata, ydata, buffer_size=5, plane='iv'):
+def walk_sc(xdata, ydata, buffer_size=5*8, plane='iv'):
     '''Function to walk the superconducting region of the IV curve and get the left and right edges
     Generally when ib = 0 we should be superconducting so we will start there and go up until the bias
     then return to 0 and go down until the bias
@@ -1457,7 +1458,7 @@ def get_parasitic_resistances(iv_dictionary):
     parasitic_dictionary = {}
     fit_params = iv_results.FitParameters()
     min_temperature = list(iv_dictionary.keys())[np.argmin([float(temperature) for temperature in iv_dictionary.keys()])]
-    for temperature, iv_data in iv_dictionary.items():
+    for temperature, iv_data in sorted(iv_dictionary.items()):
         print('Attempting to fit superconducting branch for temperature: {} mK'.format(temperature))
         result, perr = fit_sc_branch(iv_data['iBias'], iv_data['vOut'], iv_data['vOut_rms'], plane='iv')
         fit_params.sc.set_values(result, perr)
@@ -1489,7 +1490,7 @@ def process_iv_curves(output_path, data_channel, iv_curves):
     parasitic_dictionary, min_temperature = get_parasitic_resistances(iv_curves['iv'])
     # Loop through the iv data now and obtain fit parameters and correct alignment
     fit_parameters_dictionary = {}
-    for temperature, iv_data in iv_curves['iv'].items():
+    for temperature, iv_data in sorted(iv_curves['iv'].items()):
         fit_parameters_dictionary[temperature] = fit_iv_regions(xdata=iv_data['iBias'], ydata=iv_data['vOut'], sigma_y=iv_data['vOut_rms'], plane='iv')
         # Make it pass through zero. Correct offset.
         # i_offset, v_offset = correct_offsets(fit_parameters_dictionary[temperature], iv_data, 'interceptbalance')
@@ -1523,7 +1524,7 @@ def process_iv_curves(output_path, data_channel, iv_curves):
 #        # Re-walk on shifted data
 #        fit_parameters_dictionary[temperature] = fit_iv_regions(x=iv_data['iBias'], y=iv_data['vOut'], sigma_y=iv_data['vOut_rms'], plane='iv')
     # Next loop through to generate plots
-    for temperature, iv_data in iv_curves['iv'].items():
+    for temperature, iv_data in sorted(iv_curves['iv'].items()):
         # Make I-V plot
         file_name = output_path + '/' + 'vOut_vs_iBias_ch_' + str(data_channel) + '_' + temperature + 'mK'
         plt_data = [iv_data['iBias'], iv_data['vOut'], iv_data['iBias_rms'], iv_data['vOut_rms']]
@@ -1534,7 +1535,7 @@ def process_iv_curves(output_path, data_channel, iv_curves):
         model_resistance = convert_fit_to_resistance(fit_parameters_dictionary[temperature], fit_type='iv', r_p=parasitic_dictionary[min_temperature].value, r_p_rms=parasitic_dictionary[min_temperature].rms)
         ivp.iv_fitplot(plt_data, fit_parameters_dictionary[temperature], model_resistance, parasitic_dictionary[min_temperature], file_name, axes_options, xscale=1e6, yscale=1e3)
         # Let's make a ROOT style plot (yuck)
-        ivp.make_root_plot(output_path, data_channel, temperature, iv_data, fit_parameters_dictionary[temperature], parasitic_dictionary[min_temperature], xscale=1e6, yscale=1e3)
+        # ivp.make_root_plot(output_path, data_channel, temperature, iv_data, fit_parameters_dictionary[temperature], parasitic_dictionary[min_temperature], xscale=1e6, yscale=1e3)
         iv_curves['iv'] = iv_curves['iv']
         iv_curves['fit_parameters'] = fit_parameters_dictionary
         iv_curves['parasitic'] = parasitic_dictionary
@@ -1559,14 +1560,15 @@ def get_power_temperature_curves(output_path, data_channel, iv_dictionary):
         c_normal_to_sc_neg = np.logical_and(iv_data['iBias'] <= 0, di_bias > 0)
         c_normal_to_sc = np.logical_or(c_normal_to_sc_pos, c_normal_to_sc_neg)
         # Also select data that is some fraction of the normal resistance, say 20-30%
-        r_n = 250e-3
-        r_0 = 0.3*r_n
-        d_r = 70e-3
+        r_n = 700e-3
+        r_0 = 350e-3
+        d_r = 250e-3
         cut = np.logical_and(iv_data['rTES'] > r_0 - d_r, iv_data['rTES'] < r_0 + d_r)
         cut = np.logical_and(cut, c_normal_to_sc)
         if nsum(cut) > 0:
             temperatures = np.append(temperatures, float(temperature)*1e-3)
             power = np.append(power, np.mean(iv_data['pTES'][cut]))
+            # power_rms = np.append(power_rms, np.mean(iv_data['pTES_rms'][cut]))
             power_rms = np.append(power_rms, np.std(iv_data['pTES'][cut]))
     print('The main T vector is: {}'.format(temperatures))
     # Remove the first half?
@@ -1578,7 +1580,7 @@ def get_power_temperature_curves(output_path, data_channel, iv_dictionary):
 #    power_rms = power_rms[0:power_rms.size//2]
     # print('The half T vector is: {}'.format(temperatures))
     # Make a plot without any fits to see what we have to work with...
-    cut_temperature = temperatures < 200e-3
+    cut_temperature = temperatures < 61.5e-3  # This should be the expected Tc
     cut_power = power < 1e-6
     cut_temperature = np.logical_and(cut_temperature, cut_power)
     # Next make a P-T plot
@@ -1599,14 +1601,15 @@ def get_power_temperature_curves(output_path, data_channel, iv_dictionary):
     ivp.save_plot(fig, axes, file_name)
     # Attempt to fit it to a power function
     # [k, n, Ttes]
-    lower_bounds = [-1e-6, -10, 110e-3]
-    upper_bounds = [1e-6, 7, 200e-3]
-    x_0 = [1e-9, -1, 170e-3]
+    lower_bounds = [1e-9, 0, 10e-3]
+    upper_bounds = [10e-6, 7, 100e-3]
+    x_0 = [0.5e-6, 5, 55e-3]
     print('The input value of T is {} and for P it is: {} and for Prms it is: {}'.format(temperatures[cut_temperature], power[cut_temperature], power_rms[cut_temperature]))
-    results, pcov = curve_fit(fitfuncs.tes_power_polynomial, temperatures[cut_temperature], power[cut_temperature], p0=x_0, sigma=power_rms[cut_temperature], bounds=(lower_bounds, upper_bounds), absolute_sigma=True, method='trf', max_nfev=1e4)
-    # results, pcov = curve_fit(fitfuncs.tes_power_polynomial, temperatures[cut_temperature], power[cut_temperature], sigma=power_rms[cut_temperature], p0=x_0, absolute_sigma=True, method='lm', maxfev=int(2e4))
-    print('The covariance matrix columns are: [k, n, T] and the matrix is: {}'.format(pcov))
+    # results, pcov = curve_fit(fitfuncs.tes_power_polynomial, temperatures[cut_temperature], power[cut_temperature], p0=x_0, sigma=power_rms[cut_temperature], bounds=(lower_bounds, upper_bounds), absolute_sigma=True, method='trf', max_nfev=1e4)
+    # results, pcov = curve_fit(fitfuncs.tes_power_polynomial, temperatures[cut_temperature], power[cut_temperature], p0=x_0, method='lm', maxfev=int(2e4))
+    results, pcov = curve_fit(fitfuncs.tes_power_polynomial, temperatures[cut_temperature], power[cut_temperature], sigma=power_rms[cut_temperature], p0=x_0, absolute_sigma=True, method='lm', maxfev=int(2e4))
     # results, pcov = curve_fit(fitfuncs.tes_power_polynomial, temperatures[cut_temperature], power[cut_temperature], sigma=power_rms[cut_temperature], absolute_sigma=True, method='trf')
+    print('The covariance matrix columns are: [k, n, T] and the matrix is: {}'.format(pcov))
     perr = np.sqrt(np.diag(pcov))
     fit_result = iv_results.FitParameters()
     fit_result.left.set_values(results, perr)
@@ -1619,7 +1622,7 @@ def get_power_temperature_curves(output_path, data_channel, iv_dictionary):
     axes_options = {'xlabel': 'Temperature [mK]',
                     'ylabel': 'TES Power [fW]',
                     'title': 'Channel {} TES Power vs Temperature'.format(data_channel),
-                    'ylim': (0, 10000)
+                    'ylim': (0, 400)
                     }
     axes = ivp.generic_fitplot_with_errors(axes=axes, x=temperatures, y=power, axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
     axes = ivp.add_model_fits(axes=axes, x=temperatures, y=power, model=fit_result, model_function=fitfuncs.tes_power_polynomial, xscale=xscale, yscale=yscale)
@@ -1630,6 +1633,7 @@ def get_power_temperature_curves(output_path, data_channel, iv_dictionary):
         label.set_fontsize(18)
     ivp.save_plot(fig, axes, file_name)
     print('Results: k = {}, n = {}, Tb = {}'.format(*results))
+    print('Error Results: k = {}, n = {}, Tb = {}'.format(*perr))
     # Compute G
     # P = k*(Ts^n - T^n)
     # G = n*k*T^(n-1)
@@ -1638,6 +1642,22 @@ def get_power_temperature_curves(output_path, data_channel, iv_dictionary):
     return True
 
 
+# new function
+def get_resistance_temperature_curves_new(output_path, data_channel, iv_dictionary):
+    '''Generate resistance vs temperature curves for a TES'''
+    # Rtes = R(i,T) so we are really asking for R(i=constant, T).
+
+    # Get only data with a fixed iTES
+    fixed_name = 'iTES'
+    fixed_value = 0.2e-6
+    delta_value = 0.1e-6
+    num_points = iv_data[fixed_name].size
+    master_cut = np.full(num_points, False, dtype=bool)
+    for temperature, iv_data in iv_dictionary.items():
+        cut = np.logical_and(iv_data[fixed_name] > fixed_value - delta_value, iv_data[fixed_name] < fixed_value + delta_value)
+
+
+# old function
 def get_resistance_temperature_curves(output_path, data_channel, iv_dictionary):
     '''Generate a resistance vs temperature curve for a TES'''
     # Rtes = R(i,T) really so select a fixed i and across multiple temperatures obtain values for R and then plot
@@ -1645,7 +1665,7 @@ def get_resistance_temperature_curves(output_path, data_channel, iv_dictionary):
     resistance = np.empty(0)
     fixed_value = 'iTES'
     for temperature, iv_data in iv_dictionary.items():
-        cut = np.logical_and(iv_data[fixed_value] > 0.0e-6, iv_data[fixed_value] < 1e-6)
+        cut = np.logical_and(iv_data[fixed_value] > 0e-6, iv_data[fixed_value] < 0.3e-6)
         if nsum(cut) > 0:
             temperatures = np.append(temperatures, float(temperature)*1e-3)  # T in K
             resistance = np.append(resistance, np.mean(iv_data['rTES'][cut]))
@@ -1683,10 +1703,11 @@ def get_resistance_temperature_curves(output_path, data_channel, iv_dictionary):
     resistance_desc = np.empty(0)
     resistance_right_rms_desc = np.empty(0)
     fit_result = iv_results.FitParameters()
-    i_select = 1e-6
+    i_select = 0.1e-6
     selector = 'iTES'
+    avg_flag = 'median'
     for temperature, iv_data in iv_dictionary.items():
-        cut = np.logical_and(iv_data[selector] > i_select - 0.5e-6, iv_data[selector] < i_select + 0.5e-6)
+        cut = np.logical_and(iv_data[selector] > i_select - 0.1e-6, iv_data[selector] < i_select + 0.15e-6)
         print('the sum of cut is: {}'.format(nsum(cut)))
         # Cuts to select physical case where we go from Normal --> SC modes
         di_bias = np.gradient(iv_data['iBias'], edge_order=2)
@@ -1697,13 +1718,21 @@ def get_resistance_temperature_curves(output_path, data_channel, iv_dictionary):
         cut_asc = np.logical_and(cut, ~dcut)
         if nsum(cut_asc) > 0:
             temperatures = np.append(temperatures, float(temperature)*1e-3)  # T in K
-            resistance = np.append(resistance, np.median(iv_data['rTES'][cut_asc]))
-            resistance_right_rms = np.append(resistance_right_rms, np.mean(iv_data['rTES_rms'][cut_asc]))
+            if avg_flag == 'median':
+                resistance = np.append(resistance, np.median(iv_data['rTES'][cut_asc]))
+                resistance_right_rms = np.append(resistance_right_rms, np.median(iv_data['rTES_rms'][cut_asc]))
+            if avg_flag == 'mean':
+                resistance = np.append(resistance, np.mean(iv_data['rTES'][cut_asc]))
+                resistance_right_rms = np.append(resistance_right_rms, np.mean(iv_data['rTES_rms'][cut_asc]))
             # resistance_right_rms = np.append(resistance_right_rms, np.std(iv_data['rTES'][cut_asc]))
         if nsum(cut_desc) > 0:
             temperature_desc = np.append(temperature_desc, float(temperature)*1e-3)  # T in K
-            resistance_desc = np.append(resistance_desc, np.median(iv_data['rTES'][cut_desc]))
-            resistance_right_rms_desc = np.append(resistance_right_rms_desc, np.mean(iv_data['rTES_rms'][cut_desc]))
+            if avg_flag == 'median':
+                resistance_desc = np.append(resistance_desc, np.median(iv_data['rTES'][cut_desc]))
+                resistance_right_rms_desc = np.append(resistance_right_rms_desc, np.median(iv_data['rTES_rms'][cut_desc]))
+            if avg_flag == 'mean':
+                resistance_desc = np.append(resistance_desc, np.mean(iv_data['rTES'][cut_desc]))
+                resistance_right_rms_desc = np.append(resistance_right_rms_desc, np.mean(iv_data['rTES_rms'][cut_desc]))
             # resistance_right_rms_desc = np.append(resistance_right_rms_desc, np.std(iv_data['rTES'][cut_desc]))
     # Next make an R-T plot
     # Add a T cut?
@@ -1745,7 +1774,7 @@ def get_resistance_temperature_curves(output_path, data_channel, iv_dictionary):
     ivp.save_plot(fig, axes, file_name)
     sort_key = np.argsort(temperatures)
     x_0 = [1, 0, temperatures[sort_key][np.gradient(resistance[sort_key], temperatures[sort_key], edge_order=2).argmax()]*1.1, 1e-3]
-    x_0 = [1, 0, 20e-3, 1e-3]
+    # x_0 = [1, 0, 50e-3, 1e-3]
     # x_0 = [1, 0, -temperatures[sort_key][np.gradient(resistance[sort_key], temperatures[sort_key], edge_order=2).argmax()]/1e-3,  1/1e-3]
     print('For SN to N fit initial guess is {}'.format(x_0))
     # result, pcov = curve_fit(fitfuncs.tanh_tc, T, R, sigma=resistance_right_rms, absolute_sigma=True, p0=x_0, method='trf')
@@ -1757,7 +1786,7 @@ def get_resistance_temperature_curves(output_path, data_channel, iv_dictionary):
     # Try a fit?
     sort_key = np.argsort(temperature_desc)
     x_0 = [1, 0, temperature_desc[sort_key][np.gradient(resistance_desc[sort_key], temperature_desc[sort_key], edge_order=2).argmax()]*1.1, 1e-3]
-    x_0 = [1, 0, 20e-3, 1e-3]
+    # x_0 = [1, 0, 50e-3, 1e-3]
     # x_0 = [1, 0, -temperature_desc[sort_key][np.gradient(resistance_desc[sort_key], temperature_desc[sort_key], edge_order=2).argmax()]/1e-3, 1/1e-3]
     print('For descending fit (N->S) initial guess is {}'.format(x_0))
 
@@ -1811,12 +1840,12 @@ def get_resistance_temperature_curves(output_path, data_channel, iv_dictionary):
                     }
     axes = ivp.generic_fitplot_with_errors(axes=axes, x=temperature_desc[sort_key], y=resistance_desc[sort_key], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
     # Let us pad the T values so they are smoooooooth
-    model_temperatures = np.linspace(temperature_desc.min(), 36e-3, 100000)
+    model_temperatures = np.linspace(temperature_desc.min(), 70e-3, 100000)
     axes = ivp.add_model_fits(axes=axes, x=model_temperatures, y=resistance, model=normal_to_sc_fit_result, model_function=fitfuncs.tanh_tc, xscale=xscale, yscale=yscale)
     axes = ivp.rt_fit_textbox(axes=axes, model=normal_to_sc_fit_result)
     #axes.legend(['SC to N', 'N to SC'])
     file_name = output_path + '/' + 'rTES_vs_T_ch_' + str(data_channel) + '_fixed_' + selector + '_' + str(np.round(i_select*1e6, 3)) + 'uA_normal_to_sc_only'
-    axes.set_xlim((10, 36))
+    axes.set_xlim((10, 70))
     for label in axes.get_xticklabels() + axes.get_yticklabels():
         label.set_fontsize(18)
     ivp.save_plot(fig, axes, file_name)
@@ -1956,13 +1985,13 @@ def compute_extra_quantities(iv_curves):
         # v_offset = 0.008104607442168656
         i_offset = 0
         v_offset = 0
-        ertes = 21e-3*((iv_curves['iv'][temperature]['iBias'] - i_offset)*(-1.28459*10000)/(iv_curves['iv'][temperature]['vOut'] - v_offset) - 1) - 12e-3
+        # ertes = 21e-3*((iv_curves['iv'][temperature]['iBias'] - i_offset)*(-1.28459*10000)/(iv_curves['iv'][temperature]['vOut'] - v_offset) - 1) - 12e-3
         # index_vector = np.array([i for i in range(dvdi.size)])
         iv_curves['iv'][temperature]['dvd_t'] = dvd_t
         iv_curves['iv'][temperature]['did_t'] = did_t
         iv_curves['iv'][temperature]['dvdi'] = dvdi
         iv_curves['iv'][temperature]['Ratio'] = ratio
-        iv_curves['iv'][temperature]['fakeRtes'] = ertes
+        # iv_curves['iv'][temperature]['fakeRtes'] = ertes
         iv_curves['iv'][temperature]['iBiasDetrend'] = detrend_i_bias
     return iv_curves
 
@@ -1973,6 +2002,7 @@ def chop_data_by_temperature_steps(formatted_data, timelist, bias_channel, data_
     r_bias = squid_parameters.Rbias
     time_buffer = 0
     iv_dictionary = {}
+    cut_temperature = 55  # Should be the minimum acceptable temperature
     expected_duration = 6000  # TODO: make this an input argument or auto-determined somehow
     for values in timelist:
         start_time, stop_time, mean_temperature = values
@@ -1993,6 +2023,9 @@ def chop_data_by_temperature_steps(formatted_data, timelist, bias_channel, data_
             continue
         else:
             temperature = str(np.round(mean_temperature*1e3, 3))
+            # Let us also toss out temperatures if they contain bad data or jumps
+            if float(temperature) < cut_temperature:
+                continue
             # Proceed to correct for SQUID Jumps
             # We should SORT everything by increasing time....
             sort_key = np.argsort(timestamps)
@@ -2037,6 +2070,8 @@ def input_parser():
                         help='Read IV data from processed root file. Stored in outputPath /root/iv_data.root')
     parser.add_argument('-l', '--readTESROOT', action='store_true',
                         help='Read IV and TES data from processed root file. Stored in outputPath /root/iv_data.root')
+    parser.add_argument('-g', '--plotTES', action='store_true',
+                        help='Make plots with computed TES values.')
     parser.add_argument('-n', '--newFormat', action='store_true',
                         help='Specify whether or not to use the new ROOT format for file reading')
     parser.add_argument('-p', '--pidLog', default=None,
@@ -2093,7 +2128,8 @@ def iv_main(argin):
     # This step onwards assumes iv_dictionary contains TES values
     iv_curves = process_tes_curves(iv_curves)
     # Make TES Plots
-    make_tes_plots(output_path=argin.outputPath, data_channel=argin.dataChannel, iv_dictionary=iv_curves['iv'], fit_dictionary=iv_curves['tes_fit_parameters'], individual=True)
+    if argin.plotTES is True:
+        make_tes_plots(output_path=argin.outputPath, data_channel=argin.dataChannel, iv_dictionary=iv_curves['iv'], fit_dictionary=iv_curves['tes_fit_parameters'], individual=True)
     # Next let's do some special processing...R vs T, P vs T type of thing
     get_power_temperature_curves(argin.outputPath, argin.dataChannel, iv_curves['iv'])
     get_resistance_temperature_curves(argin.outputPath, argin.dataChannel, iv_curves['iv'])

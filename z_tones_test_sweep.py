@@ -23,7 +23,7 @@ def complex_ratio_fit_parallelC(f, Rn, Rl, L, C):
     #ZLs = 1j*2*np.pi*f*Ls
     #C = 1
     ZC = 1/(1j*2*np.pi*f*C)
-    
+
     Z1 = 1/(1/(Rn + Rl + ZL) + 1/ZC)
     Z2 = 1/(1/(Rl + ZL) + 1/ZC)
     ratio = Z1/Z2
@@ -37,7 +37,7 @@ def complex_ratio_fit(f, Rn, Rl, L):
     #ZLs = 1j*2*np.pi*f*Ls
     #C = 1
     #ZC = 1/(1j*2*np.pi*f*C)
-    
+
     Z1 = Rn + Rl + ZL
     Z2 = Rl + ZL
     ratio = Z1/Z2
@@ -46,9 +46,9 @@ def complex_ratio_fit(f, Rn, Rl, L):
 
 def ratio_fit_parallelC(f, Rn, Rl, L, C):
     '''flat version of ratio fit'''
-    #Rn = 0.543
+    #Rn = 0.543sa
     ratio = complex_ratio_fit_parallelC(f, Rn, Rl, L, C)
-    
+
     q = np.real(ratio)
     q = np.append(q, np.imag(ratio))
     return q
@@ -58,7 +58,7 @@ def ratio_fit(f, Rn, Rl, L):
     '''flat version of ratio fit'''
     #Rn = 0.543
     ratio = complex_ratio_fit(f, Rn, Rl, L)
-    
+
     q = np.real(ratio)
     q = np.append(q, np.imag(ratio))
     return q
@@ -83,7 +83,7 @@ def complex_tes_one_block(f, I, R, g, T, a, b, C):
     Z(w) = Rl + jwL + Ztes(w)
     NOTE: Be sure to use VOLTAGE biased model!!!!!
     '''
-    
+
     #T = 9e-3
     P = I*I*R
     L = P*a/(g*T)
@@ -111,7 +111,7 @@ def complex_tes_one_block_lindeman(f, I, R, g, T, a, b, C):
     Z(w) = Rl + jwL + Ztes(w)
     NOTE: Be sure to use VOLTAGE biased model!!!!!
     '''
-    
+
     #T = 9e-3
     t = 1/((I*I*R/(C*T))*a - g/C)
     #
@@ -178,7 +178,7 @@ def gen_plot_points_fit(z, z_model, result, perr, xlab, ylab, title, fName, xlog
     """
     I, R, G, T, a, b, C = result
     Ierr, Rerr, Gerr, Terr, aerr, berr, Cerr = perr
-    
+
     fig2 = plt.figure(figsize=(16, 16))
     ax = fig2.add_subplot(111)
     ax.plot(np.real(z), np.imag(z), marker='o', markersize=4, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0.0, linestyle='None')
@@ -192,7 +192,7 @@ def gen_plot_points_fit(z, z_model, result, perr, xlab, ylab, title, fName, xlog
     #ax.set_xlim([-1, 1])
     ax.grid()
     ax.set_title(title)
-    
+
     # Set up text strings for my fit
     tI = r'$I_{0} = %.5f \pm %.5f \mathrm{\mu A}$'%(I*1e6, Ierr*1e6)
     ta = r'$\alpha = %.5f \pm %.5f$'%(a, aerr)
@@ -205,11 +205,11 @@ def gen_plot_points_fit(z, z_model, result, perr, xlab, ylab, title, fName, xlog
     #tLin = r'$L_{in} = %.5f \pm %.5f \mathrm{nH}$'%(Lin*1e9, Linerr*1e9)
     text_string = tI + '\n' + tR + '\n' + tg + '\n' + ta + '\n' + tb + '\n' + tC + '\n' + tT
     #text_string = ta + '\n' + tb + '\n' + tC + '\n' + tT
-        
+
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
     ax.text(0.7, 0.2, text_string, transform=ax.transAxes, fontsize=14, verticalalignment='top', horizontalalignment='left', bbox=props)
-    
-    
+
+
     fig2.savefig(fName, dpi=200)
     #plt.show()
     #plt.draw()
@@ -221,9 +221,9 @@ def gen_plot_points_fit_ratio(ratio, ratio_model, result, perr, xlab, ylab, titl
     """Create generic plots that may be semilogx (default)
     I, a, b, R, g, C, T, Rl, Lin
     """
-    Rn, Rl, Lin, Ls, C = result
-    Rnerr, Rlerr, Linerr, Lserr, Cerr = perr
-    
+    Rn, Rl, Lin, C = result
+    Rnerr, Rlerr, Linerr, Cerr = perr
+
     fig2 = plt.figure(figsize=(16, 16))
     ax = fig2.add_subplot(111)
     ax.plot(np.real(ratio), np.imag(ratio), marker='o', markersize=4, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0.0, linestyle='None')
@@ -241,15 +241,14 @@ def gen_plot_points_fit_ratio(ratio, ratio_model, result, perr, xlab, ylab, titl
     #ax.set_xlim([-1, 1])
     ax.grid()
     ax.set_title(title)
-    
+
     # Set up text strings for my fit
     tRn = r'$R_{n} = %.5f \pm %.5f \mathrm{m\Omega}$'%(Rn*1e3, Rnerr*1e3)
     tRl = r'$R_{L} = %.5f \pm %.5f \mathrm{m\Omega}$'%(Rl*1e3, Rlerr*1e3)
     tLin = r'$L_{in} = %.5f \pm %.5f \mathrm{\mu H}$'%(Lin*1e6, Linerr*1e6)
-    tLs = r'$L_{s} = %.5f \pm %.5f \mathrm{\mu H}$'%(Ls*1e6, Lserr*1e6)
     tC = r'$C_{in} = %.5f \pm %.5f \mathrm{nF}$'%(C*1e9, Cerr*1e9)
-    text_string = tRn + '\n' + tRl + '\n' + tLin + '\n' + tLs + '\n' + tC
-        
+    text_string = tRn + '\n' + tRl + '\n' + tLin + '\n' + tC
+
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
     ax.text(0.7, 0.2, text_string, transform=ax.transAxes, fontsize=14, verticalalignment='top', horizontalalignment='left', bbox=props)
     fig2.savefig(fName, dpi=200)
@@ -263,9 +262,9 @@ def gen_plot_points_fit_ratio_components(tone, ratio, ratio_model, result, perr,
     """Create generic plots that may be semilogx (default)
     I, a, b, R, g, C, T, Rl, Lin
     """
-    Rn, Rl, Lin, Ls, C = result
-    Rnerr, Rlerr, Linerr, Lserr, Cerr = perr
-    
+    Rn, Rl, Lin, C = result
+    Rnerr, Rlerr, Linerr, Cerr = perr
+
     fig2 = plt.figure(figsize=(16, 16))
     ax = fig2.add_subplot(111)
     if component == 'real':
@@ -288,15 +287,14 @@ def gen_plot_points_fit_ratio_components(tone, ratio, ratio_model, result, perr,
     #ax.set_xlim([-1, 1])
     ax.grid()
     ax.set_title(title)
-    
+
     # Set up text strings for my fit
     tRn = r'$R_{n} = %.5f \pm %.5f \mathrm{m\Omega}$'%(Rn*1e3, Rnerr*1e3)
     tRl = r'$R_{L} = %.5f \pm %.5f \mathrm{m\Omega}$'%(Rl*1e3, Rlerr*1e3)
     tLin = r'$L_{in} = %.5f \pm %.5f \mathrm{\mu H}$'%(Lin*1e6, Linerr*1e6)
-    tLs = r'$L_{s} = %.5f \pm %.5f \mathrm{\mu H}$'%(Ls*1e6, Lserr*1e6)
     tC = r'$C_{in} = %.5f \pm %.5f \mathrm{nF}$'%(C*1e9, Cerr*1e9)
-    text_string = tRn + '\n' + tRl + '\n' + tLin + '\n' + tLs + '\n' + tC
-        
+    text_string = tRn + '\n' + tRl + '\n' + tLin + '\n' + tC
+
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
     ax.text(0.7, 0.2, text_string, transform=ax.transAxes, fontsize=14, verticalalignment='top', horizontalalignment='left', bbox=props)
     fig2.savefig(fName, dpi=200)
@@ -312,7 +310,7 @@ def gen_plot_points_fit_z_components(tone, z, z_model, result, perr, xlab, ylab,
     """
     I, R, G, T, a, b, C = result
     Ierr, Rerr, Gerr, Terr, aerr, berr, Cerr = perr
-    
+
     fig2 = plt.figure(figsize=(16, 16))
     ax = fig2.add_subplot(111)
     if component == 'real':
@@ -335,7 +333,7 @@ def gen_plot_points_fit_z_components(tone, z, z_model, result, perr, xlab, ylab,
     #ax.set_xlim([-1, 1])
     ax.grid()
     ax.set_title(title)
-    
+
     # Set up text strings for my fit
     tI = r'$I_{0} = %.5f \pm %.5f \mathrm{\mu A}$'%(I*1e6, Ierr*1e6)
     ta = r'$\alpha = %.5f \pm %.5f$'%(a, aerr)
@@ -347,7 +345,7 @@ def gen_plot_points_fit_z_components(tone, z, z_model, result, perr, xlab, ylab,
     #tRl = r'$R_{L} = %.5f \pm %.5f \mathrm{m\Omega}$'%(Rl*1e3, Rlerr*1e3)
     #tLin = r'$L_{in} = %.5f \pm %.5f \mathrm{nH}$'%(Lin*1e9, Linerr*1e9)
     text_string = tI + '\n' + tR + '\n' + tg + '\n' + ta + '\n' + tb + '\n' + tC + '\n' + tT
-        
+
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
     ax.text(0.7, 0.2, text_string, transform=ax.transAxes, fontsize=14, verticalalignment='top', horizontalalignment='left', bbox=props)
     fig2.savefig(fName, dpi=200)
@@ -362,7 +360,7 @@ def gen_plot_points_fit_poly(tone, y, y_model, result, perr, xlab, ylab, title, 
     """
     #Rn, Rl, Lin, Lsin, Lsin2 = result
     #Rnerr, Rlerr, Linerr, Lsinerr, Lsinerr2 = perr
-    
+
     fig2 = plt.figure(figsize=(16, 16))
     ax = fig2.add_subplot(111)
     ax.plot(tone, y, marker='o', markersize=4, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0.0, linestyle='None')
@@ -376,7 +374,7 @@ def gen_plot_points_fit_poly(tone, y, y_model, result, perr, xlab, ylab, title, 
     #ax.set_xlim([-1, 1])
     ax.grid()
     ax.set_title(title)
-    
+
     # Set up text strings for my fit
     #tRn = r'$R_{n} = %.5f \pm %.5f \mathrm{m\Omega}$'%(Rn*1e3, Rnerr*1e3)
     #tRl = r'$R_{L} = %.5f \pm %.5f \mathrm{m\Omega}$'%(Rl*1e3, Rlerr*1e3)
@@ -384,7 +382,7 @@ def gen_plot_points_fit_poly(tone, y, y_model, result, perr, xlab, ylab, title, 
     #tLsin = r'$L_{sin} = %.5f \pm %.5f \mathrm{\mu H}$'%(Lsin*1e6, Lsinerr*1e6)
     #tLsin2 = r'$C_{sin} = %.5f \pm %.5f \mathrm{nF}$'%(Lsin2*1e9, Lsinerr2*1e9)
     #text_string = tRn + '\n' + tRl + '\n' + tLin + '\n' + tLsin + '\n' + tLsin2
-        
+
     #props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
     #ax.text(0.7, 0.2, text_string, transform=ax.transAxes, fontsize=14, verticalalignment='top', horizontalalignment='left', bbox=props)
     fig2.savefig(fName, dpi=200)
@@ -438,7 +436,7 @@ def get_frequency_list(filename):
     for line in lines[eoh+n_lines_to_skip:]:
         line = line.strip('\n').split('\t')
         f.append(float(line[0]))
-    return np.unique(f)
+    return np.array(f)
 
 
 
@@ -570,7 +568,7 @@ def invert_ratio(data, invert=False):
 
 
 def get_tone_list(base_tone, max_frequency, tone_step_size):
-    '''Generate a list of desired tones'''
+    '''Generate a list of   desired tones'''
     # Note that if we have a multi-tone sweep we have harmonics of the form:
     # f0 + n*fStep < max_frequency
     # If we have a square wave only the odd harmonics of the base tone are to be selected:
@@ -606,7 +604,7 @@ def parse_file(file_name, list_of_frequencies, data):
     fcut = np.logical_and(frequencies > f0 - df/2, frequencies <= f0 + df/2)
     fActual = np.mean(frequencies[fcut])
     rActual = np.max(response[fcut])
-    
+
     # Now we have a (f,A) point and we know if it is the real or imaginary part.
     if isReal == True:
         data['reRatio'][frequency_index] = rActual
@@ -621,17 +619,20 @@ def get_frequencies(inFile):
     '''Read in a frequency file to get a list of frequencies'''
     f = parse_lvm_file(inFile, intype="frequency_list")
     return f
-    
+
 
 def get_sweep_data_from_file(inputDirectory, temperature, current):
     '''Get the sweep data for a given current value and assign to specific frequencies'''
-    list_of_files = glob.glob('{}/*_{}_{}*.txt'.format(inputDirectory, temperature, current))
+    print('The three arguemnts are: {}, {}, {}'.format(inputDirectory, temperature, current))
+    # list_of_files = glob.glob('{}/*_{}_{}*.txt'.format(inputDirectory, temperature, current))
+    list_of_files = glob.glob('{}/*_{}*.txt'.format(inputDirectory, current))
     # NATURAL SORT
     dre = re.compile(r'(\d+)')
     list_of_files.sort(key=lambda l: [int(s) if s.isdigit() else s.lower() for s in re.split(dre, l)])
     # Now we have a list of files so let us go through them.
     frequency_files = []
     new_list_of_files = []
+    print('The files are {}'.format(list_of_files))
     for f in list_of_files:
         isFrequency = f.find('freq') > -1
         if isFrequency == True:
@@ -658,7 +659,7 @@ def get_data_arrays_transfer_sweep(inputDirectory, temperature, sc_current, n_cu
     data = get_sweep_data_from_file(inputDirectory, temperature, sc_current)
     # If the ratio contained in data is not representative of fVin/fVout let's invert it so it is
     scdata = invert_ratio(data, invert)
-    
+
     # Get the data for each component and we will combine it
     if n_current is not None:
         data = get_sweep_data_from_file(inputDirectory, temperature, n_current)
@@ -716,14 +717,14 @@ def fit_z_model_and_plot(inputDirectory, tones, z, p0=None, lbounds=None, ubound
     title = 'Real Plot of Z Model'
     fName = inputDirectory + '/real_z_model_tones.png'
     gen_plot_points_fit_z_components(tones, z, z_model, result, perr, xlab, ylab, title, fName, ylim=[-0.5,0.5], xlog='log', ylog='linear', component='real')
-    
+
     xlab = 'Frequency [Hz]'
     ylab = 'Imag Part of Impedance'
     title = 'Imag Plot of Z Model'
     fName = inputDirectory + '/imag_z_model_tones.png'
     gen_plot_points_fit_z_components(tones, z, z_model, result, perr, xlab, ylab, title, fName, ylim=[-0.3,0.1], xlog='log', ylog='linear', component='imag')
-    
-    
+
+
     print('Fit and plot done')
     return result, perr, z_model
 
@@ -744,46 +745,47 @@ def fit_ratio_model_and_plot(inputDirectory, tones, ratio, p0=None, lbounds=None
     perr = np.sqrt(np.diag(pcov))
     if len(result) < 3:
         Rnerr = 0
-        result = [Rn, result[0], result[1], 0, result[3]]
+        result = [Rn, result[0], result[1], result[3]]
         perr = [Rnerr, perr[0], perr[1], 0, perr[3]]
     #result = [0.547, 32.5e-3, 2.089e-7]
     ratio_model = complex_ratio_fit(tones, *result)
     # Insert missing things
-    result = [result[0], result[1], result[2], 0, 0]
-    perr = [perr[0], perr[1], perr[2], 0, 0]
-    print('The values for the fit are: Rn = {} mOhm, Rl = {} mOhm, L = {} uH, Ls = {} uH, C = {} nF'.format(result[0]*1e3, result[1]*1e3, result[2]*1e6, result[3]*1e6, result[4]*1e9))
+    if len(result) < 4:
+        result = [result[0], result[1], result[2], 0]
+        perr = [perr[0], perr[1], perr[2], 0]
+    print('The values for the fit are: Rn = {} mOhm, Rl = {} mOhm, L = {} uH, C = {} nF'.format(result[0]*1e3, result[1]*1e3, result[2]*1e6, result[3]*1e9))
     xlab = 'Real Zn/Zsc'
     ylab = 'Imag Zn/Zsc'
     title = 'Nyquist plot of Ratio Model'
     fName = inputDirectory + '/nyquist_ratio_model_tones.png'
     gen_plot_points_fit_ratio(ratio, ratio_model, result, perr, xlab, ylab, title, fName, xlim=[0, 20], ylim=[-10,1], xlog='linear', ylog='linear')
-    
+
     # Make component plots
     xlab = 'Frequency [Hz]'
     ylab = 'Real Part of Impedance Ratio'
     title = 'Real Plot of Ratio Model'
     fName = inputDirectory + '/real_ratio_model_tones.png'
     gen_plot_points_fit_ratio_components(tones, ratio, ratio_model, result, perr, xlab, ylab, title, fName, ylim=[0,20], xlog='log', ylog='linear', component='real')
-    
+
     xlab = 'Frequency [Hz]'
     ylab = 'Imag Part of Impedance Ratio'
     title = 'Imag Plot of Ratio Model'
     fName = inputDirectory + '/imag_ratio_model_tones.png'
     gen_plot_points_fit_ratio_components(tones, ratio, ratio_model, result, perr, xlab, ylab, title, fName, ylim=[-10,1], xlog='log', ylog='linear', component='imag')
-    
+
     print('Fit and plot done')
     return result, perr, ratio_model
 
 
 def compute_z(inputDirectory, G_tones, Rn, Rl, L, C):
     '''Compute the complex impedance given the transfer function'''
-    
+
     #inputDirectory = '/Users/bwelliver/cuore/bolord/complex_z/test_sd/z_8mK_hann'
     # Get low frequency scans
-    temperature = '19.3mK'
-    bias_current = '12.5uA'
+    temperature = '80mK'
+    bias_current = '225uA'
     tones, ratio_tones = get_data_arrays_transfer_sweep(inputDirectory, temperature, bias_current, n_current=None, df=None, invert=True)
-    
+
     #
     xlab = 'Real Ratio'
     ylab = 'Imag Ratio'
@@ -792,7 +794,7 @@ def compute_z(inputDirectory, G_tones, Rn, Rl, L, C):
     xlim=[-0.1, 0.15]
     ylim = [-0.01, 0.15]
     gen_plot_points(ratio_tones.real, ratio_tones.imag, xlab, ylab, title, fName, xlim=None, ylim=None, xlog='linear', ylog='linear')
-    
+
     xlab = 'Frequency [Hz]'
     ylab = 'Real fVin/fVout [Ohm]'
     title = 'Power spectrum of Real fVin/fVout'
@@ -809,7 +811,7 @@ def compute_z(inputDirectory, G_tones, Rn, Rl, L, C):
     # SQUID Parameters
     Rsh = 21e-3
     Li = 6e-9
-    M = -1.27664
+    M = -1.26314
     Rbias = 10e3
     Cbias = 100e-12
     Lbias = 1e-3
@@ -823,11 +825,11 @@ def compute_z(inputDirectory, G_tones, Rn, Rl, L, C):
     #z = compute_complex_z(ratio_tones, tones, squid)
     # Ztes = Zmeas/G - Rl - 2pi*w*i*L where Zmeas/G = Zcirc
     #z = (M*Rfb*Rsh*(ratio_tones)/Zbias)/G_tones - Rl - 2*np.pi*1j*tones*L
-    #1/(1/(z + Rl + 2*np.pi*1j*tones*L) + 1/ZC) = (M*Rfb*Rsh*(ratio_tones)/Zbias)/G_tones 
+    #1/(1/(z + Rl + 2*np.pi*1j*tones*L) + 1/ZC) = (M*Rfb*Rsh*(ratio_tones)/Zbias)/G_tones
     ZC = 1/(2*np.pi*1j*tones*C)
     #z = 1/(1/((M*Rfb*Rsh*(ratio_tones)/Zbias)/G_tones) - 1/ZC) - Rl - 2*np.pi*1j*tones*L
     z = (M*Rfb*Rsh*(ratio_tones)/Zbias)/G_tones - Rl - 2*np.pi*1j*tones*L
-    
+
     # Plot Things
     xlab = 'Real Z [Ohms]'
     ylab = 'Imag Z [Ohms]'
@@ -869,8 +871,8 @@ def compute_z(inputDirectory, G_tones, Rn, Rl, L, C):
     loC = 1e-14
     lbounds = [loa, lob, loC]
     lbounds = [loI, loR, loG, loT, loa, lob, loC]
-    
-    
+
+
     #ubounds = [1, 1e6, 1e6, 1, 1, 1, 40e-3]
     hiI = 20e-6
     hiR = 1
@@ -881,8 +883,8 @@ def compute_z(inputDirectory, G_tones, Rn, Rl, L, C):
     hiC = 5e-10
     ubounds = [hia, hib, hiC]
     ubounds = [hiI, hiR, hiG, hiT, hia, hib, hiC]
-    
-    
+
+
     I0 = 1e-6
     R0 = 200e-3
     g0 = 10e-12
@@ -892,7 +894,7 @@ def compute_z(inputDirectory, G_tones, Rn, Rl, L, C):
     C0 = 25e-12
     x0 = [a0, b0, C0]
     x0 = [I0, R0, g0, T0, a0, b0, C0]
-    
+
     result, perr, z_model = fit_z_model_and_plot(inputDirectory, tones, z, p0=x0, lbounds=lbounds, ubounds=ubounds, method='trf')
     return None
 
@@ -971,7 +973,7 @@ def compute_z(inputDirectory, G_tones, Rn, Rl, L, C):
 #    title = 'Power spectrum of Im Z'
 #    fName = inputDirectory + '/psd_imag_z_tones_fromTime.png'
 #    gen_plot_points(tones, z.imag, xlab, ylab, title, fName, xlog='log', ylog='linear')
-        
+
 
 
 
@@ -1003,7 +1005,7 @@ def get_data_arrays_transfer(inputDirectory, sc_imag_suffix, sc_real_suffix, n_i
     # Get specific tones
 
     # Now we need to filter the appropriate tones
-    df = 0.05 if df is None else ndata['real_freq'][1]/5
+    df = 0.1 if df is None else ndata['real_freq'][1]/5
     tone_list = get_tone_list(f0, fMax, fStep)
     fcut = select_tones(tone_list, ndata['real_freq'], df)
     fcut = np.logical_and(fcut, ndata['real_freq'] < 0)
@@ -1065,22 +1067,22 @@ def get_data_arrays_z(inputDirectory, imag_suffix, real_suffix, f0, fStep, fMax,
 
 
 def compute_transfer_function(inputDirectory):
-    '''Compute the transfer function'''    
+    '''Compute the transfer function'''
     # Ok in the sweep mode we have a list of known good frequencies. The partial index
     # of the file is the index in the array to look for the desired frequency.
     sc_current = '0uA'
     n_current = '100uA'
-    temperature = '19.3mK'
-    
+    temperature = '25mK'
+
     tones, ratio_tones, n_ratio_tones = get_data_arrays_transfer_sweep(inputDirectory, temperature, sc_current, n_current, df=None, invert=True)
-    
+    print('The tones are {}'.format(tones))
     # Plot the nyquist
     xlab = 'Real Zn/Zs'
     ylab = 'Im Zn/Zs'
     title = 'Nyquist plot of Zn/Zs'
     fName = inputDirectory + '/nyquist_ratio_tones.png'
     gen_plot_points(ratio_tones.real, ratio_tones.imag, xlab, ylab, title, fName, xlim=[-20,20], ylim=None, xlog='linear', ylog='linear')
-    
+
     # Plot the ratios
     xlab = 'Frequency [Hz]'
     ylab = 'Abs Zn/Zsc'
@@ -1099,23 +1101,24 @@ def compute_transfer_function(inputDirectory):
     title = 'Power spectrum of Im Measured Impedance Ratio'
     fName = inputDirectory + '/psd_imag_znzsc_tones.png'
     gen_plot_points(tones, ratio_tones.imag, xlab, ylab, title, fName, xlog='log', ylog='linear')
-    
+
     # Attempt to fit
-    x0 = [0.545, 33e-3, 0.8e-6]
-    lbounds = [0.5, 21e-3, 6e-9]
-    ubounds = [0.6, 100e-3, 2e-6]
+    # [Rn, Rl, L]
+    x0 = [500e-3, 50e-3, 6e-9]
+    lbounds = [1e-3, 1e-3, 1e-9]
+    ubounds = [1, 1, 10e-6]
     result, perr, ratio_model = fit_ratio_model_and_plot(inputDirectory, tones, ratio_tones, p0=x0, lbounds=lbounds, ubounds=ubounds, method='trf')
-    
+
     # Now we can create G(w)
-    Rn, Rl, L, C = result[0], result[1], result[2], result[4]
+    Rn, Rl, L, C = result[0], result[1], result[2], result[3]
     Zcirc_normal = Rn + Rl + 2*1j*np.pi*tones*L
     Zbias = 10000
     Rf = 10000
-    M = -1.27664
+    M = -1.26314
     Rs = 21e-3
     dc_factor = (Rs*Rf*M)/Zbias
-    G_tones = n_ratio_tones*dc_factor/Zcirc_normal    
-    
+    G_tones = n_ratio_tones*dc_factor/Zcirc_normal
+
     xlab = 'Real G(w)'
     ylab = 'Im G(w)'
     title = 'Nyquist plot of G(w)'
@@ -1140,12 +1143,12 @@ def compute_transfer_function(inputDirectory):
     title = 'Power spectrum of Im G'
     fName = inputDirectory + '/psd_imag_g_tones.png'
     gen_plot_points(tones, G_tones.imag, xlab, ylab, title, fName, xlog='log', ylog='linear')
-    
+
     return G_tones, Rn, Rl, L, C
 
 runType = 'transfer'
 if runType == 'transfer' or runType == 'both':
-    inputDirectory = '/Users/bwelliver/cuore/bolord/complex_z/test_sd/z_10.5mK_2mV_50avg_sweep'
+    inputDirectory = '/Users/bwelliver/cuore/bolord/complex_z/run11/T25mK/2mV/'
     G, Rn, Rl, L, C = compute_transfer_function(inputDirectory)
     if runType == 'both':
         compute_z(inputDirectory, G, Rn, Rl, L, C)
@@ -1155,7 +1158,7 @@ if runType == 'transfer' or runType == 'both':
 #    poly_result, poly_pcov = curve_fit(poly_w_fit, tones[pcut], ratio_tones[pcut].imag, p0=None, method='trf', max_nfev=1e4)
 #    poly_perr = np.sqrt(np.diag(poly_pcov))
 #    print('The polynomial result is a = {} and n = {} and x0 = {} and f0 = {}'.format(poly_result[0], poly_result[1], poly_result[2], 0))
-#    
+#
 #    y_model = poly_w_fit(tones[pcut], *poly_result)
 #    xlab = 'Frequency [Hz]'
 #    ylab = 'Im Zn/Zsc'

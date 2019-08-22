@@ -76,7 +76,7 @@ def gen_plot_line(x, y, xlab, ylab, title, fName, peaks=None, ylim=(1e-15, 0), l
         for i, label in enumerate(peaks):
             ax.text(peaks[i], y[peaks[i]]*1.5, str(label) + ' Hz - ' + '{:2.3f} pV^2/Hz'.format(y[peaks[i]]*1e12))
     ax.set_xscale(logx)
-    fontsize=18
+    fontsize = 18
     ax.set_xlabel(xlab, fontsize=fontsize)
     ax.set_ylabel(ylab, fontsize=fontsize)
     ax.set_yscale(logy)
@@ -162,7 +162,7 @@ def compute_welch(time, data, number_segments=10):
 
 def compute_noise_spectra(input_directory, squid_run, mode='old', number_segments=10):
     '''Main function to compute noise spectra information from'''
-    
+
     # This is tricky because they must be chained together if we have multiple partials
     list_of_files = glob.glob('{}/*{}*.root'.format(input_directory, squid_run))
     list_of_files.sort(key=natural_sort_key)
@@ -182,7 +182,7 @@ def compute_noise_spectra(input_directory, squid_run, mode='old', number_segment
     # Make output directory
     outdir = '/Users/bwelliver/cuore/bolord/noise_spectra/sr_' + str(squid_run)
     mkdpaths(outdir)
-    
+
     # New mode:
     # Waveforms come in their own things now.
     # Waveform%d[ev] = np.array
@@ -305,15 +305,15 @@ def compute_noise_spectra(input_directory, squid_run, mode='old', number_segment
 #    plt.savefig(outdir + '/spectrogram_channel_7.png', dpi=200)
 #    plt.ylim((0,5))
 #    plt.savefig(outdir + '/spectrogram_channel_7_lowF.png', dpi=200)
-#    
-#    
+#
+#
 #    plt.ylabel('Frequency [Hz]')
 #    plt.xlabel('Time [sec]')
 #    plt.yscale('log')
 #    plt.ylim((2e-2, 125e3))
 #    plt.savefig(outdir + '/spectrogram_channel_7_log.png', dpi=200)
 #    plt.close('all')
-#    
+#
 #    print('Trying to do a spectrogram')
 #    f, t, Sxx = signal.spectrogram(data_array[5], 250e3)
 #    plt.pcolormesh(t, f, np.log(Sxx))
@@ -322,7 +322,7 @@ def compute_noise_spectra(input_directory, squid_run, mode='old', number_segment
 #    plt.ylabel('Frequency [Hz]')
 #    plt.xlabel('Time [sec]')
 #    plt.savefig(outdir + '/spectrogram_channel_5.png', dpi=200)
-#    
+#
 #    plt.ylabel('Frequency [Hz]')
 #    plt.xlabel('Time [sec]')
 #    plt.yscale('log')
@@ -330,7 +330,7 @@ def compute_noise_spectra(input_directory, squid_run, mode='old', number_segment
 #    plt.savefig(outdir + '/spectrogram_channel_5_log.png', dpi=200)
 #    plt.close('all')
     return None
-        
+
 
 
 if __name__ == '__main__':

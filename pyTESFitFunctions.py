@@ -15,7 +15,7 @@ def quad_sq(x, a, b, c):
 
 def exp_tc(T, C, D, B, A):
     '''Alternative R vs T
-    Here we have 
+    Here we have
     C -> Rn
     D -> Rp
     -B/A -> Tc
@@ -38,7 +38,7 @@ def tanh_tc(T, Rn, Rp, Tc, Tw):
         When T << Tc: R = Rp
         When T = Tc: R = Rn/2 + Rp
     But Rp is already subtracted from our data so it should be 0ish
-    
+
     '''
     #R = (Rn/2.0)*(tanh((T - Tc)/Tw) + 1) + Rp
     R = ((Rn - Rp)/2)*(np.tanh((T - Tc)/Tw) + 1) + Rp
@@ -57,9 +57,9 @@ def tanh_tc2(T, Rn, Tc, Tw):
         When T << Tc: R = Rp
         When T = Tc: R = Rn/2 + Rp
     But Rp is already subtracted from our data so it should be 0ish
-    
+
     '''
-    
+
     R = (Rn/2.0)*(np.tanh((T - Tc)/Tw) + 1)
     return R
 
@@ -80,7 +80,7 @@ def tes_power_polynomial(T, k, n, Ttes):
     '''General TES power equation
     P = k*(T^n - Tb^n)
     '''
-    P = k*np.power(Ttes,n) - k*np.power(T,n)
+    P = k*(np.power(Ttes, n) - np.power(T, n))
     #P = k*(power(Ttes, n) - power(T, n))
     return P
 
