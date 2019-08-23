@@ -1,4 +1,4 @@
-from os.path import splitext
+ from os.path import splitext
 import glob
 import re
 import numpy as np
