@@ -76,19 +76,21 @@ def nll_error(params, P, P_rms, T, func):
         return lnl
 
 
-def tes_power_polynomial(T, k, n, Ttes):
+def tes_power_polynomial(T, *args):
     '''General TES power equation
-    P = k*(T^n - Tb^n)
+    P = k*(T^n - Tb^n) - Pp
     '''
-    P = k*(np.power(Ttes, n) - np.power(T, n))
+    n, k, Ttes, Pp = args
+    P = k*(np.power(Ttes, n) - np.power(T, n)) - Pp
     #P = k*(power(Ttes, n) - power(T, n))
     return P
 
 
-def tes_power_polynomial5(T, k, Ttes):
+def tes_power_polynomial5(T, *args):
     '''General TES power equation assuming n = 5
     P = k*(T^n - Tb^n)
     '''
-    P = k*np.power(Ttes, 5) - k*np.power(T, 5)
+    k, Pp = args
+    P = k*(np.power(61.5e-3, 5) - np.power(T, 5)) - Pp
     #P = k*(power(Ttes, n) - power(T, n))
     return P

@@ -147,8 +147,38 @@ def correct_squid_jumps(output_path, iv_dictionary):
     '''Attempt to correct squid jumps for various IV data collections'''
     for temperature, iv_data in iv_dictionary.items():
         print('Attempting to correct for SQUID jumps for temperature {}'.format(temperature))
-        iv_data = find_and_fix_squid_jumps(output_path, temperature, iv_data)
+        iv_data = find_and_fix_squid_jumps_new(output_path, temperature, iv_data)
     return iv_dictionary
+
+
+def find_and_fix_squid_jumps_new(output_path, temperature, iv_data, event_start=0, buffer_size=5):
+    '''A function to try and correct SQUID jumps'''
+    # This is a bit of a tricky situation. Sudden changes in output voltage can be the result of a SQUID jump
+    # or it can be the result of a transition between the SC and N state
+
+    # Let's outline the process here
+    # Look in the vOut vs time plane
+    # Look for a jump in the data and flag it
+    # Examine data on either side of the jump. If the slope has changed then
+    # it is probably a TES state change and is OK. If the slope is the same then
+    # it is probably a SQUID jump. This should be OK to use but it fails for the case
+    # where a SQUID jump happens during a TES state change. This is probably the most likely
+    # type of jump to occur.
+
+    # Note: detrend just does not work well.
+    # One option is to use normal branch interpolation. Here we detect any type of jump
+    # and make a note of whether the slope is smaller or larger in the new region
+    # If the slope is larger, it is a N --> SC jump and if it is smaller it is a SC --> N jump
+    # This then is used to label the regions
+    # Next jump that occurs we ensure the slope is correct (should be the next type of state)
+    # and then compare the y-intercept of the fit. If the y-intercepts do not match, move everything up
+    # Finally reset the window with the correct label again
+    timestamps = iv_data['timestamps']
+    ydata = iv_data['vOut']
+    dy_dt = np.gradient(ydata, timestamps, edge_order=2)
+    return None
+
+
 
 
 def find_and_fix_squid_jumps(output_path, temperature, iv_data, event_start=0, buffer_size=5):
@@ -194,7 +224,7 @@ def find_and_fix_squid_jumps(output_path, temperature, iv_data, event_start=0, b
     event = event_start + buffer_size
     difference_of_means = 0
     print('The first y value is: {} and the location of the max y value is: {}'.format(ydata[0], np.argmax(ydata)))
-    while difference_of_means < 3 and event < dyd_t.size - 1:
+    while difference_of_means < 2 and event < dyd_t.size - 1:
         current_mean = dbuff.get_mean()
         dbuff.append(dyd_t[event])
         new_mean = dbuff.get_mean()
@@ -210,7 +240,7 @@ def find_and_fix_squid_jumps(output_path, temperature, iv_data, event_start=0, b
     else:
         # We have found something and are not yet at the end of the array
         # Let's see if we have something...
-        step_away = 15
+        step_away = 10
         distance_ahead = np.min([step_away, dyd_t.size - event])
         # Compute distance to look behind.
         # Basically we need to ensure that event - distance_behind >= 0
@@ -263,30 +293,6 @@ def find_and_fix_squid_jumps(output_path, temperature, iv_data, event_start=0, b
         # Cycle through again until we hit the end of the list.
         iv_data = find_and_fix_squid_jumps(output_path, temperature, iv_data, event_start=event)
     return iv_data
-
-
-#@obsolete
-#def process_waveform(dWaveform, procType='mean'):
-#    '''Take an input waveform dictionary and process it by collapse to 1 point
-#    An incoming waveform is a dictionary with keys = event number and values = waveform of duration 1s
-#    This function will collapse the waveform to 1 value based on procType and return it as a numpy array
-#    We will also return a bonus array of the rms for each point too
-#    '''
-#    # We can have events missing so better to make the vectors equal to the max key
-#    npWaveform = np.empty(len(dWaveform.keys()))
-#    npWaveformRMS = np.empty(len(dWaveform.keys()))
-#    if procType == 'mean':
-#        for ev, waveform in dWaveform.items():
-#            npWaveform[ev] = np.mean(waveform)
-#            npWaveformRMS[ev] = np.std(waveform)
-#    elif procType == 'median':
-#        for ev, waveform in dWaveform.items():
-#            npWaveform[ev] = np.median(waveform)
-#            q75, q25 = np.percentile(waveform, [75, 25])
-#            npWaveformRMS[ev] = q75 - q25
-#    else:
-#        raise Exception('Please enter mean or median for process')
-#    return npWaveform, npWaveformRMS
 
 
 def power_temp(T, t_tes, k, n):
@@ -507,7 +513,7 @@ def get_sc_endpoints(buffer_size, index_min_x, dydx):
     # Now our buffer is initialized so loop over all events until we find a change
     ev_right = index_min_x + right_buffer_size
     difference_of_means = 0
-    while difference_of_means < 1e-2 and event < dydx.size - 1:
+    while difference_of_means < 1e-2 and ev_right < dydx.size - 1:
         current_mean = slope_buffer.get_nanmean()
         slope_buffer.append(dydx[ev_right])
         new_mean = slope_buffer.get_nanmean()
@@ -1143,8 +1149,8 @@ def parse_temperature_steps(output_path, time_values, temperatures, pid_log):
     # Each index of times is now the starting time of a temperature step. Include an appropriate offset for mean computation BUT only a softer one for time boundaries
     # time_list is a list of tuples.
     time_list = []
-    start_offset = 5*60
-    end_offset = 60
+    start_offset = 0*60
+    end_offset = 0
     if times.size > 1:
         for index in range(times.size - 1):
             cut = np.logical_and(time_values > times[index]+start_offset, time_values < times[index+1]-end_offset)
@@ -1154,7 +1160,7 @@ def parse_temperature_steps(output_path, time_values, temperatures, pid_log):
             time_list.append((start_time, stop_time, mean_temperature))
         # Handle the last step
         # How long was the previous step?
-        d_t = time_list[-1][1] - time_list[-1][0]
+        d_t = time_list[0][1] - time_list[0][0]
         start_time = time_list[-1][1] + start_offset
         end_time = start_time + d_t - end_offset
         cut = np.logical_and(time_values > start_time, time_values < end_time)
@@ -1549,6 +1555,7 @@ def get_power_temperature_curves(output_path, data_channel, iv_dictionary):
     temperatures = np.empty(0)
     power = np.empty(0)
     power_rms = np.empty(0)
+    iTES = np.empty(0)
     for temperature, iv_data in iv_dictionary.items():
         # Create cut to select only data going in the Normal to SC mode
         # This happens in situations as follows:
@@ -1562,15 +1569,17 @@ def get_power_temperature_curves(output_path, data_channel, iv_dictionary):
         # Also select data that is some fraction of the normal resistance, say 20-30%
         r_n = 700e-3
         r_0 = 350e-3
-        d_r = 250e-3
+        d_r = 100e-3
         cut = np.logical_and(iv_data['rTES'] > r_0 - d_r, iv_data['rTES'] < r_0 + d_r)
         cut = np.logical_and(cut, c_normal_to_sc)
         if nsum(cut) > 0:
             temperatures = np.append(temperatures, float(temperature)*1e-3)
             power = np.append(power, np.mean(iv_data['pTES'][cut]))
+            iTES = np.append(iTES, np.mean(iv_data['iTES'][cut]))
             # power_rms = np.append(power_rms, np.mean(iv_data['pTES_rms'][cut]))
             power_rms = np.append(power_rms, np.std(iv_data['pTES'][cut]))
     print('The main T vector is: {}'.format(temperatures))
+    print('The iTES vector is: {}'.format(iTES))
     # Remove the first half?
 #    temperatures = temperatures[T.size//2:-1]
 #    P = power[P.size//2:-1]
@@ -1580,7 +1589,7 @@ def get_power_temperature_curves(output_path, data_channel, iv_dictionary):
 #    power_rms = power_rms[0:power_rms.size//2]
     # print('The half T vector is: {}'.format(temperatures))
     # Make a plot without any fits to see what we have to work with...
-    cut_temperature = temperatures < 61.5e-3  # This should be the expected Tc
+    cut_temperature = np.logical_and(temperatures > 35e-3, temperatures < 65e-3)  # This should be the expected Tc
     cut_power = power < 1e-6
     cut_temperature = np.logical_and(cut_temperature, cut_power)
     # Next make a P-T plot
@@ -1600,17 +1609,25 @@ def get_power_temperature_curves(output_path, data_channel, iv_dictionary):
         label.set_fontsize(18)
     ivp.save_plot(fig, axes, file_name)
     # Attempt to fit it to a power function
-    # [k, n, Ttes]
-    lower_bounds = [1e-9, 0, 10e-3]
-    upper_bounds = [10e-6, 7, 100e-3]
-    x_0 = [0.5e-6, 5, 55e-3]
+    # [n, k, Ttes, Pp]
+    lower_bounds = [0,1e-9, 10e-3, 0]
+    upper_bounds = [7, 10e-6, 100e-3, 1e-9]
+    x_0 =  [0.5e-6, 1e-15]
+    #x_0 = [5, 0.5e-5, 55e-3, 1e-15]
     print('The input value of T is {} and for P it is: {} and for Prms it is: {}'.format(temperatures[cut_temperature], power[cut_temperature], power_rms[cut_temperature]))
     # results, pcov = curve_fit(fitfuncs.tes_power_polynomial, temperatures[cut_temperature], power[cut_temperature], p0=x_0, sigma=power_rms[cut_temperature], bounds=(lower_bounds, upper_bounds), absolute_sigma=True, method='trf', max_nfev=1e4)
-    # results, pcov = curve_fit(fitfuncs.tes_power_polynomial, temperatures[cut_temperature], power[cut_temperature], p0=x_0, method='lm', maxfev=int(2e4))
-    results, pcov = curve_fit(fitfuncs.tes_power_polynomial, temperatures[cut_temperature], power[cut_temperature], sigma=power_rms[cut_temperature], p0=x_0, absolute_sigma=True, method='lm', maxfev=int(2e4))
+    results, pcov = curve_fit(fitfuncs.tes_power_polynomial5, temperatures[cut_temperature], power[cut_temperature], p0=x_0, method='lm', maxfev=int(2e4))
+    #results, pcov = curve_fit(fitfuncs.tes_power_polynomial, temperatures[cut_temperature], power[cut_temperature], sigma=power_rms[cut_temperature], p0=x_0, absolute_sigma=True, method='lm', maxfev=int(2e4))
     # results, pcov = curve_fit(fitfuncs.tes_power_polynomial, temperatures[cut_temperature], power[cut_temperature], sigma=power_rms[cut_temperature], absolute_sigma=True, method='trf')
-    print('The covariance matrix columns are: [k, n, T] and the matrix is: {}'.format(pcov))
+    #print('The covariance matrix columns are: [n, k,  T, Pp] and the matrix is: {}'.format(pcov))
+    # [n, k, T, Pp]
+    # fixed: n, T
     perr = np.sqrt(np.diag(pcov))
+    results = [5, results[0], 61.5e-3, results[1]]
+    perr = [0, perr[0], 0, perr[1]]
+    print(results)
+    #results = [5, *results]
+    #perr = [0, *perr]
     fit_result = iv_results.FitParameters()
     fit_result.left.set_values(results, perr)
     # Next make a P-T plot
@@ -1632,13 +1649,13 @@ def get_power_temperature_curves(output_path, data_channel, iv_dictionary):
     for label in axes.get_xticklabels() + axes.get_yticklabels():
         label.set_fontsize(18)
     ivp.save_plot(fig, axes, file_name)
-    print('Results: k = {}, n = {}, Tb = {}'.format(*results))
-    print('Error Results: k = {}, n = {}, Tb = {}'.format(*perr))
+    print('Results: n = {}, k = {}, Tb = {}, Pp = {}'.format(*results))
+    print('Error Results: n = {}, k = {}, Tb = {}, Pp = {}'.format(*perr))
     # Compute G
     # P = k*(Ts^n - T^n)
     # G = n*k*T^(n-1)
-    print('G(Ttes) = {} pW/K'.format(results[0]*results[1]*np.power(results[2], results[1]-1)*1e12))
-    print('G(10 mK) = {} pW/K'.format(results[0]*results[1]*np.power(10e-3, results[1]-1)*1e12))
+    print('G(Ttes) = {} pW/K'.format(results[1]*results[0]*np.power(results[2], results[0]-1)*1e12))
+    print('G(10 mK) = {} pW/K'.format(results[1]*results[0]*np.power(10e-3, results[0]-1)*1e12))
     return True
 
 
@@ -2002,8 +2019,9 @@ def chop_data_by_temperature_steps(formatted_data, timelist, bias_channel, data_
     r_bias = squid_parameters.Rbias
     time_buffer = 0
     iv_dictionary = {}
-    cut_temperature = 55  # Should be the minimum acceptable temperature
-    expected_duration = 6000  # TODO: make this an input argument or auto-determined somehow
+    cut_temperature_max = 55  # Should be the max rejected temperature
+    cut_temperature_min = 26  # Should be the minimum rejected temperature
+    expected_duration = 1300  # TODO: make this an input argument or auto-determined somehow
     for values in timelist:
         start_time, stop_time, mean_temperature = values
         print('The value and type of mean_time_values is: {} and {}'.format(formatted_data['mean_time_values'], type(formatted_data['mean_time_values'])))
@@ -2019,12 +2037,12 @@ def chop_data_by_temperature_steps(formatted_data, timelist, bias_channel, data_
             print('Invalid digitizer response for T: {} mK'.format(np.round(mean_temperature*1e3, 3)))
             continue
         if stop_time - start_time > expected_duration:
-            print('Temperature step is too long for T: {} mK'.format(np.round(mean_temperature*1e3, 3)))
+            print('Temperature step is too long for T: {} mK. End: {}, Start: {}, Duration: {}'.format(np.round(mean_temperature*1e3, 3), stop_time, start_time, stop_time - start_time))
             continue
         else:
             temperature = str(np.round(mean_temperature*1e3, 3))
             # Let us also toss out temperatures if they contain bad data or jumps
-            if float(temperature) < cut_temperature:
+            if cut_temperature_min < float(temperature) < cut_temperature_max:
                 continue
             # Proceed to correct for SQUID Jumps
             # We should SORT everything by increasing time....
@@ -2108,7 +2126,7 @@ def iv_main(argin):
     if argin.readROOT is False and argin.readTESROOT is False:
         iv_curves['iv'] = get_iv_data(argin)
         # Next try to correct squid jumps
-        # iv_dictionary = correct_squid_jumps(output_path, iv_dictionary)
+        # iv_curves['iv'] = correct_squid_jumps(argin.outputPath, iv_curves['iv'])
         iv_curves = compute_extra_quantities(iv_curves)
         # Next save the iv_curves
         save_iv_to_root(argin.outputPath, iv_curves['iv'])

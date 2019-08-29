@@ -26,7 +26,7 @@ def load_signal_express_file(fname, sample_duration):
     '''
     # Read the file. The first row is header information. The first column should be 'Time'
     # Subsequent columns are the channel information. Specifically they are at the ai# line.
-    unix_offset = -2082844800  # Time from start of labview time relative to start of unix time (in seconds)
+    unix_offset = -2082844800 + 7*3600  # Time from start of labview time relative to start of unix time (in seconds)
     data = pan.read_csv(fname, delimiter='\t')
     headers = data.columns
     branches = []

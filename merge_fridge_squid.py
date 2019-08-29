@@ -155,7 +155,9 @@ def get_squid_data(inSQUIDFile, newFormat):
     # This is tricky because they must be chained together
     # lof = glob.glob('{}/*{}*.root'.format(inSQUIDFile, squidRun))
     # No run number
-    lof = glob.glob('{}/*.root'.format(inSQUIDFile))
+    lof = []
+    for inDir in inSQUIDFile:
+        lof += glob.glob('{}/*.root'.format(inDir))
     # NATURAL SORT
     dre = re.compile(r'(\d+)')
     lof.sort(key=lambda l: [int(s) if s.isdigit() else s.lower() for s in re.split(dre, l)])
@@ -353,7 +355,7 @@ def merge_fridge_squid_data(inputSQUIDFile, outputFile, inputFridgeFile, squidru
 def get_args():
     '''Function to get input arguments when module is called'''
     parser = argparse.ArgumentParser()
-    parser.add_argument('-s', '--inputSQUIDFile',
+    parser.add_argument('-s', '--inputSQUIDFile', action='append',
                         help='Specify the full path to the directory with the SQUID root files you wish to merge with fridge data')
     parser.add_argument('-r', '--squidrun',
                         help='Specify the SQUID run number you wish to grab files from')

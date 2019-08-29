@@ -171,24 +171,27 @@ def rt_fit_textbox(axes, model):
 def pt_fit_textbox(axes, model):
     '''old: add_power_temperature_textbox'''
     '''Add decoration textbox for a power vs temperature fit'''
-    k = model.left.result[0]
-    dk = model.left.error[0]
-    n = model.left.result[1]
-    dn = model.left.error[1]
+    n = model.left.result[0]
+    dn = model.left.error[0]
+    k = model.left.result[1]
+    dk = model.left.error[1]
     Ttes = model.left.result[2]
     dTtes = model.left.error[2]
-    lk = r'$k = %.5f \pm %.5f \mathrm{nW/K^{%.5f}}$'%(k*1e9, dk*1e9, n)
-    ln = r'$n = %.5f \pm %.5f$'%(n, dn)
-    lTt = r'$T_{TES} = %.5f \pm %.5f \mathrm{mK}$'%(Ttes*1e3, dTtes*1e3)
+    Pp = model.left.result[3]
+    dPp = model.left.error[3]
+    lk = r'$k = %.5f \pm %.5f \mathrm{ nW/K^{%.5f}}$' % (k*1e9, dk*1e9, n)
+    ln = r'$n = %.5f \pm %.5f$' % (n, dn)
+    lTt = r'$T_{TES} = %.5f \pm %.5f \mathrm{ mK}$' % (Ttes*1e3, dTtes*1e3)
+    lPp = r'$P_{0} = %.5f \pm %.5f \mathrm{ fW}$' % (Pp*1e15, dPp*1e15)
     # Compute G at T = Ttes
     # G = dP/dT
     G = n*k*power(Ttes, n-1)
     dG_k = n*power(Ttes, n-1)*dk
-    dG_T = n*(n-1)*k*power(1e-4, n-2) # RMS on T not Ttes
+    dG_T = n*(n-1)*k*power(1e-4, n-2)  # RMS on T not Ttes
     dG_n = dn*(k*power(Ttes, n-1)*(n*np.log(Ttes) + 1))
     dG = sqrt(pow2(dG_k) + pow2(dG_T) + pow2(dG_n))
-    lG = r'$G(T_{TES}) = %.5f \pm %.5f \mathrm{pW/K}$'%(G*1e12, dG*1e12)
-    textStr = lk + '\n' + ln + '\n' + lTt + '\n' + lG
+    lG = r'$G(T_{TES}) = %.5f \pm %.5f \mathrm{ pW/K}$' % (G*1e12, dG*1e12)
+    textStr = lk + '\n' + ln + '\n' + lTt + '\n' + lPp + '\n' + lG
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
     axes.text(0.65, 0.9, textStr, transform=axes.transAxes, fontsize=14, verticalalignment='top', bbox=props)
     return axes
