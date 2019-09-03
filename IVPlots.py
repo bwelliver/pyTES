@@ -171,18 +171,21 @@ def rt_fit_textbox(axes, model):
 def pt_fit_textbox(axes, model):
     '''old: add_power_temperature_textbox'''
     '''Add decoration textbox for a power vs temperature fit'''
-    n = model.left.result[0]
-    dn = model.left.error[0]
-    k = model.left.result[1]
-    dk = model.left.error[1]
+    k = model.left.result[0]
+    dk = model.left.error[0]
+    n = model.left.result[1]
+    dn = model.left.error[1]
     Ttes = model.left.result[2]
     dTtes = model.left.error[2]
     Pp = model.left.result[3]
     dPp = model.left.error[3]
+    # Pn = model.left.result[4]
+    # dPn = model.left.error[4]
     lk = r'$k = %.5f \pm %.5f \mathrm{ nW/K^{%.5f}}$' % (k*1e9, dk*1e9, n)
     ln = r'$n = %.5f \pm %.5f$' % (n, dn)
     lTt = r'$T_{TES} = %.5f \pm %.5f \mathrm{ mK}$' % (Ttes*1e3, dTtes*1e3)
     lPp = r'$P_{0} = %.5f \pm %.5f \mathrm{ fW}$' % (Pp*1e15, dPp*1e15)
+    # lPn = r'$P_{N} = %.5f \pm %.5f \mathrm{ fW}$' % (Pn*1e15, dPn*1e15)
     # Compute G at T = Ttes
     # G = dP/dT
     G = n*k*power(Ttes, n-1)

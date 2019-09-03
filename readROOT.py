@@ -305,10 +305,10 @@ def readROOT(inFile, tree, branches, method='single', tobject=None, directory=No
         npData = {}
         vectorDict = {}
         for branch in branches:
-            print('The branch name is: {}'.format(branch))
+            # print('The branch name is: {}'.format(branch))
             tBranch = obj.GetBranch(branch)
-            print('The branch object is: {}'.format(tBranch))
-            print('The class name: {}'.format(tBranch.GetClassName()))
+            # print('The branch object is: {}'.format(tBranch))
+            # print('The class name: {}'.format(tBranch.GetClassName()))
             if tBranch.GetClassName() == 'vector<double>':
                 # Create std vector double. It is SUPER important that we pass the ADDRESS OF THE POINTER TO THE VECTOR AND NOT THE ADDRESS OF THE VECTOR!!!!!
                 # NOTE: If you just make var = rt.std.vector('double')() and the address of that in each loop, python WILL point to the same vector each time
@@ -338,7 +338,7 @@ def readROOT(inFile, tree, branches, method='single', tobject=None, directory=No
 #                    npData[branch][entry] = data
             # Print a notification every N events
             if entry%nTen == 0:
-                print('Grabbing entry Number {0} ({1} %)'.format(entry, round(100*entry/nEntries,2)))
+                print('\tGrabbing entry Number {0} ({1} %)'.format(entry, round(100*entry/nEntries,2)))
     elif tobject is not None:
         # For now this is to load a TVector object to a numpy vector
         tObject = tFile.Get(tobject)

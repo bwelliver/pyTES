@@ -12,6 +12,7 @@ from matplotlib import pyplot as plt
 from scipy.optimize import curve_fit
 
 import IVPlots as ivp
+import squid_info
 
 
 def complex_tes_one_block(f, *args):
@@ -20,6 +21,29 @@ def complex_tes_one_block(f, *args):
     Ztes = Zinf + (Zinf - Z0)*1/(-1 + 1j*2*np.pi*f*tau)
     return Ztes
 
+
+def ztes_model_g(f, *args):
+    '''Simple 1 block model for Ztes from Lindeman
+    f = actual frequency data
+    Independent parameters shall be as follows:
+    I0 = current on TES
+    R0 = TES resistance
+    T0 = TES temperature
+    g = TES thermal conductivity
+    a = alpha (T/R*dR/dT)
+    b = beta (I/R)*dR/dI
+    C = TES heat capacity
+
+    Also to keep in mind
+    L = TES loop gain
+    t = TES time constant
+    Z(w) = Rl + jwL + Ztes(w)
+    '''
+    I0, R0, T0, alpha, beta, C = args
+    g = 554.54820e-9 * 5 * np.power(T0, 4)
+    tau = 1/((I0*I0*R0/(C*T0))*alpha - (g/C))
+    Ztes = R0*((1+beta) + ((2+beta)/2)*((I0*I0*R0)/(C*T0))*alpha*tau * (-1 + (1+1j*(2*np.pi*f)*tau)/(-1+1j*(2*np.pi*f)*tau)))
+    return Ztes
 
 def ztes_model(f, *args):
     '''Simple 1 block model for Ztes from Lindeman
@@ -39,6 +63,7 @@ def ztes_model(f, *args):
     Z(w) = Rl + jwL + Ztes(w)
     '''
     I0, R0, T0, g, alpha, beta, C = args
+    g = 554.54820e-9 * 5 * np.power(T0, 4)
     tau = 1/((I0*I0*R0/(C*T0))*alpha - (g/C))
     Ztes = R0*((1+beta) + ((2+beta)/2)*((I0*I0*R0)/(C*T0))*alpha*tau * (-1 + (1+1j*(2*np.pi*f)*tau)/(-1+1j*(2*np.pi*f)*tau)))
     return Ztes
@@ -115,6 +140,57 @@ def ztes_model_wrapper(f, *args):
     '''Flat version of tes model function'''
     ztes = complex_tes_one_block(f, *args)
     return np.append(ztes.real, ztes.imag)
+
+
+def ztes_model_2block(f, *args):
+    '''The intermediate model 2-block'''
+    # Here are all parameters
+    # Assumed fixed: I0, R0, T0, g0
+    I0, R0, T0, g0, gTES1, gB, alpha, beta, Ctes, C1 = args
+    w = 2*np.pi*f
+    P0 = I0*I0*R0
+    loop = P0*alpha/(g0*T0)
+    tauI = Ctes/(g0*(1-loop))
+    tau1 = C1/(gTES1 + gB)
+    Ztes = R0*(1+beta) + (loop/(1-loop))*R0*(2+beta)/(1 + 1j*w*tauI - (gTES1/(gTES1+gB)*(1-loop))*(1/(1+1j*w*tau1)))
+    #Ztes = R0*(1+beta) + (loop/(1+loop))*R0*(2+beta)/(-1 + 1j*w*tauI - (gTES1/(gTES1+gB)*(1+loop))*(1/(1+1j*w*tau1)))
+    #if Ctes > C1 or gTES1 > g0 or gB < g0:
+    #    Ztes = 1e9*Ztes
+    return Ztes
+
+
+def ztes_model_2block_fixed(fixedArgs):
+    '''Model with fixed parameters...use function currying
+    Parameters used for the model:
+        I0 - The TES operating current [A]
+        R0 - The TES operating resistance [Ohm]
+        T0 - The TES operating temperature [K]
+        g - The thermal conductance [W/K]
+        alpha - The TES alpha parameter, (T0/R0)*dR/dT
+        beta - The TES beta parameter, (I0/R0)*dR/dI
+        C - The heat capacity [J/K]
+    '''
+    # I0, R0, T0, g0, gTES1, gB, alpha, beta, Ctes, C1
+    I0 = fixedArgs.get('I0', None)
+    R0 = fixedArgs.get('R0', None)
+    T0 = fixedArgs.get('T0', None)
+    g0 = fixedArgs.get('g0', None)
+    #####
+    gTES1 = fixedArgs.get('gTES1', None)
+    gB = fixedArgs.get('gB', None)
+    alpha = fixedArgs.get('alpha', None)
+    beta = fixedArgs.get('beta', None)
+    Ctes = fixedArgs.get('Ctes', None)
+    C1 = fixedArgs.get('C1', None)
+    fixedArgs = [I0, R0, T0, g0, gTES1, gB, alpha, beta, Ctes, C1]
+
+    def ztes_model_2block_wrapper(f, *args):
+        args = list(args)
+        # print('The length of fixedArgs is: {} and for args it is: {}'.format(len(fixedArgs), len(args)))
+        newargs = (args.pop(0) if item is None else item for item in fixedArgs)
+        ztes = ztes_model_2block(f, *newargs)
+        return np.append(ztes.real, ztes.imag)
+    return ztes_model_2block_wrapper
 
 
 def ratio_model_function(f, *args):
@@ -223,8 +299,30 @@ def gen_plot_points_fit(xdata, ydata, xfit, yfit, results, perr, labels, y0=None
         tLG = r'$\mathcal{L} = %.5f \pm %.5f$' % (LG, 0)
         tTau = r'$\mathrm{\tau} = %.5f \pm %.5f \mathrm{ms}$' % (tau*1e3, 0)
         text_string = tI + '\n' + tR + '\n' + tg + '\n' + tT + '\n' + ta + '\n' + tb + '\n' + tC + '\n' + tLG + '\n' + tTau
+    if mode == 'ztes2':
+        I0, R0, T0, g0, gTES1, gB, alpha, beta, Ctes, C1 = results
+        I0_err, R0_err, T0_err, g0_err, gTES1_err, gB_err, alpha_err, beta_err, Ctes_err, C1_err = perr
+        # tau = C / (g * (1 + LG))
+        P0 = I0*I0*R0
+        loop = P0*alpha/(g0*T0)
+        tauI = Ctes/(g0*(1-loop))
+        tau1 = C1/(gTES1 + gB)
+        tI = r'$I_{0} = %.5f \pm %.5f \mathrm{\mu A}$' % (I0*1e6, I0_err*1e6)
+        ta = r'$\alpha = %.5f \pm %.5f$' % (alpha, alpha_err)
+        tb = r'$\beta = %.5f \pm %.5f$' % (beta, beta_err)
+        tR = r'$R_{0} = %.5f \pm %.5f \mathrm{m\Omega}$' % (R0*1e3, R0_err*1e3)
+        tg0 = r'$G = %.5f \pm %.5f \mathrm{pW/K}$' % (g0*1e12, g0_err*1e12)
+        tgTES1 = r'$GTES1 = %.5f \pm %.5f \mathrm{pW/K}$' % (gTES1*1e12, gTES1_err*1e12)
+        tgB = r'$Gb = %.5f \pm %.5f \mathrm{pW/K}$' % (gB*1e12, gB_err*1e12)
+        tCtes = r'$Ctes = %.5f \pm %.5f \mathrm{pJ/K}$' % (Ctes*1e12, Ctes_err*1e12)
+        tC1 = r'$C1 = %.5f \pm %.5f \mathrm{pJ/K}$' % (C1*1e12, C1_err*1e12)
+        tT = r'$T_{0} = %.5f \pm %.5f \mathrm{mK}$' % (T0*1e3, T0_err*1e3)
+        tLG = r'$\mathcal{L} = %.5f \pm %.5f$' % (loop, 0)
+        tTauI = r'$\mathrm{\tau I} = %.5f \pm %.5f \mathrm{ms}$' % (tauI*1e3, 0)
+        tTau1 = r'$\mathrm{\tau 1} = %.5f \pm %.5f \mathrm{ms}$' % (tau1*1e3, 0)
+        text_string = tI + '\n' + tR + '\n' + tg0 + '\n' + tT + '\n' + tgTES1 + '\n' + tgB + '\n' + ta + '\n' + tb + '\n' + tCtes + '\n' + tC1 + '\n' + tLG + '\n' + tTauI + '\n' + tTau1
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
-    ax.text(0.2, 0.2, text_string, transform=ax.transAxes, fontsize=14, verticalalignment='top', horizontalalignment='left', bbox=props)
+    ax.text(0.1, 0.6, text_string, transform=ax.transAxes, fontsize=14, verticalalignment='top', horizontalalignment='left', bbox=props)
     for label in (ax.get_xticklabels() + ax.get_yticklabels()):
         label.set_fontsize(18)
     set_aspect = kwargs.get('set_aspect', None)
@@ -304,7 +402,7 @@ def generate_multi_plot(outdir, temperature, biases, ztes):
     return True
 
 
-def generate_model_diagnostic_plots(output_directory, ratio, model_function, results, perr, x0=None, mode='ratio'):
+def generate_model_diagnostic_plots(output_directory, ratio, model_function, results, perr, x0=None, bias=None, mode='ratio'):
     '''Generate diagnostic plots for the model fits'''
     # Split into arrays
     freq = np.fromiter(ratio.keys(), dtype='float')
@@ -327,9 +425,19 @@ def generate_model_diagnostic_plots(output_directory, ratio, model_function, res
         labels = {'xlabel': 'Frequency [Hz]',
                   'ylabel': 'Re Ztes',
                   'title': 'Power Spectrum of Model TES Impedance Real',
-                  'figname': output_directory + '/real_ztes_model_tones.png'
+                  'figname': output_directory + '/real_ztes_model_{}uA_tones.png'.format(bias)
                   }
-    formargs = {'figsize': (16, 8), 'xscale': 'log', 'yscale': 'linear', 'minorticks': True}
+    if mode == 'ztes2':
+        labels = {'xlabel': 'Frequency [Hz]',
+                  'ylabel': 'Re Ztes',
+                  'title': 'Power Spectrum of Model TES 2 Block Impedance Real',
+                  'figname': output_directory + '/real_ztes_2block_model_{}uA_tones.png'.format(bias)
+                  }
+    formargs = {'figsize': (16, 8), 'xscale': 'log', 'yscale': 'linear',
+                'minorticks': True
+                }
+    if mode == 'ztes' or mode == 'ztes2':
+        formargs['ylim'] = (-0.5, 1)
     y0 = model_initial.real if x0 is not None else None
     gen_plot_points_fit(freq, ratio.real, model_freq, model_ratio.real, results, perr, labels, y0, mode, **formargs)
 
@@ -343,9 +451,19 @@ def generate_model_diagnostic_plots(output_directory, ratio, model_function, res
         labels = {'xlabel': 'Frequency [Hz]',
                   'ylabel': 'Im Ztes',
                   'title': 'Power Spectrum of Model TES Impedance Imaginary',
-                  'figname': output_directory + '/imag_ztes_model_tones.png'
+                  'figname': output_directory + '/imag_ztes_model_{}uA_tones.png'.format(bias)
                   }
-    formargs = {'figsize': (16, 8), 'xscale': 'log', 'yscale': 'linear', 'minorticks': True}
+    if mode == 'ztes2':
+        labels = {'xlabel': 'Frequency [Hz]',
+                  'ylabel': 'Im Ztes',
+                  'title': 'Power Spectrum of Model TES 2 Block Impedance Imaginary',
+                  'figname': output_directory + '/imag_ztes_2block_model_{}uA_tones.png'.format(bias)
+                  }
+    formargs = {'figsize': (16, 8), 'xscale': 'log', 'yscale': 'linear',
+                'minorticks': True
+                }
+    if mode == 'ztes' or mode == 'ztes2':
+        formargs['ylim'] = (-0.5, 0.1)
     y0 = model_initial.imag if x0 is not None else None
     gen_plot_points_fit(freq, ratio.imag, model_freq, model_ratio.imag, results, perr, labels, y0, mode, **formargs)
 
@@ -359,9 +477,19 @@ def generate_model_diagnostic_plots(output_directory, ratio, model_function, res
         labels = {'xlabel': 'Frequency [Hz]',
                   'ylabel': 'Abs Ztes',
                   'title': 'Power Spectrum of Model TES Impedance Magnitude',
-                  'figname': output_directory + '/abs_ztes_model_tones.png'
+                  'figname': output_directory + '/abs_ztes_model_{}uA_tones.png'.format(bias)
                   }
-    formargs = {'figsize': (16, 8), 'xscale': 'log', 'yscale': 'linear', 'minorticks': True}
+    if mode == 'ztes2':
+        labels = {'xlabel': 'Frequency [Hz]',
+                  'ylabel': 'Abs Ztes',
+                  'title': 'Power Spectrum of Model TES 2 Block Impedance Magnitude',
+                  'figname': output_directory + '/abs_ztes_2block_model_{}uA_tones.png'.format(bias)
+                  }
+    formargs = {'figsize': (16, 8), 'xscale': 'log', 'yscale': 'linear',
+                'minorticks': True
+                }
+    if mode == 'ztes' or mode == 'ztes2':
+        formargs['ylim'] = (0, 1)
     y0 = np.absolute(model_initial) if x0 is not None else None
     gen_plot_points_fit(freq, np.absolute(ratio), model_freq, np.absolute(model_ratio), results, perr, labels, y0, mode, **formargs)
 
@@ -376,15 +504,21 @@ def generate_model_diagnostic_plots(output_directory, ratio, model_function, res
         labels = {'xlabel': 'Re Ztes',
                   'ylabel': 'Im Ztes',
                   'title': 'Nyquist Plot of Model TES Impedance',
-                  'figname': output_directory + '/nyquist_ztes_model.png'
+                  'figname': output_directory + '/nyquist_ztes_model_{}uA.png'.format(bias)
+                  }
+    if mode == 'ztes2':
+        labels = {'xlabel': 'Re Ztes',
+                  'ylabel': 'Im Ztes',
+                  'title': 'Nyquist Plot of Model TES 2 Block Impedance',
+                  'figname': output_directory + '/nyquist_ztes_2block_model_{}uA.png'.format(bias)
                   }
     formargs = {'figsize': (16, 16),
                 'xscale': 'linear',
                 'yscale': 'linear',
                 'set_aspect': 'equal'}
-    if mode == 'ztes':
-        formargs['xlim'] = (-1, 1)
-        formargs['ylim'] = (-1, 1)
+    if mode == 'ztes' or mode == 'ztes2':
+        formargs['xlim'] = (-0.5, 1)
+        formargs['ylim'] = (-0.7, 0.1)
     gen_plot_points_fit(ratio.real, ratio.imag, model_ratio.real, model_ratio.imag, results, perr, labels, model_initial, mode, **formargs)
     return True
 
@@ -748,16 +882,17 @@ def fit_ratio_model(ratio, model_func, fixedArgs, **kwargs):
     return result, perr
 
 
-def get_transfer_function(n_response, results):
+def get_transfer_function(squid, n_response, results):
     '''Using the results and the normal mode response compute the empirical SQUID transfer function
     G(f)
     '''
+    squid_parameters = squid_info.SQUIDParameters(squid)
+    Rfb = squid_parameters.Rfb
+    Zbias = squid_parameters.Rbias
+    M = squid_parameters.M
+    Rsh = squid_parameters.Rsh
+    dc_factor = (Rsh * Rfb * M)/Zbias
     Rn, Rl, L = results
-    Zbias = 10000
-    Rf = 10000
-    M = -1.26314
-    Rs = 21e-3
-    dc_factor = (Rs * Rf * M)/Zbias
     # zcirc_normal = Rn + Rl + (2 * 1j * np.pi) * L * np.fromiter(n_response.keys(), dtype=float)
     # Keeping in mind n_response is a dictionary with keys = tones and values = complex response
     # we compute g to be a similar thingsa
@@ -768,7 +903,7 @@ def get_transfer_function(n_response, results):
     return g
 
 
-def compute_transfer_function(input_directory, output_directory, subdir, run, normalR, loadR, temperature, sc, normal, whiteNoise=False):
+def compute_transfer_function(input_directory, output_directory, subdir, run, squid, normalR, loadR, temperature, sc, normal, whiteNoise=False):
     '''Function to handle computation and diagnostic plots related
     to the transfer function.
     Outputs:
@@ -798,29 +933,24 @@ def compute_transfer_function(input_directory, output_directory, subdir, run, no
     # Step 4: Diagnostic plots of the model
     generate_model_diagnostic_plots(output_directory, ratio, ratio_model_function, results, perr)
     # Step 5: Now we can create G(w)
-    g = get_transfer_function(n_response, results)
+    g = get_transfer_function(squid, n_response, results)
     generate_diagnostic_plots(output_directory, g, mode='transfer')
     Rn, Rl, L = results
     return (g, Rn, Rl, L)
 
 
-def get_zcirc(bias_response, G):
+def get_zcirc(squid, bias_response, G):
     '''Compute the circuit impedance, Zcirc.
     Z_circ(w) = Z_meas(w)/G(w)
     Also Z_tes = Z_circ - Rl - iwL
     '''
 
     # SQUID Parameters
-    Rsh = 21e-3
-    # Li = 6e-9
-    M = -1.26314
-    Rbias = 10e3
-    # Cbias = 100e-12
-    # Lbias = 1e-3
-    # Zbias = Rbias + 1/(1j*2*np.pi*tones*Cbias) # This is impedance to GROUND!!!!!!
-    Zbias = Rbias
-    Rfb = 10e3
-    # Lfb = M*M*Li
+    squid_parameters = squid_info.SQUIDParameters(squid)
+    Rfb = squid_parameters.Rfb
+    Zbias = squid_parameters.Rbias
+    M = squid_parameters.M
+    Rsh = squid_parameters.Rsh
     # Zfb = Rfb + 2*np.pi*1j*tones*Lfb
     Zfb = Rfb
     # Zcirc = Zmeas/G and Ztes = Zcirc - Rl - 2pi*i*f*L
@@ -832,19 +962,14 @@ def get_zcirc(bias_response, G):
     return zcirc
 
 
-def get_ztes(bias_response, G, Rl, Lin):
+def get_ztes(squid, bias_response, G, Rl, Lin):
     '''Given input data return the TES Z value'''
     # SQUID Parameters
-    Rsh = 21e-3
-    # Li = 6e-9
-    M = -1.26314
-    Rbias = 10e3
-    # Cbias = 100e-12
-    # Lbias = 1e-3
-    # Zbias = Rbias + 1/(1j*2*np.pi*tones*Cbias) # This is impedance to GROUND!!!!!!
-    Zbias = Rbias
-    Rfb = 10e3
-    # Lfb = M*M*Li
+    squid_parameters = squid_info.SQUIDParameters(squid)
+    Rfb = squid_parameters.Rfb
+    Zbias = squid_parameters.Rbias
+    M = squid_parameters.M
+    Rsh = squid_parameters.Rsh
     # Zfb = Rfb + 2*np.pi*1j*tones*Lfb
     Zfb = Rfb
     # Zcirc = Zmeas/G and Ztes = Zcirc - Rl - 2pi*i*f*L
@@ -856,14 +981,14 @@ def get_ztes(bias_response, G, Rl, Lin):
     return ztes
 
 
-def compute_z(input_directory, output_directory, subdir, run, temperature, bias, G, Rn, Rl, Lin, fitModel=False, whiteNoise=False):
+def compute_z(input_directory, output_directory, subdir, run, squid, temperature, bias, G, Rn, Rl, Lin, fitModel=False, whiteNoise=False):
     '''Function to compute the complex impedance given information about the transfer function'''
     # Step 1: Get the tones and response for the particular bias current
     tones, response = get_tones_and_response(input_directory, subdir, run, temperature, current=bias, whiteNoise=whiteNoise)
     # Step 2: Compute the complex TES impedance
-    ztes = get_ztes(response, G, Rl, Lin)
+    ztes = get_ztes(squid, response, G, Rl, Lin)
     # For fun get zcirc
-    # zcirc = get_zcirc(response, G)
+    # zcirc = get_zcirc(squid, response, G)
     # Step 3: Diagnostic plots of the TES impedance
     generate_diagnostic_plots(output_directory, ztes, current=bias, mode='ztes')
     # Step 4: Fit the TES impedance to an electrothermal model
@@ -872,14 +997,28 @@ def compute_z(input_directory, output_directory, subdir, run, temperature, bias,
     if fitModel is True:
         print('Attemping to fit the TES thermal model')
         # fitargs = {'p0': (24e-12, 10, 1, 20e-12), 'method': 'lm'}
-        # (I0, R0, T0, g, a, b, C)
-        p0 = [25.372e-12, 3e3, 1.2, 1e-12]
-        lbounds = (0, 0, 0, 1e-14)
-        ubounds = (1e-10, 1e5, np.inf, 10e-12)
-        #fixedArgs = {'I0': 1.138e-6, 'R0': 0.1979, 'T0': 55e-3, 'g': 25.372e-12}  # Ib = 13.0 uA
-        fixedArgs = {'I0': 0.946e-6, 'R0': 0.2892, 'T0': 55e-3}  # Ib = 15
+        # (a, b, C)
+        init_dict = {'10.0': {'I0': 1.849e-6, 'R0': 0.0663},
+                     '12.0': {'I0': 1.256-6, 'R0': 0.1507},
+                     '13.0': {'I0': 1.12e-6, 'R0': 0.1936},
+                     '14.0': {'I0': 1.001e-6, 'R0': 0.2381},
+                     '15.0': {'I0': 0.930e-6, 'R0': 0.2856},
+                     '18.0': {'I0': 0.7553e-6, 'R0': 0.4406},
+                     '20.0': {'I0': 0.704e-6, 'R0': 0.5402}
+                     }
+        T0 = 55e-3
+        g0 = 23.2e-12
+        p0 = [700, 0.9, 0.1e-12]
+        lbounds = (100, 0.8, 1e-14)
+        ubounds = (np.inf, 2, np.inf)
+        fixedArgs = {'I0': init_dict[str(bias)]['I0'], 'R0': init_dict[str(bias)]['R0'], 'T0': T0, 'g': g0}  # Ib = 13.0 uA
+        # fixedArgs = {'I0': 0.946e-6, 'R0': 0.2892, 'T0': 55e-3, 'g': 25.372e-12}  # Ib = 15
         fitargs = {'p0': p0, 'bounds': (lbounds, ubounds), 'method': 'trf'}
         results, perr = fit_tes_model(ztes, ztes_model_fixed, fixedArgs, **fitargs)
+        #g = 554.54820e-9 * 5 * np.power(results[0], 4)
+        #results = [results[0], g, results[1], results[2], results[3]]
+        #perr = [perr[0], 0, perr[1], perr[2], perr[3]]
+
         # Join results and fixed values into set order: Rn, Rl, Lin
         fixedResults = [fixedArgs.get('I0'), fixedArgs.get('R0'), fixedArgs.get('T0'),
                         fixedArgs.get('g'), fixedArgs.get('alpha'), fixedArgs.get('beta'),
@@ -894,13 +1033,46 @@ def compute_z(input_directory, output_directory, subdir, run, temperature, bias,
         fixedX0 = [fixedArgs.get('I0'), fixedArgs.get('R0'), fixedArgs.get('T0'),
                    fixedArgs.get('g'), fixedArgs.get('alpha'), fixedArgs.get('beta'),
                    fixedArgs.get('C')]
+        #g0 = 554.54820e-9 * 5 * np.power(p0[0], 4)
+        #p0 = [p0[0], g0, p0[1], p0[2], p0[3]]
         x0 = [p0.pop(0) if item is None else item for item in fixedX0]
         print('The actual initial values are: {}'.format(x0))
-        generate_model_diagnostic_plots(output_directory, ztes, ztes_model, results, perr, x0, mode='ztes')
+        generate_model_diagnostic_plots(output_directory, ztes, ztes_model, results, perr, x0, bias, mode='ztes')
+        # Try to fit the 2 block model
+        # I0, R0, T0, g0,| gTES1, gB, alpha, beta, Ctes, C1
+# =============================================================================
+#         T0 = 55e-3
+#         g0 = 23.2e-12
+#         fixedArgs = {'I0': 1.12e-6, 'R0': 0.1936, 'T0': T0, 'g0': g0}
+#         # gTES1, gB, alpha, beta, Ctes, C1
+#         p0 = [1.5e-12, 100e-12, 600, 1, 0.1e-13, 1e-11]
+#         lbounds = (1e-14, 1e-14, 10, 0.2, 1e-14, 1e-14)
+#         ubounds = (24e-12, 1e-10, 1e4, 2, 3e-12, 1e-6)
+#         fitargs = {'p0': p0, 'bounds': (lbounds, ubounds), 'method': 'trf'}
+#         results, perr = fit_tes_model(ztes, ztes_model_2block_fixed, fixedArgs, **fitargs)
+#         fixedResults = [fixedArgs.get('I0'), fixedArgs.get('R0'), fixedArgs.get('T0'), fixedArgs.get('g0'),
+#                         fixedArgs.get('gTES1'), fixedArgs.get('gB'),
+#                         fixedArgs.get('alpha'), fixedArgs.get('beta'),
+#                         fixedArgs.get('Ctes'), fixedArgs.get('C1')]
+#         results, perr = list(results), list(perr)
+#         results = [results.pop(0) if item is None else item for item in fixedResults]
+#         perr = [perr.pop(0) if item is None else 0 for item in fixedResults]
+#         print('The results of the TES fit are as follows:')
+#         print('I0 = {} uA, R0 = {} mOhm, T0 = {} mK, g = {} pW/K'.format(results[0]*1e6, results[1]*1e3, results[2]*1e3, results[3]*1e12))
+#         print('gTES1 = {} pW/K, gB = {} pW/K, alpha = {}, beta = {}, Ctes = {} pJ/K, C1 = {} pJ/K '.format(results[4]*1e12, results[5]*1e12, results[6], results[7], results[8]*1e12, results[9]*1e12))
+#         # Step 5: Diagnostic plots of the model
+#         fixedX0 = [fixedArgs.get('I0'), fixedArgs.get('R0'), fixedArgs.get('T0'),
+#                    fixedArgs.get('g0'), fixedArgs.get('gTES1'), fixedArgs.get('gB'),
+#                    fixedArgs.get('alpha'), fixedArgs.get('beta'),
+#                    fixedArgs.get('Ctes'), fixedArgs.get('C1')]
+#         x0 = [p0.pop(0) if item is None else item for item in fixedX0]
+#         print('The actual initial values are: {}'.format(x0))
+#         generate_model_diagnostic_plots(output_directory, ztes, ztes_model_2block, results, perr, x0, mode='ztes2')
+# =============================================================================
     return ztes
 
 
-def process_complex_impedance(indir, outdir, subdir, only_transfer, run, normalR, loadR, temperature, sc, normal, biases, fitModel=False, whiteNoise=False):
+def process_complex_impedance(indir, outdir, subdir, only_transfer, run, squid, normalR, loadR, temperature, sc, normal, biases, fitModel=False, whiteNoise=False):
     '''Main function that implements complex impedance computations'''
 
     # Step 1: Generate the transfer function if we don't have it already
@@ -908,13 +1080,13 @@ def process_complex_impedance(indir, outdir, subdir, only_transfer, run, normalR
     # an infinite number of solutions exist of the form a*(Rn + Rl + 2jpifL) / a*(Rl + 2jpifL)
     # (i.e., a*Rn, a*Rl, a*Lin). We *MUST* provide at least 1 of these as fixed values to get an
     # appropriate scaling factor.
-    G, Rn, Rl, Lin = compute_transfer_function(indir, outdir, subdir, run, normalR, loadR, temperature, sc, normal, whiteNoise=whiteNoise)
+    G, Rn, Rl, Lin = compute_transfer_function(indir, outdir, subdir, run, squid, normalR, loadR, temperature, sc, normal, whiteNoise=whiteNoise)
 
     # Step 2: Compute the complex impedance
     ztes = {}
     if not only_transfer:
         for bias in biases:
-            ztes[bias] = compute_z(indir, outdir, subdir, run, temperature, bias, G, Rn, Rl, Lin, fitModel=fitModel, whiteNoise=whiteNoise)
+            ztes[bias] = compute_z(indir, outdir, subdir, run, squid, temperature, bias, G, Rn, Rl, Lin, fitModel=fitModel, whiteNoise=whiteNoise)
         # Make plot with all ztes curves
         generate_multi_plot(outdir, temperature, biases, ztes)
     return ztes
@@ -938,9 +1110,11 @@ def get_args():
     parser.add_argument('-r', '--run', type=int,
                         help='Specify the run number')
     parser.add_argument('-R', '--normalResistance', type=float, help='Specify the TES normal resistance in Ohms')
-    parser.add_argument('-L', '--loadResistance', type=float, help='Specify the TES load resistance in Ohms. This is the sum of series parasitic resistance and the shunt resistor')
+    parser.add_argument('-L', '--loadResistance', type=float,
+                        help='Specify the TES load resistance in Ohms. This is the sum of series parasitic resistance and the shunt resistor')
     parser.add_argument('-s', '--sc', default=0.0, type=float,
                         help='Specify the superconducting mode bias current in uA. Default is 0')
+    parser.add_argument('-S', '--squid', help='Specify the SQUID number to use for the computation of DC terms')
     parser.add_argument('-n', '--normal', type=float,
                         help='Specify the normal mode bias current in uA')
     parser.add_argument('-b', '--bias', nargs='+', type=float,
@@ -956,4 +1130,5 @@ if __name__ == '__main__':
     ARGS = get_args()
     print('The bias argument is: {}'.format(ARGS))
     ztes = process_complex_impedance(ARGS.inputDirectory, ARGS.outputDirectory, ARGS.subDirectory, ARGS.onlyTransfer,
-                              ARGS.run, ARGS.normalResistance, ARGS.loadResistance, ARGS.temperature, ARGS.sc, ARGS.normal, ARGS.bias, ARGS.fitModel, ARGS.whiteNoise)
+                                     ARGS.run, ARGS.squid, ARGS.normalResistance, ARGS.loadResistance,
+                                     ARGS.temperature, ARGS.sc, ARGS.normal, ARGS.bias, ARGS.fitModel, ARGS.whiteNoise)

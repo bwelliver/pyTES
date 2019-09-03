@@ -1,5 +1,6 @@
 import numpy as np
 from numpy import square as pow2
+from scipy.special import erf
 
 def lin_sq(x, m, b):
     '''Get the output for a linear response to an input'''
@@ -13,8 +14,8 @@ def quad_sq(x, a, b, c):
     return y
 
 
-def exp_tc(T, C, D, B, A):
-    '''Alternative R vs T
+def exp_tc_paper(T, *args):
+    '''Alternative R vs T used for the Tc paper
     Here we have
     C -> Rn
     D -> Rp
@@ -22,11 +23,54 @@ def exp_tc(T, C, D, B, A):
     In the old fit we hade (T-Tc)/Tw -> T/Tw - Tc/Tw
     We have here A*T + B --> A = 1/Tw and B = -Tc/Tw
     '''
+    C, D, B, A = args
     R = (C*np.exp(A*T + B)) / (1 + np.exp(A*T + B)) + D
     return R
 
 
-def tanh_tc(T, Rn, Rp, Tc, Tw):
+def dexp_tc(T, *args):
+    '''Functional form of dR/dT for exp_tc model.
+    Here we have
+    C -> Rn
+    D -> Rp
+    -B/A -> Tc
+    In the old fit we hade (T-Tc)/Tw -> T/Tw - Tc/Tw
+    We have here A*T + B --> A = 1/Tw and B = -Tc/Tw
+    '''
+    Rn, Rp, Tc, Tw = args
+    # denom = np.power(np.exp(Tc/Tw) + np.exp(T/Tw), 2)
+    # denom = np.power(np.exp(Tc/Tw)*(1 + np.exp((T - Tc)/Tw)),2)
+    # dRdT = Rn*np.exp((T + Tc)/Tw)/(Tw*denom)
+    # The above gets overflows in the exponential due to the scale between T and Tw.
+    # Luckily there is an alternative closed form involving cosh
+    dRdT = Rn / (2*Tw*np.cosh((Tc - T)/Tw) + 2*Tw)
+    return dRdT
+
+
+def exp_tc(T, *args):
+    '''Alternative R vs T used for the Tc paper
+    Here we have
+    C -> Rn
+    D -> Rp
+    -B/A -> Tc
+    In the old fit we hade (T-Tc)/Tw -> T/Tw - Tc/Tw
+    We have here A*T + B --> A = 1/Tw and B = -Tc/Tw
+    '''
+    Rn, Rp, Tc, Tw = args
+    R = Rn*(np.exp(T/Tw + -Tc/Tw)/(1 + np.exp(T/Tw + -Tc/Tw))) + Rp
+    return R
+
+
+def dtanh_tc(T, *args):
+    '''Derivative of the model tanh function with respect to T
+    This gives dR/dT smoothly
+    '''
+    Rn, Rp, Tc, Tw = args
+    dR = ((Rn - Rp) * 1/np.power(np.cosh((Tc-T)/Tw), 2))/(2*Tw)
+    return dR
+
+
+def tanh_tc(T, *args):
     '''Get resistance values from fitting T to a tanh
     Rn is the normal resistance
     Rp is the superconducting resistance (parasitic)
@@ -38,9 +82,9 @@ def tanh_tc(T, Rn, Rp, Tc, Tw):
         When T << Tc: R = Rp
         When T = Tc: R = Rn/2 + Rp
     But Rp is already subtracted from our data so it should be 0ish
-
     '''
-    #R = (Rn/2.0)*(tanh((T - Tc)/Tw) + 1) + Rp
+    Rn, Rp, Tc, Tw = args
+    # R = (Rn/2.0)*(tanh((T - Tc)/Tw) + 1) + Rp
     R = ((Rn - Rp)/2)*(np.tanh((T - Tc)/Tw) + 1) + Rp
     return R
 
@@ -80,17 +124,25 @@ def tes_power_polynomial(T, *args):
     '''General TES power equation
     P = k*(T^n - Tb^n) - Pp
     '''
-    n, k, Ttes, Pp = args
+    k, n, Ttes, Pp = args
     P = k*(np.power(Ttes, n) - np.power(T, n)) - Pp
-    #P = k*(power(Ttes, n) - power(T, n))
     return P
 
 
-def tes_power_polynomial5(T, *args):
-    '''General TES power equation assuming n = 5
+def tes_power_polynomial_fixed(fixedArgs):
+    '''General TES power equation fit with optional fixed args
     P = k*(T^n - Tb^n)
     '''
-    k, Pp = args
-    P = k*(np.power(61.5e-3, 5) - np.power(T, 5)) - Pp
-    #P = k*(power(Ttes, n) - power(T, n))
-    return P
+    k = fixedArgs.get('k', None)
+    n = fixedArgs.get('n', None)
+    Ttes = fixedArgs.get('Ttes', None)
+    Pp = fixedArgs.get('Pp', None)
+    fixedArgs = [k, n, Ttes, Pp]
+
+    def tes_power_polynomial(T, *args):
+        args = list(args)
+        newargs = (args.pop(0) if item is None else item for item in fixedArgs)
+        k, n, Ttes, Pp = newargs
+        P = k*(np.power(Ttes, n) - np.power(T, n)) - Pp
+        return P
+    return tes_power_polynomial
