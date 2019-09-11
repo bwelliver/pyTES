@@ -1,4 +1,5 @@
 import os
+import time
 from os.path import isabs, dirname, basename
 import argparse
 import numpy as np
@@ -8,6 +9,7 @@ from numpy import sum as nsum
 
 from scipy.optimize import curve_fit
 from scipy.signal import detrend
+from scipy.stats import median_absolute_deviation as mad
 
 from matplotlib import pyplot as plt
 
@@ -24,6 +26,9 @@ import ROOT as rt
 
 from readROOT import readROOT
 from writeROOT import writeROOT
+
+from pycallgraph import PyCallGraph
+from pycallgraph.output import GraphvizOutput
 
 EPS = np.finfo(float).eps
 
@@ -100,6 +105,92 @@ def get_tree_names(input_file):
 
 def process_waveform(waveform, time_values, sample_length, number_of_windows=1, process_type='mean'):
     '''Function to process waveform into a statistically downsampled representative point
+        waveform:
+            A dictionary whose keys represent the event number. Values are numpy arrays with a length = NumberOfSamples
+            The timestamp of waveform[event][sample] is time_values[event] + sample*sample_length
+        time_values:
+            An array containing the start time (with microsecond resolution) of an event
+        sample_length:
+            The length in seconds of a sample within an event. waveform[event].size*sample_length = event duration
+        number_of_windows:
+            How many windows should an event be split into for statistical sampling
+        process_type:
+            The particular type of processing to use.
+            mean:
+                For the given division of the event performs a mean and std over samples to obtain statistically
+                representative values
+            median:
+                TODO
+    This will return 2 dictionaries keyed by event number and an appropriately re-sampled time_values array
+    '''
+    # Here we will use numpy.split which will split an array into N equal length sections
+    # The return is a list of the sub-arrays.
+    process_type = 'median'
+    print('Processing waveform with {} windows'.format(number_of_windows))
+    # Step 1: How many actual entries will we wind up with?
+    number_of_entries = len(waveform) * number_of_windows
+    #processed_waveform = {'mean_waveform': np.empty(number_of_entries), 'rms_waveform': np.empty(number_of_entries), 'new_time': np.empty(number_of_entries)}
+    processed_waveform = {'mean_waveform': [], 'rms_waveform': [], 'new_time': []}
+    if process_type == 'mean':
+        for event, samples in waveform.items():
+            event_metadata = {'base_index': samples.size//number_of_windows, 'event_time': time_values[event]}
+            subsamples = np.split(samples, number_of_windows)
+            sub_times = [np.mean(subtime) for subtime in np.split(time_values[event], number_of_windows)]
+            mean_samples = [np.mean(subsample) for subsample in subsamples]
+            std_samples = [np.std(subsample) for subsample in subsamples]
+            # this array is number_of_windows long
+            # In principle now we have an array of sub-samples associated with this event
+            # We can simply append them now to an existing array. But growing by appending is slow
+            # so again we associated subsamples[i] with main[k] through some map of k:<->i
+            # Or we can do slice assignment. Clever accounting for the slice of main and subsample will allow this.
+            processed_waveform['mean_waveform'].extend(mean_samples)
+            processed_waveform['rms_waveform'].extend(std_samples)
+            processed_waveform['new_time'].extend(sub_times)
+            #start_index = event*number_of_windows
+            #end_index = start_index + number_of_windows
+            #processed_waveform['mean_waveform'][start_index:end_index] = mean_samples
+            #processed_waveform['rms_waveform'][start_index:end_index] = std_samples
+            # upper_index + lower_index = n*base_index + base_index + n*base_index = (2n+1)*base_index
+            #processed_waveform['new_time'][start_index:end_index] = sub_times
+    if process_type == 'median':
+        for event, samples in waveform.items():
+            event_metadata = {'base_index': samples.size//number_of_windows, 'event_time': time_values[event]}
+            subsamples = np.split(samples, number_of_windows)
+            # warning: time_values[event] is just the starting timestamp of the event. To get the timestamp of the particular window requires using sample length
+            # What we know: 1 event is 1 second long. Therefore each sample is sample_length s separated from the previous sample in a given event.
+            # If we had 1 window we should collapse the timestamp to event_time + (samples.size/2)*sample_length
+            # If we have 2 windows now each should be the middle of their respective blocks. event_time + (samples.size)/(2*2) and event_time + (2+1)*(samples.size)/(2*2)
+            # If we have 3 windows then should be in middle of each third.
+            # event_time + (sample_length/(2*3)), event_time + ((sample_length/(2*3))
+            # So times are:
+            sub_times = [event_metadata['event_time'] + sample_length/(2*number_of_windows) + idx/number_of_windows for idx in range(number_of_windows)]
+            # event_metadata['event_time'] + (((2*windex + 1)*event_metadata['base_index'])/2)*sample_length
+            # sub_times = np.array([np.mean(subtime) for subtime in np.split(time_values[event], number_of_windows)])
+            median_samples = [np.median(subsample) for subsample in subsamples]
+            mad_samples = [mad(subsample) for subsample in subsamples]
+            # this array is number_of_windows long
+            # In principle now we have an array of sub-samples associated with this event
+            # We can simply append them now to an existing array. But growing by appending is slow
+            # so again we associated subsamples[i] with main[k] through some map of k:<->i
+            # Or we can do slice assignment. Clever accounting for the slice of main and subsample will allow this.
+            processed_waveform['mean_waveform'].extend(median_samples)
+            processed_waveform['rms_waveform'].extend(mad_samples)
+            processed_waveform['new_time'].extend(sub_times)
+            #start_index = event*number_of_windows
+            #end_index = start_index + number_of_windows
+            #processed_waveform['mean_waveform'][start_index:end_index] = median_samples
+            #processed_waveform['rms_waveform'][start_index:end_index] = mad_samples
+            # upper_index + lower_index = n*base_index + base_index + n*base_index = (2n+1)*base_index
+            #processed_waveform['new_time'][start_index:end_index] = sub_times
+    # Wrap up into numpy
+    processed_waveform['mean_waveform'] = np.array(processed_waveform['mean_waveform'])
+    processed_waveform['rms_waveform'] = np.array(processed_waveform['rms_waveform'])
+    processed_waveform['new_time'] = np.array(processed_waveform['new_time'])
+    return processed_waveform
+
+
+def process_waveform_old(waveform, time_values, sample_length, number_of_windows=1, process_type='mean'):
+    '''Function to process waveform into a statistically downsampled representative point
     waveform:
         A dictionary whose keys represent the event number. Values are numpy arrays with a length = NumberOfSamples
         The timestamp of waveform[event][sample] is time_values[event] + sample*sample_length
@@ -126,6 +217,7 @@ def process_waveform(waveform, time_values, sample_length, number_of_windows=1, 
     # mean_waveform = np.empty(number_of_entries)
     # rms_waveform = np.empty(number_of_entries)
     # new_time_values = np.empty(number_of_entries)
+    process_type = 'median'
     processed_waveform = {'mean_waveform': np.empty(number_of_entries), 'rms_waveform': np.empty(number_of_entries), 'new_time': np.empty(number_of_entries)}
     if process_type == 'mean':
         for event, samples in waveform.items():
@@ -139,6 +231,20 @@ def process_waveform(waveform, time_values, sample_length, number_of_windows=1, 
                 entry_index = windex + number_of_windows*event
                 processed_waveform['mean_waveform'][entry_index] = np.mean(subsample)
                 processed_waveform['rms_waveform'][entry_index] = np.std(subsample)
+                # upper_index + lower_index = n*base_index + base_index + n*base_index = (2n+1)*base_index
+                processed_waveform['new_time'][entry_index] = event_metadata['event_time'] + (((2*windex + 1)*event_metadata['base_index'])/2)*sample_length
+    if process_type == 'median':
+        for event, samples in waveform.items():
+            event_metadata = {'base_index': samples.size//number_of_windows, 'event_time': time_values[event]}
+            # base_index = samples.size // number_of_windows
+            # event_time = time_values[event]
+            for windex in range(number_of_windows):
+                # lower_index = n*base_index
+                # upper_index = (n+1)*base_index
+                subsample = samples[(windex*event_metadata['base_index']):(windex + 1)*event_metadata['base_index']]
+                entry_index = windex + number_of_windows*event
+                processed_waveform['mean_waveform'][entry_index] = np.median(subsample)
+                processed_waveform['rms_waveform'][entry_index] = mad(subsample)
                 # upper_index + lower_index = n*base_index + base_index + n*base_index = (2n+1)*base_index
                 processed_waveform['new_time'][entry_index] = event_metadata['event_time'] + (((2*windex + 1)*event_metadata['base_index'])/2)*sample_length
     return processed_waveform
@@ -452,7 +558,7 @@ def get_stable_temperature_steps(timestamps, temperatures, buffer_length=10, tem
     return time_list
 
 
-def walk_normal(xdata, ydata, side, buffer_size=200):
+def walk_normal(xdata, ydata, side, buffer_size=40*16):
     '''Function to walk the normal branches and find the line fit
     To do this we will start at the min or max input current and compute a walking derivative
     If the derivative starts to change then this indicates we entered the biased region and should stop
@@ -542,7 +648,7 @@ def get_sc_endpoints(buffer_size, index_min_x, dydx):
     return (ev_left, ev_right)
 
 
-def walk_sc(xdata, ydata, buffer_size=5*8, plane='iv'):
+def walk_sc(xdata, ydata, buffer_size=5*16, plane='iv'):
     '''Function to walk the superconducting region of the IV curve and get the left and right edges
     Generally when ib = 0 we should be superconducting so we will start there and go up until the bias
     then return to 0 and go down until the bias
@@ -562,9 +668,10 @@ def walk_sc(xdata, ydata, buffer_size=5*8, plane='iv'):
     dydx = np.gradient(ydata, xdata, edge_order=2)
 
     # Set data that is in the SC to N transition to NaN in here
-    xdata[~c_normal_to_sc] = np.nan
-    ydata[~c_normal_to_sc] = np.nan
-    dydx[~c_normal_to_sc] = np.nan
+    if plane == 'iv':
+        xdata[~c_normal_to_sc] = np.nan
+        ydata[~c_normal_to_sc] = np.nan
+        dydx[~c_normal_to_sc] = np.nan
 
     # In the sc region the gradient should be constant
     # So we will walk along and compute the average of N elements at a time.
@@ -573,7 +680,22 @@ def walk_sc(xdata, ydata, buffer_size=5*8, plane='iv'):
     # First we should find whereabouts of (0,0)
     # This should roughly correspond to x = 0 since if we input nothing we should get out nothing. In reality there are parasitics of course
     if plane == 'tes':
-        index_min_x = np.nanargmin(np.abs(xdata))
+        #ioffset = -1e-8
+        # try minimizing ydata here (since it is current)
+        #index_min_x = np.nanargmin(np.abs(ydata))
+        # Try to find the point closest to 0,0 and use that as our starting
+        #cutX = np.logical_and(xdata > -0.5e-6, xdata < 0.5e-6)
+        #cutY = np.logical_and(ydata > -0.5e-6, ydata < 0.5e-6)
+        #cut = np.logical_and(cutX, cutY) # but how to get index?
+        # Ideally we should look for the point that is closest to (0, 0)!
+        distance = np.zeros(xdata.size)
+        px, py = (0, 0)
+        for idx in range(xdata.size):
+            dx = xdata[idx] - px
+            dy = ydata[idx] - py
+            distance[idx] = np.sqrt(dx**2 + dy**2)
+        index_min_x = np.nanargmin(distance)
+        print('The point closest to ({}, {}) is at index {} with distance {} and is ({}, {})'.format(px, py, index_min_x, distance[index_min_x], xdata[index_min_x], ydata[index_min_x]))
         # Occasionally we may have a shifted curve that is not near 0 for some reason (SQUID jump)
         # So find the min and max iTES and then find the central point
     elif plane == 'iv':
@@ -662,7 +784,12 @@ def make_tes_multiplot(output_path, data_channel, squid, iv_dictionary, fit_para
     axes = fig.add_subplot(111)
     xscale = 1e6
     yscale = 1e3
+    idx = 0
+    tmax = 57
     for temperature, data in iv_dictionary.items():
+        if idx % 4 != 0 or float(temperature) > tmax:
+            idx += 1
+            continue
         params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'black', 'markerfacecolor': 'black',
                   'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': None
                   }
@@ -673,51 +800,62 @@ def make_tes_multiplot(output_path, data_channel, squid, iv_dictionary, fit_para
         axes = ivp.generic_fitplot_with_errors(axes=axes, x=data['iBias'], y=data['rTES'], params=params, axes_options=axes_options, xscale=xscale, yscale=yscale)
         axes = ivp.add_model_fits(axes=axes, x=data['vTES'], y=data['iTES'], model=fit_parameters[temperature], model_function=fitfuncs.lin_sq, xscale=xscale, yscale=yscale)
         axes = ivp.iv_fit_textbox(axes=axes, R=resistance[temperature], model=fit_parameters[temperature])
+        idx += 1
     axes.set_ylim((0*yscale, 1*yscale))
     axes.set_xlim((-20, 20))
     file_name = output_path + '/' + 'rTES_vs_iBias_ch_' + str(data_channel)
     ivp.save_plot(fig, axes, file_name)
 
     # Overlay multiple IV plots
-    fig = plt.figure(figsize=(8, 6))
+    fig = plt.figure(figsize=(16, 12))
     axes = fig.add_subplot(111)
     xscale = 1e6
     yscale = 1e6
     temperature_names = []
+    idx = 0
     for temperature, data in iv_dictionary.items():
+        if idx % 4 != 0 or float(temperature) > tmax:
+            idx += 1
+            continue
         if temperature not in ['9.908']:
             temperature_names.append(temperature)
-            params = {'marker': 'o', 'markersize': 2, 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': None}
+            params = {'marker': 'o', 'markersize': 4, 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': None}
             axes_options = {'xlabel': r'TES Voltage [$\mu$V]',
                             'ylabel': r'TES Current [$\mu$A]',
-                            'title': 'Channel {} TES Current vs Voltage'.format(data_channel)
+                            'title': None #'Channel {} TES Current vs Voltage'.format(data_channel)
                             }
             axes = ivp.generic_fitplot_with_errors(axes=axes, x=data['vTES'], y=data['iTES'], params=params, axes_options=axes_options, xscale=xscale, yscale=yscale)
+        idx += 1
     # Add legend?
-    axes.legend(['temperatures = {} mK'.format(temperature) for temperature in temperature_names], markerscale=3)
-    axes.set_ylim((0, 3))
+    axes.legend(['T = {} mK'.format(temperature) for temperature in temperature_names], markerscale=5, fontsize=24)
+    axes.set_ylim((0, 2))
     axes.set_xlim((-0.5, 2))
     file_name = output_path + '/' + 'iTES_vs_vTES_ch_' + str(data_channel)
-    ivp.save_plot(fig, axes, file_name, dpi=150)
+    ivp.save_plot(fig, axes, file_name, dpi=200)
 
     # Overlay multiple IV plots
-    fig = plt.figure(figsize=(8, 6))
+    fig = plt.figure(figsize=(16, 12))
     axes = fig.add_subplot(111)
     xscale = 1e6
     yscale = 1e3
     temperature_names = []
+    idx = 0
     for temperature, data in iv_dictionary.items():
+        if idx % 4 != 0 or float(temperature) > tmax:
+            idx += 1
+            continue
         if temperature not in ['9.908']:
             temperature_names.append(temperature)
-            params = {'marker': 'o', 'markersize': 2, 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': None}
+            params = {'marker': 'o', 'markersize': 4, 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': None}
             axes_options = {'xlabel': r'TES Voltage [$\mu$V]',
                             'ylabel': r'TES Resistance [m$\Omega$]',
-                            'title': 'Channel {} TES Resistance vs Voltage'.format(data_channel)
+                            'title': None #'Channel {} TES Resistance vs Voltage'.format(data_channel)
                             }
             axes = ivp.generic_fitplot_with_errors(axes=axes, x=data['vTES'], y=data['rTES'], params=params, axes_options=axes_options, xscale=xscale, yscale=yscale)
+        idx += 1
     # Add legend?
-    axes.legend(['temperatures = {} mK'.format(temperature) for temperature in temperature_names], markerscale=3)
-    axes.set_ylim((0, 600))
+    axes.legend(['T = {} mK'.format(temperature) for temperature in temperature_names], markerscale=5, fontsize=24)
+    axes.set_ylim((0, 720))
     axes.set_xlim((0, 2))
     file_name = output_path + '/' + 'rTES_vs_vTES_ch_' + str(data_channel)
     ivp.save_plot(fig, axes, file_name, dpi=200)
@@ -874,7 +1012,7 @@ def make_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, 
     nice_current = np.round(fixed_value*1e6, 3)
     axes_options = {'xlabel': 'Temperature [mK]',
                     'ylabel': 'TES Resistance [m' + r'$\Omega$' + ']',
-                    'title': 'Channel {}'.format(data_channel) + ' TES Resistance vs Temperature for TES Current = {}'.format(nice_current) + r'$\mu$' + 'A'
+                    'title': None  #'Channel {}'.format(data_channel) + ' TES Resistance vs Temperature for TES Current = {}'.format(nice_current) + r'$\mu$' + 'A'
                     }
     params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'red',
               'markerfacecolor': 'red', 'markeredgewidth': 0, 'linestyle': 'None',
@@ -888,10 +1026,10 @@ def make_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, 
     axes = ivp.generic_fitplot_with_errors(axes=axes, x=norm_to_sc['T'][sort_key], y=norm_to_sc['R'][sort_key], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
     axes = ivp.add_model_fits(axes=axes, x=norm_to_sc['T'], y=norm_to_sc['R'], model=fit_result, model_function=model_func, xscale=xscale, yscale=yscale)
     axes = ivp.rt_fit_textbox(axes=axes, model=fit_result)
-    axes.legend(['SC to N', 'N to SC'])
+    axes.legend(['SC to N', 'N to SC'], markerscale=6, fontsize=26)
     file_name = output_path + '/' + 'rTES_vs_T_ch_' + str(data_channel) + '_fixed_' + fixed_name + '_' + str(np.round(fixed_value*1e6, 3)) + 'uA'
-    for label in axes.get_xticklabels() + axes.get_yticklabels():
-        label.set_fontsize(18)
+    #for label in axes.get_xticklabels() + axes.get_yticklabels():
+    #    label.set_fontsize(26)
     ivp.save_plot(fig, axes, file_name)
 
     # Make a plot of N --> SC only
@@ -922,36 +1060,50 @@ def make_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, 
     ivp.save_plot(fig, axes, file_name)
     # We can also make plots of alpha = (T0/R0)*dR/dT
     # use model values
-    T = np.linspace(norm_to_sc['T'].min(), norm_to_sc['T'].max(), 500)
-    R = model_func(T, *normal_to_sc_fit_result.right.result)
+    #T = np.linspace(norm_to_sc['T'].min(), norm_to_sc['T'].max(), 10000)
+    #R = model_func(T, *normal_to_sc_fit_result.right.result)
+    R = norm_to_sc['R']
+    T = norm_to_sc['T']
     sort_key = np.argsort(T)
     dR_dT = np.gradient(R, T, edge_order=2)
     # print('The input to the model for dR_dT would be: {}'.format(normal_to_sc_fit_result.right.result))
-    dR_dT = fitfuncs.dexp_tc(T, *normal_to_sc_fit_result.right.result)
+    # dR_dT = fitfuncs.dtanh_tc(T, *normal_to_sc_fit_result.right.result)
     alpha = (T/R) * dR_dT
-    alpha[alpha < 0] = 0
-    print('The largest alpha = {} at T = {} mK'.format(np.nanmax(alpha), T[np.nanargmax(alpha)]))
+    #alpha[alpha < 0] = 0
+    #alpha = np.gradient(np.log(R), np.log(T), edge_order=2)
+    cutR = R > 40e-3
+    print('The largest alpha = {} at T = {} mK'.format(np.nanmax(alpha[cutR]), T[np.nanargmax(alpha[cutR])]))
+    # Use a model function as well!
+    model_T = np.linspace(norm_to_sc['T'].min(), norm_to_sc['T'].max(), 100000)
+    model_R = model_func(model_T, *normal_to_sc_fit_result.right.result)
+    model_dR_dT = fitfuncs.dtanh_tc(model_T, *normal_to_sc_fit_result.right.result)
+    model_alpha = (model_T/model_R)*model_dR_dT
+    #model_alpha = (model_T/model_R)*np.gradient(model_R, model_T, edge_order=2)
+    model_cutR = model_R > 40e-3
     # Remove it
-    alpha[np.nanargmax(alpha)] = 0
-    print('The largest alpha is now = {} at T = {} mK'.format(np.nanmax(alpha), T[np.nanargmax(alpha)]))
+    #alpha[np.nanargmax(alpha)] = 0
+    #print('The largest alpha is now = {} at T = {} mK'.format(np.nanmax(alpha), T[np.nanargmax(alpha)]))
     # make plot
     fig = plt.figure(figsize=(16, 12))
     axes = fig.add_subplot(111)
-    xscale = 1e3
+    xscale = 1
     yscale = 1
-    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'green',
-              'markerfacecolor': 'green', 'markeredgewidth': 0, 'linestyle': 'None',
-              'xerr': None, 'yerr': None}
     axes_options = {'xlabel': 'Temperature [mK]',
                     'ylabel': 'TES ' + r'$\alpha$',
+                    'logy': 'linear',
+                    'xlim': (0, 0.700*xscale),
+                    'ylim': (0, model_alpha[model_cutR].max()),
                     'title': 'Channel {}'.format(data_channel) + ' TES ' + r'$\alpha$' + ' vs Temperature for TES Current = {}'.format(np.round(fixed_value*1e6, 3)) + r'$\mu$' + 'A'
                     }
-    axes = ivp.generic_fitplot_with_errors(axes=axes, x=R, y=alpha, axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
-    #axes2 = axes.twinx()
-    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'red',
-              'markerfacecolor': 'red', 'markeredgewidth': 0, 'linestyle': 'None',
+    params = {'marker': 'o', 'markersize': 5, 'markeredgecolor': 'green',
+              'markerfacecolor': 'green', 'markeredgewidth': 0, 'linestyle': 'None',
               'xerr': None, 'yerr': None}
-    #ivp.generic_fitplot_with_errors(axes=axes2, x=T, y=R, axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
+    axes = ivp.generic_fitplot_with_errors(axes=axes, x=R[cutR], y=alpha[cutR], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
+    # axes2 = axes.twinx()
+    params = {'marker': 'None', 'markersize': 4, 'markeredgecolor': 'red',
+              'markerfacecolor': 'red', 'markeredgewidth': 0, 'linestyle': '-',
+              'xerr': None, 'yerr': None}
+    ivp.generic_fitplot_with_errors(axes=axes, x=model_R[model_cutR], y=model_alpha[model_cutR], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
     # Let us pad the T values so they are smoooooooth
     # model_temperatures = np.linspace(norm_to_sc['T'].min(), 70e-3, 100000)
     #axes = ivp.add_model_fits(axes=axes, x=model_temperatures, y=norm_to_sc['R'], model=normal_to_sc_fit_result, model_function=model_func, xscale=xscale, yscale=yscale)
@@ -1002,8 +1154,55 @@ def make_tes_plots(output_path, data_channel, squid, iv_dictionary, fit_dictiona
 
 def get_i_tes(vout, r_fb, m_ratio):
     '''Computes the TES current and TES current RMS in Amps'''
-    ites = vout/r_fb/m_ratio
+    ites = vout/(r_fb*m_ratio)
     return ites
+
+
+def get_i_tes_rms(vrms, r_fb, m_ratio):
+    '''Computes the TES current and TES current RMS in Amps'''
+    ites_rms = np.abs(vrms/(r_fb*m_ratio))
+    return ites_rms
+
+
+def get_r_tes_alt(ites, vbias, r_bias, r_sh, r_p):
+    '''A hack method to try and get rTES'''
+    # Anywhere there is an Rbias replace with ?
+    rtes = (1/(r_bias + r_sh + r_p))*(vbias*(r_sh+r_p)/ites - r_bias*(r_sh+r_p))
+    return rtes
+
+
+def get_r_tes_new(ibias, ites, r_sh, r_p):
+    '''Compute rTES directly from currents'''
+    # 1. ish = ibias - iTES
+    # 2. ites*rp + ites*rtes = ish*rsh
+    # 3. rtes = (ish*rsh - ites*rp)/ites
+    # 4. rtes = (ibias*rsh - ites*rsh - ites*rp)/ites
+    # 5. rtes = (ibias/ites)*rsh - rsh - rp
+    rtes = (ibias/ites)*r_sh - r_sh - r_p
+    return rtes
+
+def get_r_tes_rms_new(ibias, ibias_rms, ites, ites_rms, r_p_err, r_sh, rtes):
+    '''Compute the rTES rms value'''
+    # Since we assume the error in rsh is constant it won't matter. But r_p err will
+    # use the general rule of R_err/R = sqrt(sum((dR/dxi * xi_err)^2))
+    # first dR/diBias, then dR/dites, and then dR/dr_p
+    dr_dibias = r_sh/ites
+    dr_dites = -(ibias/(ites*ites))*r_sh
+    dr_drp = -1
+    rtes_rms = np.sqrt(np.power(dr_dibias*ibias_rms, 2) + np.power(dr_dites*ites_rms, 2) +np.power(dr_drp*r_p_err, 2))
+    return rtes_rms
+
+
+def get_v_tes_new(ites, rtes):
+    '''A hack method'''
+    vtes = ites*rtes
+    return vtes
+
+
+def get_v_tes_rms_new(ites, ites_rms, rtes, rtes_rms, vtes):
+    '''Compute rms on vtes from ites and rtes'''
+    vtes_rms = np.abs(vtes)*np.sqrt(np.power(ites_rms/ites, 2) + np.power(rtes_rms/rtes, 2))
+    return vtes_rms
 
 
 def get_r_tes(ites, vtes):
@@ -1038,6 +1237,9 @@ def get_p_tes_rms(ites, ites_rms, vtes, vtes_rms):
 
 def get_v_tes(i_bias, v_out, r_fb, m_ratio, r_sh, r_p):
     '''computes the TES voltage in Volts
+    ish*rsh = ites*(rp+rtes)
+    ibas*rsh - ites*rsh = ites(rp+rtes)
+    ibaias*rsh = ites*(rp+rtes+rsh)
     vTES = vSh - vPara
     vTES = r_sh*(iSh) - r_p*iTES
     vTES = r_sh*(iBias - iTES) - r_p*iTES = r_sh*iBias - iTES*(r_p+r_sh)
@@ -1167,6 +1369,8 @@ def get_iv_data_from_file(input_path, new_format=False, thermometer='EP'):
 
 def format_iv_data(iv_data, output_path, new_format=False, number_of_windows=1, thermometer='EP'):
     '''Format the IV data into easy to use forms'''
+    graphviz = GraphvizOutput()
+    graphviz.output_file = output_path + '/' + 'basic.png'
 
     # Now data structure:
     # Everything is recorded on an event level but some events are globally the same (i.e., same timestamp)
@@ -1217,7 +1421,11 @@ def format_iv_data(iv_data, output_path, new_format=False, number_of_windows=1, 
             #  mean_waveforms[channel], rms_waveforms[channel], mean_time_values = process_waveform(waveforms[channel], time_values, iv_data['SamplingWidth_s'][0], number_of_windows=number_of_windows)
     else:
         for channel in iv_data['Channel']:
-            processed_waveforms = process_waveform(iv_data['Waveform' + '{:03d}'.format(int(channel))], time_values, iv_data['SamplingWidth_s'][0], number_of_windows=number_of_windows)
+            print('Starting processing...')
+            st = time.time()
+            with PyCallGraph(output=graphviz):
+                processed_waveforms = process_waveform(iv_data['Waveform' + '{:03d}'.format(int(channel))], time_values, iv_data['SamplingWidth_s'][0], number_of_windows=number_of_windows)
+            print('Process function took: {} s to run'.format(time.time() - st))
             mean_waveforms[channel], rms_waveforms[channel], mean_time_values = processed_waveforms.values()
             # mean_waveforms[channel], rms_waveforms[channel], mean_time_values = process_waveform(iv_data['Waveform' + '{:03d}'.format(int(channel))], time_values, iv_data['SamplingWidth_s'][0], number_of_windows=number_of_windows)
     print('The number of things in the mean time values are: {} and the number of waveforms are: {}'.format(np.size(mean_time_values), len(mean_waveforms[iv_data['Channel'][0]])))
@@ -1605,6 +1813,7 @@ def process_iv_curves(output_path, data_channel, squid, iv_curves):
         # i_offset, v_offset = correct_offsets(fit_parameters_dictionary[temperature], iv_data, 'interceptbalance')
         i_offset, v_offset = correct_offsets(fit_parameters_dictionary[temperature], iv_data, 'dual')
         # Manual offset adjustment
+        # i_offset, v_offset = [0, 0]
         # i_offset, v_offset = (-1.1104794020729887e-05, 0.010244294053372446)
         # v_offset = fit_parameters_dictionary[temperature].sc.result[1]
         print('The maximum iBias={} and the minimum iBias={} with a total size={}'.format(iv_data['iBias'].max(), iv_data['iBias'].min(), iv_data['iBias'].size))
@@ -1659,6 +1868,7 @@ def get_power_temperature_curves(output_path, data_channel, iv_dictionary):
     power = np.empty(0)
     power_rms = np.empty(0)
     iTES = np.empty(0)
+    stat_mode = 'direct-mean'
     for temperature, iv_data in iv_dictionary.items():
         # Create cut to select only data going in the Normal to SC mode
         # This happens in situations as follows:
@@ -1670,50 +1880,65 @@ def get_power_temperature_curves(output_path, data_channel, iv_dictionary):
         c_normal_to_sc_neg = np.logical_and(iv_data['iBias'] <= 0, di_bias > 0)
         c_normal_to_sc = np.logical_or(c_normal_to_sc_pos, c_normal_to_sc_neg)
         # Also select data that is some fraction of the normal resistance, say 20-30%
-        r_n = 638e-3
-        r_0 = r_n/2
-        d_r = r_n/3
+        r_n = 700e-3
+        r_0 = 0.5*r_n
+        d_r = 150e-3
         cut = np.logical_and(iv_data['rTES'] > r_0 - d_r, iv_data['rTES'] < r_0 + d_r)
         cut = np.logical_and(cut, c_normal_to_sc)
         if nsum(cut) > 0:
-            temperatures = np.append(temperatures, float(temperature)*1e-3)
-            power = np.append(power, np.mean(iv_data['pTES'][cut]))
-            iTES = np.append(iTES, np.mean(iv_data['iTES'][cut]))
-            # power_rms = np.append(power_rms, np.mean(iv_data['pTES_rms'][cut]))
-            power_rms = np.append(power_rms, np.std(iv_data['pTES'][cut]))
+            if stat_mode == 'mean':
+                temperatures = np.append(temperatures, float(temperature)*1e-3)
+                power = np.append(power, np.mean(iv_data['pTES'][cut]))
+                iTES = np.append(iTES, np.mean(iv_data['iTES'][cut]))
+                # power_rms = np.append(power_rms, np.mean(iv_data['pTES_rms'][cut]))
+                power_rms = np.append(power_rms, np.std(iv_data['pTES_rms'][cut]))
+            if stat_mode == 'median':
+                temperatures = np.append(temperatures, float(temperature)*1e-3)
+                power = np.append(power, np.median(iv_data['pTES'][cut]))
+                iTES = np.append(iTES, np.mean(iv_data['iTES'][cut]))
+                # power_rms = np.append(power_rms, np.mean(iv_data['pTES_rms'][cut]))
+                power_rms = np.append(power_rms, mad(iv_data['pTES_rms'][cut]))
+            if stat_mode == 'direct':
+                temperatures = np.append(temperatures, np.ones(nsum(cut))*float(temperature)*1e-3)
+                power = np.append(power, iv_data['pTES'][cut])
+                iTES = np.append(iTES, iv_data['iTES'][cut])
+                # power_rms = np.append(power_rms, np.mean(iv_data['pTES_rms'][cut]))
+                power_rms = np.append(power_rms, iv_data['pTES_rms'][cut])
+            if stat_mode == 'direct-fuzzy':
+                temperatures = np.append(temperatures, np.random.normal(float(temperature)*1e-3, 0.1e-3, nsum(cut)))
+                power = np.append(power, iv_data['pTES'][cut])
+                iTES = np.append(iTES, iv_data['iTES'][cut])
+                # power_rms = np.append(power_rms, np.mean(iv_data['pTES_rms'][cut]))
+                power_rms = np.append(power_rms, iv_data['pTES_rms'][cut])
+            if stat_mode == 'direct-median':
+                temperatures = np.append(temperatures, float(temperature)*1e-3)
+                power = np.append(power, np.median(iv_data['pTES'][cut]))
+                iTES = np.append(iTES, np.median(iv_data['iTES'][cut]))
+                # power_rms = np.append(power_rms, np.mean(iv_data['pTES_rms'][cut]))
+                power_rms = np.append(power_rms, mad(iv_data['pTES'][cut]))
+            if stat_mode == 'direct-mean':
+                temperatures = np.append(temperatures, float(temperature)*1e-3)
+                power = np.append(power, np.mean(iv_data['pTES'][cut]))
+                iTES = np.append(iTES, np.mean(iv_data['iTES'][cut]))
+                # power_rms = np.append(power_rms, np.mean(iv_data['pTES_rms'][cut]))
+                power_rms = np.append(power_rms, np.std(iv_data['pTES'][cut]))
         else:
             print('For T = {} mK there were no values used.'.format(temperature))
     # print('The main T vector is: {}'.format(temperatures))
     # print('The iTES vector is: {}'.format(iTES))
-    cut_temperature = np.logical_and(temperatures > 55e-3, temperatures < 61e-3)  # This should be the expected Tc
+    cut_temperature = np.logical_and(temperatures > 35e-3, temperatures < 53e-3)  # This should be the expected Tc
     cut_power = power < 1e-6
     cut_temperature = np.logical_and(cut_temperature, cut_power)
-    # Next make a P-T plot
-    fig = plt.figure(figsize=(16, 12))
-    axes = fig.add_subplot(111)
-    xscale = 1e3
-    yscale = 1e15
-    params = {'marker': 'o', 'markersize': 6, 'markeredgecolor': 'black', 'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': power_rms*yscale}
-    axes_options = {'xlabel': 'Temperature [mK]',
-                    'ylabel': 'TES Power [fW]',
-                    'title': 'Channel {} TES Power vs Temperature'.format(data_channel),
-                    'ylim': (0, None)
-                    }
-    axes = ivp.generic_fitplot_with_errors(axes=axes, x=temperatures, y=power, axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
-    file_name = output_path + '/' + 'pTES_vs_T_ch_' + str(data_channel)
-    for label in axes.get_xticklabels() + axes.get_yticklabels():
-        label.set_fontsize(18)
-    ivp.save_plot(fig, axes, file_name)
     # Attempt to fit it to a power function
     # [k, n, Ttes, Pp]
-    lower_bounds = [1e-9, 10e-3, 0]
-    upper_bounds = [10e-6, 100e-3, 1e-9]
-
+    lbounds = [100e-9, 3, 28e-3]
+    ubounds = [10e-6, 6, 70e-3]
     # max_nfev=1e4 if using trf
     # (k, n, Ttes, Pp)
-    fixedArgs = {'n': 5, 'Pp': 0}
-    x0 = [500e-9, 55e-3]
-    fitargs = {'p0': x0, 'method': 'lm', 'maxfev': int(5e4)}
+    fixedArgs = {'Pp': 0}
+    x0 = [500e-9, 5, 55e-3]
+    # fitargs = {'p0': x0, 'method': 'lm', 'maxfev': int(5e4)}
+    fitargs = {'p0': x0, 'bounds': (lbounds, ubounds), 'method': 'trf', 'jac': '3-point', 'tr_solver': 'exact', 'x_scale': 'jac', 'xtol': 1e-15, 'ftol': 1e-15, 'gtol': None, 'loss': 'linear', 'max_nfev': 10000, 'verbose': 2}
     results, pcov = curve_fit(fitfuncs.tes_power_polynomial_fixed(fixedArgs), temperatures[cut_temperature], power[cut_temperature], **fitargs)
     print('The covariance matrix is: {}'.format(pcov))
     perr = np.sqrt(np.diag(pcov))
@@ -1728,20 +1953,21 @@ def get_power_temperature_curves(output_path, data_channel, iv_dictionary):
     print('x0={}, results={}'.format(x0, results))
     fit_result = iv_results.FitParameters()
     fit_result.left.set_values(results, perr)
-    fit_result.right.set_values(x0, x0)
+    # fit_result.right.set_values(x0, x0)
     # Next make a P-T plot
     fig = plt.figure(figsize=(16, 12))
     axes = fig.add_subplot(111)
     xscale = 1e3
     yscale = 1e15
     ymax = power.max()*1.05*yscale
-    params = {'marker': 'o', 'markersize': 6, 'markeredgecolor': 'black',
+    params = {'marker': 'o', 'markersize': 7, 'markeredgecolor': 'black',
               'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None',
               'xerr': None, 'yerr': power_rms*yscale
               }
     axes_options = {'xlabel': 'Temperature [mK]',
                     'ylabel': 'TES Power [fW]',
-                    'title': 'Channel {} TES Power vs Temperature'.format(data_channel),
+                    'title': None, # 'Channel {} TES Power vs Temperature'.format(data_channel),
+                    'xlim': (25, 60),
                     'ylim': (0, ymax)
                     }
     axes = ivp.generic_fitplot_with_errors(axes=axes, x=temperatures, y=power, axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
@@ -1749,9 +1975,9 @@ def get_power_temperature_curves(output_path, data_channel, iv_dictionary):
     axes = ivp.pt_fit_textbox(axes=axes, model=fit_result)
 
     file_name = output_path + '/' + 'pTES_vs_T_ch_' + str(data_channel)
-    for label in axes.get_xticklabels() + axes.get_yticklabels():
-        label.set_fontsize(18)
-    ivp.save_plot(fig, axes, file_name)
+    #for label in axes.get_xticklabels() + axes.get_yticklabels():
+    #    label.set_fontsize(32)
+    ivp.save_plot(fig, axes, file_name, dpi=150)
     print('Results: k = {}, n = {}, Tb = {}, Pp = {}'.format(*results))
     print('Error Results: k = {}, n = {}, Tb = {}, Pp = {}'.format(*perr))
     # Compute G
@@ -1770,22 +1996,27 @@ def get_resistance_temperature_curves_new(output_path, data_channel, iv_dictiona
     # Get only data with a fixed iTES
     fixed_name = 'iTES'
     fixed_value = 0.1e-6
-    delta_value = 0.1e-6
-    stat_flag = 'median'
-    rn_threshold = 0.6
+    delta_value = 0.05e-6
+    stat_flag = 'direct-median'
+    target = 20
+    r_normal = 0.700
     # We need to handle the case of going from SC --> N and N --> SC separately so select cuts for these.
     norm_to_sc = {'T': np.empty(0), 'R': np.empty(0), 'rmsR': np.empty(0)}
     sc_to_norm = {'T': np.empty(0), 'R': np.empty(0), 'rmsR': np.empty(0)}
     for temperature, iv_data in iv_dictionary.items():
         fixed_cut = np.logical_and(iv_data[fixed_name] > fixed_value - delta_value, iv_data[fixed_name] < fixed_value + delta_value)
-        # Make a cut on rTES too to not select normal branch unless we are normal.
-        rcut = np.logical_and(fixed_cut, iv_data['rTES'] < rn_threshold)
-        print('For T={} mK, sum of rcut is: {}, and sum of ~rcut is: {} and the ratio rcut/len(rcut): {}'.format(temperature, nsum(rcut), nsum(~rcut), nsum(rcut)/rcut.size))
-        if nsum(rcut) >= 40:
-            fixed_cut = rcut
-        else:
-            fixed_cut = np.logical_and(fixed_cut, iv_data['rTES'] > rn_threshold)
-        print('For T={} mK, the sum of the cut is: {}'.format(temperature, nsum(fixed_cut)))
+        cut_quality = iv_data['rTES_rms'] < 0.5*r_normal
+        fixed_cut = np.logical_and(fixed_cut, cut_quality)
+        # We need to select the lowest sensible rTES since there are degeneracies in the rTES vs iTES plane
+        # Steps:
+        #   1.  Examine counts in the biased region RL < R < 0.9 Rn. If there are more than N
+        #       events in this region we select them.
+        #   2.  If there are less than N events in the proposed biased region, look in the SC region and N regions
+        #       This is relying on the fact that, for a given iTES, the only way degeneracies in Rn and Rsc type values
+        #       can occur is due to the SC->N and N->SC type directions. Rely on the directionality cut to get rid of them.
+        #   3.  Since step 1 is likely to exclude SC->N styles we should pair this ultimately with the direction cuts
+        #       first and examine the data for each type of cut.
+        ######
         # We need to use the gradient to determine if we go up or down
         dbias = np.gradient(iv_data['iBias'], edge_order=2)
         cut1 = np.logical_and(iv_data['iBias'] > 0, dbias < 0)   # Positive iBias -slope (High to Low, N-->Sc)
@@ -1793,19 +2024,62 @@ def get_resistance_temperature_curves_new(output_path, data_channel, iv_dictiona
         cut_norm_to_sc = np.logical_or(cut1, cut2)
         cut_fixed_norm_to_sc = np.logical_and(fixed_cut, cut_norm_to_sc)
         cut_fixed_sc_to_norm = np.logical_and(fixed_cut, ~cut_norm_to_sc)
+        # Now implement cut on resistance values for each case. I guess we should use the
+        # region with most events?
+        frac_rn = 0.95
+        rsc_thresh = 40e-3
+        cut_R_normal = iv_data['rTES'] > frac_rn*r_normal
+        cut_R_biased = np.logical_and(iv_data['rTES'] > rsc_thresh, iv_data['rTES'] < frac_rn*r_normal)
+        cut_R_sc = iv_data['rTES'] < rsc_thresh
+        if nsum(np.logical_and(fixed_cut, cut_R_normal)) > nsum(np.logical_and(fixed_cut, cut_R_biased)) and nsum(np.logical_and(fixed_cut, cut_R_normal)) > nsum(np.logical_and(fixed_cut, cut_R_sc)):
+            cut_fixed_norm_to_sc = np.logical_and(cut_fixed_norm_to_sc, cut_R_normal)
+            cut_fixed_sc_to_norm = np.logical_and(cut_fixed_sc_to_norm, cut_R_normal)
+        if nsum(np.logical_and(fixed_cut, cut_R_biased)) > nsum(np.logical_and(fixed_cut, cut_R_normal)) and nsum(np.logical_and(fixed_cut, cut_R_normal)) > nsum(np.logical_and(fixed_cut, cut_R_sc)):
+            cut_fixed_norm_to_sc = np.logical_and(cut_fixed_norm_to_sc, cut_R_biased)
+            cut_fixed_sc_to_norm = np.logical_and(cut_fixed_sc_to_norm, cut_R_biased)
+        if nsum(np.logical_and(fixed_cut, cut_R_sc)) > nsum(np.logical_and(fixed_cut, cut_R_biased)) and nsum(np.logical_and(fixed_cut, cut_R_sc)) > nsum(np.logical_and(fixed_cut, cut_R_normal)):
+            cut_fixed_norm_to_sc = np.logical_and(cut_fixed_norm_to_sc, cut_R_sc)
+            cut_fixed_sc_to_norm = np.logical_and(cut_fixed_sc_to_norm, cut_R_sc)
+        ######
+#        # Make a cut on rTES too to not select normal branch unless we are normal.
+#        rcut = np.logical_and(fixed_cut, iv_data['rTES'] < rn_threshold)
+#        print('For T={} mK, sum of rcut is: {}, and sum of ~rcut is: {} and the ratio rcut/len(rcut): {}'.format(temperature, nsum(rcut), nsum(~rcut), nsum(rcut)/rcut.size))
+#        if nsum(rcut) >= 40:
+#            fixed_cut = rcut
+#        else:
+#            fixed_cut = np.logical_and(fixed_cut, iv_data['rTES'] > rn_threshold)
+#        print('For T={} mK, the sum of the cut is: {}'.format(temperature, nsum(fixed_cut)))
+#        # We need to use the gradient to determine if we go up or down
+#        dbias = np.gradient(iv_data['iBias'], edge_order=2)
+#        cut1 = np.logical_and(iv_data['iBias'] > 0, dbias < 0)   # Positive iBias -slope (High to Low, N-->Sc)
+#        cut2 = np.logical_and(iv_data['iBias'] <= 0, dbias > 0)  # Negative iBias +slope (-High to -Low, N-->Sc)
+#        cut_norm_to_sc = np.logical_or(cut1, cut2)
+#        cut_fixed_norm_to_sc = np.logical_and(fixed_cut, cut_norm_to_sc)
+#        cut_fixed_sc_to_norm = np.logical_and(fixed_cut, ~cut_norm_to_sc)
         print('\tTotal sum for N-->SC: {}'.format(nsum(cut_fixed_norm_to_sc)))
         print('\tTotal sum for SC-->N: {}'.format(nsum(cut_fixed_sc_to_norm)))
         if nsum(cut_fixed_norm_to_sc) > 0:
-            norm_to_sc['T'] = np.append(norm_to_sc['T'], float(temperature)*1e-3)
             if stat_flag == 'median':
+                norm_to_sc['T'] = np.append(norm_to_sc['T'], float(temperature)*1e-3)
                 norm_to_sc['R'] = np.append(norm_to_sc['R'], np.median(iv_data['rTES'][cut_fixed_norm_to_sc]))
                 norm_to_sc['rmsR'] = np.append(norm_to_sc['rmsR'], np.median(iv_data['rTES_rms'][cut_fixed_norm_to_sc]))
             if stat_flag == 'mean':
+                norm_to_sc['T'] = np.append(norm_to_sc['T'], float(temperature)*1e-3)
                 norm_to_sc['R'] = np.append(norm_to_sc['R'], np.mean(iv_data['rTES'][cut_fixed_norm_to_sc]))
                 norm_to_sc['rmsR'] = np.append(norm_to_sc['rmsR'], np.mean(iv_data['rTES_rms'][cut_fixed_norm_to_sc]))
-            if stat_flag == 'direct':
+            if stat_flag == 'direct-mean':
+                norm_to_sc['T'] = np.append(norm_to_sc['T'], float(temperature)*1e-3)
                 norm_to_sc['R'] = np.append(norm_to_sc['R'], np.mean(iv_data['rTES'][cut_fixed_norm_to_sc]))
                 norm_to_sc['rmsR'] = np.append(norm_to_sc['rmsR'], np.std(iv_data['rTES'][cut_fixed_norm_to_sc]))
+            if stat_flag == 'direct-median':
+                norm_to_sc['T'] = np.append(norm_to_sc['T'], float(temperature)*1e-3)
+                norm_to_sc['R'] = np.append(norm_to_sc['R'], np.median(iv_data['rTES'][cut_fixed_norm_to_sc]))
+                norm_to_sc['rmsR'] = np.append(norm_to_sc['rmsR'], mad(iv_data['rTES'][cut_fixed_norm_to_sc]))
+            if stat_flag == 'direct':
+                # Take raw data points
+                norm_to_sc['T'] = np.append(norm_to_sc['T'], np.random.normal(float(temperature)*1e-3, 0.001e-3, nsum(cut_fixed_norm_to_sc)))
+                norm_to_sc['R'] = np.append(norm_to_sc['R'], iv_data['rTES'][cut_fixed_norm_to_sc])
+                norm_to_sc['rmsR'] = np.append(norm_to_sc['rmsR'], iv_data['rTES_rms'][cut_fixed_norm_to_sc])
         if nsum(cut_fixed_sc_to_norm) > 0:
             sc_to_norm['T'] = np.append(sc_to_norm['T'], float(temperature)*1e-3)
             if stat_flag == 'median':
@@ -1817,6 +2091,10 @@ def get_resistance_temperature_curves_new(output_path, data_channel, iv_dictiona
             if stat_flag == 'direct':
                 sc_to_norm['R'] = np.append(sc_to_norm['R'], np.mean(iv_data['rTES'][cut_fixed_sc_to_norm]))
                 sc_to_norm['rmsR'] = np.append(sc_to_norm['rmsR'], np.std(iv_data['rTES'][cut_fixed_sc_to_norm]))
+            if stat_flag == 'direct-median':
+                sc_to_norm['R'] = np.append(sc_to_norm['R'], np.median(iv_data['rTES'][cut_fixed_sc_to_norm]))
+                sc_to_norm['rmsR'] = np.append(sc_to_norm['rmsR'], mad(iv_data['rTES'][cut_fixed_sc_to_norm]))
+
     # Now we have arrays of R and T for a fixed iTES so try to fit each domain
     # SC --> N first
     # Model function is a modified tanh(Rn, Rp, Tc, Tw)
@@ -1825,18 +2103,23 @@ def get_resistance_temperature_curves_new(output_path, data_channel, iv_dictiona
     # Try to do a smart Tc0 estimate:
     sort_key = np.argsort(norm_to_sc['T'])
     T0 = norm_to_sc['T'][sort_key][np.gradient(norm_to_sc['R'][sort_key], norm_to_sc['T'][sort_key], edge_order=2).argmax()]*1.01
-    x_0 = [1, 0, T0, 1e-3]
+    x_0 = [0.7, 0, T0, 1e-3]
     lbounds = (0, 0, 0, 0)
     ubounds = (np.inf, np.inf, np.inf, np.inf)
+
     print('For SC to N fit initial guess is {}, and the number of data points are: {}'.format(x_0, sc_to_norm['T'].size))
-    result, pcov = curve_fit(model_func, sc_to_norm['T'], sc_to_norm['R'], p0=x_0, sigma=sc_to_norm['rmsR'], absolute_sigma=True, method='lm')
+    fitargs = {'p0': x_0, 'bounds': (lbounds, ubounds), 'absolute_sigma': True, 'sigma': sc_to_norm['rmsR'], 'method': 'trf', 'jac': '3-point', 'xtol': 1e-15, 'ftol': 1e-8, 'loss': 'linear', 'tr_solver': 'exact', 'x_scale': 'jac', 'max_nfev': 10000, 'verbose': 2}
+    result, pcov = curve_fit(model_func, sc_to_norm['T'], sc_to_norm['R'], **fitargs)
     print('The cov matrix is: {}'.format(pcov))
     perr = np.sqrt(np.diag(pcov))
     print('Ascending (SC -> N): Rn = {} mOhm, r_p = {} mOhm, Tc = {} mK, Tw = {} mK'.format(*[i*1e3 for i in result]))
     fit_result.left.set_values(result, perr)
+
     # Attempt to fit the N-->Sc region now
     print('For N to SC fit initial guess is {}, and the number of data points are: {}'.format(x_0, norm_to_sc['T'].size))
-    result, pcov = curve_fit(model_func, norm_to_sc['T'], norm_to_sc['R'], p0=x_0, sigma=norm_to_sc['rmsR'], absolute_sigma=True, method='lm')
+    #fitargs = {'p0': x_0, 'bounds': (lbounds, ubounds), 'absolute_sigma': True, 'sigma': norm_to_sc['rmsR'], 'method': 'trf', 'jac': '3-point', 'xtol': 1e-14, 'ftol': 1e-14, 'loss': 'soft_l1', 'tr_solver': 'exact', 'x_scale': 'jac', 'max_nfev': 10000, 'verbose': 2}
+    fitargs = {'p0': x_0, 'bounds': (lbounds, ubounds), 'method': 'trf', 'jac': '3-point', 'xtol': 1e-14, 'ftol': 1e-14, 'loss': 'linear', 'tr_solver': 'exact', 'x_scale': 'jac', 'max_nfev': 10000, 'verbose': 2}
+    result, pcov = curve_fit(model_func, norm_to_sc['T'], norm_to_sc['R'], **fitargs)
     perr = np.sqrt(np.diag(pcov))
     print('Descending (N -> SC): Rn = {} mOhm, r_p = {} mOhm, Tc = {} mK, Tw = {} mK'.format(*[i*1e3 for i in result]))
     fit_result.right.set_values(result, perr)
@@ -2140,6 +2423,7 @@ def process_tes_curves(iv_curves):
 def get_tes_values(iv_curves, squid):
     '''From I-V data values compute the TES values for iTES and vTES, ultimately yielding rTES'''
     squid_parameters = squid_info.SQUIDParameters(squid)
+    r_bias = squid_parameters.Rbias
     r_sh = squid_parameters.Rsh
     m_ratio = squid_parameters.M
     r_fb = squid_parameters.Rfb
@@ -2149,11 +2433,15 @@ def get_tes_values(iv_curves, squid):
     for temperature, iv_data in iv_curves['iv'].items():
         print('Getting TES values for T = {}'.format(temperature))
         iv_data['iTES'] = get_i_tes(iv_data['vOut'], r_fb, m_ratio)
-        iv_data['iTES_rms'] = get_i_tes(iv_data['vOut_rms'], r_fb, m_ratio)
-        iv_data['vTES'] = get_v_tes(iv_data['iBias'], iv_data['vOut'], r_fb, m_ratio, r_sh, r_p)
-        iv_data['vTES_rms'] = get_v_tes_rms(iv_data['iBias_rms'], iv_data['vOut'], iv_data['vOut_rms'], r_fb, m_ratio, r_sh, r_p, r_p_rms)
-        iv_data['rTES'] = get_r_tes(iv_data['iTES'], iv_data['vTES'])
-        iv_data['rTES_rms'] = get_r_tes_rms(iv_data['iTES'], iv_data['iTES_rms'], iv_data['vTES'], iv_data['vTES_rms'])
+        iv_data['iTES_rms'] = get_i_tes_rms(iv_data['vOut_rms'], r_fb, m_ratio)
+        iv_data['rTES'] = get_r_tes_new(iv_data['iBias'], iv_data['iTES'], r_sh, r_p)
+        iv_data['vTES'] = get_v_tes_new(iv_data['iTES'], iv_data['rTES'])
+        # iv_data['vTES'] = get_v_tes(iv_data['iBias'], iv_data['vOut'], r_fb, m_ratio, r_sh, r_p)
+        # iv_data['vTES_rms'] = get_v_tes_rms(iv_data['iBias_rms'], iv_data['vOut'], iv_data['vOut_rms'], r_fb, m_ratio, r_sh, r_p, r_p_rms)
+        # iv_data['rTES'] = get_r_tes(iv_data['iTES'], iv_data['vTES'])
+        iv_data['rTES_rms'] = get_r_tes_rms_new(iv_data['iBias'], iv_data['iBias_rms'], iv_data['iTES'], iv_data['iTES_rms'], r_p_rms, r_sh, iv_data['rTES'])
+        # iv_data['rTES_rms'] = get_r_tes_rms(iv_data['iTES'], iv_data['iTES_rms'], iv_data['vTES'], iv_data['vTES_rms'])
+        iv_data['vTES_rms'] = get_v_tes_rms_new(iv_data['iTES'], iv_data['iTES_rms'], iv_data['rTES'], iv_data['rTES_rms'], iv_data['vTES'])
         iv_data['pTES'] = get_p_tes(iv_data['iTES'], iv_data['vTES'])
         iv_data['pTES_rms'] = get_p_tes_rms(iv_data['iTES'], iv_data['iTES_rms'], iv_data['vTES'], iv_data['vTES_rms'])
     return iv_curves
@@ -2193,7 +2481,7 @@ def chop_data_by_temperature_steps(formatted_data, timelist, bias_channel, data_
     iv_dictionary = {}
     # The following defines a range of temperatures to reject. That is:
     # reject = cut_temperature_min < T < cut_temperature_max
-    cut_temperature_max = 55  # Should be the max rejected temperature
+    cut_temperature_max = 5  # Should be the max rejected temperature
     cut_temperature_min = 0  # Should be the minimum rejected temperature
     expected_duration = 3600  # TODO: make this an input argument or auto-determined somehow
     for values in timelist:
@@ -2232,7 +2520,7 @@ def chop_data_by_temperature_steps(formatted_data, timelist, bias_channel, data_
             # Make gradient to save as well
             # Try to do this: dV/d_t and di/d_t and then (dV/d_t)/(di/d_t) --> (dV/di)
             index_vector = np.array([i for i in range(timestamps.size)])
-            iv_dictionary[temperature] = {'iBias': i_bias, 'iBias_rms': i_bias_rms, 'vOut': v_out, 'vOut_rms': v_out_rms, 'timestamps': timestamps, 'index': index_vector, 'TimeSinceStart': time_since_start}
+            iv_dictionary[temperature] = {'vBias': i_bias*r_bias, 'vBias_rms': i_bias_rms*r_bias, 'iBias': i_bias, 'iBias_rms': i_bias_rms, 'vOut': v_out, 'vOut_rms': v_out_rms, 'timestamps': timestamps, 'index': index_vector, 'TimeSinceStart': time_since_start}
     return iv_dictionary
 
 

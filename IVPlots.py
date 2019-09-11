@@ -15,9 +15,14 @@ def axis_option_parser(axes, options):
     axes.set_yscale(options.get('logy', 'linear'))
     axes.set_xlim(options.get('xlim', None))
     axes.set_ylim(options.get('ylim', None))
-    axes.set_xlabel(options.get('xlabel', None), fontsize=18, horizontalalignment='right', x=1.0)
-    axes.set_ylabel(options.get('ylabel', None), fontsize=18)
-    axes.set_title(options.get('title', None), fontsize=18)
+    axes.tick_params(labelsize=26)
+    axes.xaxis.set_tick_params(labelsize=26)
+    axes.yaxis.set_tick_params(labelsize=26)
+    axes.set_xlabel(options.get('xlabel', None), fontsize=26, horizontalalignment='right', x=1.0)
+    axes.set_ylabel(options.get('ylabel', None), fontsize=26)
+    axes.set_title(options.get('title', None), fontsize=26)
+    for label in (axes.get_xticklabels() + axes.get_yticklabels()):
+        label.set_fontsize(26)
     return axes
 
 
@@ -65,11 +70,11 @@ def generic_fitplot_with_errors(axes, x, y, params, axes_options, xscale=1, ysca
     out = axes.errorbar(x*xscale, y*yscale, elinewidth=3, capsize=2, **params)
     # Parse options
     axes = axis_option_parser(axes, axes_options)
-    axes.yaxis.label.set_size(18)
-    axes.xaxis.label.set_size(18)
+    #axes.yaxis.label.set_size(18)
+    #axes.xaxis.label.set_size(18)
     axes.grid(True)
-    for label in (axes.get_xticklabels() + axes.get_yticklabels()):
-        label.set_fontsize(18)
+    #for label in (axes.get_xticklabels() + axes.get_yticklabels()):
+    #    label.set_fontsize(18)
     return axes
 
 
@@ -91,16 +96,14 @@ def add_model_fits(axes, x, y, model, model_function, xscale=1, yscale=1):
     xModel = np.linspace(x.min(), x.max(), 10000)
     if model.left.result is not None:
         yFit = model_function(xModel, *model.left.result)
-        axes.plot(xModel*xscale, yFit*yscale, 'r-', marker='None', linewidth=4)
+        axes.plot(xModel*xscale, yFit*yscale, 'r-', marker='None', linewidth=5)
     if model.right.result is not None:
         yFit = model_function(xModel, *model.right.result)
-        axes.plot(xModel*xscale, yFit*yscale, 'g-', marker='None', linewidth=2)
+        axes.plot(xModel*xscale, yFit*yscale, 'g-', marker='None', linewidth=5)
     if model.sc.result is not None:
         yFit = model_function(x, *model.sc.result)
         cut = np.logical_and(yFit < y.max(), yFit > y.min())
-        axes.plot(x[cut]*xscale, yFit[cut]*yscale, 'b-', marker='None', linewidth=2)
-    for label in (axes.get_xticklabels() + axes.get_yticklabels()):
-        label.set_fontsize(18)
+        axes.plot(x[cut]*xscale, yFit[cut]*yscale, 'b-', marker='None', linewidth=5)
     return axes
 
 
@@ -149,22 +152,22 @@ def rt_fit_textbox(axes, model):
     # First is the ascending (SC to N) parameters
     textStr = ''
     if model.left.result is not None:
-        lR = r'SC to N: $\mathrm{R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(model.left.result[0]*1e3, model.left.error[0]*1e3)
-        lRp = r'SC to N: $\mathrm{R_{p}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(model.left.result[1]*1e3, model.left.error[1]*1e3)
-        lTc = r'SC to N: $\mathrm{T_{c}} = %.5f \pm %.5f \mathrm{mK}$'%(model.left.result[2]*1e3, model.left.error[2]*1e3)
-        lTw = r'SC to N: $\mathrm{\Delta T_{c}} = %.5f \pm %.5f \mathrm{mK}$'%(model.left.result[3]*1e3, model.left.error[3]*1e3)
+        lR = r'SC $\rightarrow$ N: $\mathrm{R_{n}} = %.2f \pm %.2f \mathrm{m \Omega}$'%(model.left.result[0]*1e3, model.left.error[0]*1e3)
+        lRp = r'SC $\rightarrow$ N: $\mathrm{R_{p}} = %.2f \pm %.2f \mathrm{m \Omega}$'%(model.left.result[1]*1e3, model.left.error[1]*1e3)
+        lTc = r'SC $\rightarrow$ N: $\mathrm{T_{c}} = %.2f \pm %.2f \mathrm{mK}$'%(model.left.result[2]*1e3, model.left.error[2]*1e3)
+        lTw = r'SC $\rightarrow$ N: $\mathrm{\Delta T_{c}} = %.2f \pm %.2f \mathrm{mK}$'%(model.left.result[3]*1e3, model.left.error[3]*1e3)
         textStr += lR + '\n' + lRp + '\n' + lTc + '\n' + lTw
     # Next the descending (N to SC) parameters...these are the main physical ones
     if model.right.result is not None:
-        rR = r'N to SC: $\mathrm{R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(model.right.result[0]*1e3, model.right.error[0]*1e3)
-        rRp = r'N to SC: $\mathrm{R_{p}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(model.right.result[1]*1e3, model.right.error[1]*1e3)
-        rTc = r'N to SC: $\mathrm{T_{c}} = %.5f \pm %.5f \mathrm{mK}$'%(model.right.result[2]*1e3, model.right.error[2]*1e3)
-        rTw = r'N to SC: $\mathrm{\Delta T_{c}} = %.5f \pm %.5f \mathrm{mK}$'%(model.right.result[3]*1e3, model.right.error[3]*1e3)
+        rR = r'N $\rightarrow$ SC: $\mathrm{R_{n}} = %.2f \pm %.2f \mathrm{m \Omega}$'%(model.right.result[0]*1e3, model.right.error[0]*1e3)
+        rRp = r'N $\rightarrow$ SC: $\mathrm{R_{p}} = %.2f \pm %.2f \mathrm{m \Omega}$'%(model.right.result[1]*1e3, model.right.error[1]*1e3)
+        rTc = r'N $\rightarrow$ SC: $\mathrm{T_{c}} = %.2f \pm %.2f \mathrm{mK}$'%(model.right.result[2]*1e3, model.right.error[2]*1e3)
+        rTw = r'N $\rightarrow$ SC: $\mathrm{\Delta T_{c}} = %.2f \pm %.2f \mathrm{mK}$'%(model.right.result[3]*1e3, model.right.error[3]*1e3)
         if textStr is not '':
             textStr += '\n'
         textStr += rR + '\n' + rRp + '\n' + rTc + '\n' + rTw
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
-    axes.text(0.10, 0.9, textStr, transform=axes.transAxes, fontsize=14, verticalalignment='top', bbox=props)
+    axes.text(0.05, 0.5, textStr, transform=axes.transAxes, fontsize=26, verticalalignment='top', bbox=props)
     return axes
 
 
@@ -181,10 +184,10 @@ def pt_fit_textbox(axes, model):
     dPp = model.left.error[3]
     # Pn = model.left.result[4]
     # dPn = model.left.error[4]
-    lk = r'$k = %.5f \pm %.5f \mathrm{ nW/K^{%.5f}}$' % (k*1e9, dk*1e9, n)
-    ln = r'$n = %.5f \pm %.5f$' % (n, dn)
-    lTt = r'$T_{TES} = %.5f \pm %.5f \mathrm{ mK}$' % (Ttes*1e3, dTtes*1e3)
-    lPp = r'$P_{0} = %.5f \pm %.5f \mathrm{ fW}$' % (Pp*1e15, dPp*1e15)
+    lk = r'$k = %.2f \pm %.2f \mathrm{ nW/K^{%.2f}}$' % (k*1e9, dk*1e9, n)
+    ln = r'$n = %.2f \pm %.2f$' % (n, dn)
+    lTt = r'$T_{TES} = %.2f \pm %.2f \mathrm{ mK}$' % (Ttes*1e3, dTtes*1e3)
+    #lPp = r'$P_{0} = %.2f \pm %.2f \mathrm{ fW}$' % (Pp*1e15, dPp*1e15)
     # lPn = r'$P_{N} = %.5f \pm %.5f \mathrm{ fW}$' % (Pn*1e15, dPn*1e15)
     # Compute G at T = Ttes
     # G = dP/dT
@@ -193,18 +196,18 @@ def pt_fit_textbox(axes, model):
     dG_T = n*(n-1)*k*power(1e-4, n-2)  # RMS on T not Ttes
     dG_n = dn*(k*power(Ttes, n-1)*(n*np.log(Ttes) + 1))
     dG = sqrt(pow2(dG_k) + pow2(dG_T) + pow2(dG_n))
-    lG = r'$G(T_{TES}) = %.5f \pm %.5f \mathrm{ pW/K}$' % (G*1e12, dG*1e12)
-    textStr = lk + '\n' + ln + '\n' + lTt + '\n' + lPp + '\n' + lG
-    props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
-    axes.text(0.65, 0.9, textStr, transform=axes.transAxes, fontsize=14, verticalalignment='top', bbox=props)
+    lG = r'$G(T_{TES}) = %.2f \pm %.2f \mathrm{ pW/K}$' % (G*1e12, dG*1e12)
+    textStr = lk + '\n' + ln + '\n' + lTt + '\n' + lG
+    props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.7)
+    axes.text(0.05, 0.3, textStr, transform=axes.transAxes, fontsize=26, verticalalignment='top', bbox=props)
     return axes
 
 
 def save_plot(fig, axes, fName, dpi=150):
     '''Save a specified plot'''
     fName = fName + '.png' if fName.split('.png') != 2 else fName
-    for label in (axes.get_xticklabels() + axes.get_yticklabels()):
-        label.set_fontsize(18)
+    #for label in (axes.get_xticklabels() + axes.get_yticklabels()):
+    #    label.set_fontsize(18)
     fig.savefig(fName, dpi=dpi, bbox_inches='tight')
     plt.close('all')
     return None

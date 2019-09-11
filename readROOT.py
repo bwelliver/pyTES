@@ -1,6 +1,8 @@
 import numpy as np
 import ROOT as rt
 
+print('Enabling explicit MT')
+rt.ROOT.EnableImplicitMT()
 #TODO: REPLACE ROOT_DICTIONARY WITH A CLASS
 #class ROOTDictionary:
 #    '''A class to store root objects'''
@@ -224,11 +226,8 @@ def readROOT_new(input_files, root_dictionary, read_method='chain'):
     return data_dictionary
 
 
-
-
 def readROOT(inFile, tree, branches, method='single', tobject=None, directory=None, info=None):
     '''Read in root file'''
-
     if isinstance(branches,str):
         branches = [branches]
     print('The method is: {}'.format(method))

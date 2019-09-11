@@ -10,9 +10,45 @@ import pandas as pd
 import matplotlib as mp
 from matplotlib import pyplot as plt
 from scipy.optimize import curve_fit
+from scipy.optimize import minimize
 
 import IVPlots as ivp
 import squid_info
+
+
+def ztes_model_fixed_nll(fixedArgs):
+    '''Model with fixed parameters...use function currying
+    Parameters used for the model:
+        I0 - The TES operating current [A]
+        R0 - The TES operating resistance [Ohm]
+        T0 - The TES operating temperature [K]
+        g - The thermal conductance [W/K]
+        alpha - The TES alpha parameter, (T0/R0)*dR/dT
+        beta - The TES beta parameter, (I0/R0)*dR/dI
+        C - The heat capacity [J/K]
+    '''
+    I0 = fixedArgs.get('I0', None)
+    R0 = fixedArgs.get('R0', None)
+    T0 = fixedArgs.get('T0', None)
+    g = fixedArgs.get('g', None)
+    alpha = fixedArgs.get('alpha', None)
+    beta = fixedArgs.get('beta', None)
+    C = fixedArgs.get('C', None)
+    fixedArgs = [I0, R0, T0, g, alpha, beta, C]
+
+    def ztes_model_wrapper_nll(args, z, f):
+        args = list(args)
+        newargs = [args.pop(0) if item is None else item for item in fixedArgs]
+        ztes = ztes_model(f, *newargs)
+        return np.sum((z - np.append(ztes.real, ztes.imag))**2)
+    return ztes_model_wrapper_nll
+
+
+def nll_error(params, z, f):
+    '''A fit for whatever function with y-errors'''
+    model = ztes_model(f, *params)
+    lnl = np.sum(((z - model))**2)/(z.size**2)
+    return lnl
 
 
 def complex_tes_one_block(f, *args):
@@ -45,6 +81,7 @@ def ztes_model_g(f, *args):
     Ztes = R0*((1+beta) + ((2+beta)/2)*((I0*I0*R0)/(C*T0))*alpha*tau * (-1 + (1+1j*(2*np.pi*f)*tau)/(-1+1j*(2*np.pi*f)*tau)))
     return Ztes
 
+
 def ztes_model(f, *args):
     '''Simple 1 block model for Ztes from Lindeman
     f = actual frequency data
@@ -63,7 +100,7 @@ def ztes_model(f, *args):
     Z(w) = Rl + jwL + Ztes(w)
     '''
     I0, R0, T0, g, alpha, beta, C = args
-    g = 554.54820e-9 * 5 * np.power(T0, 4)
+    # g = 554.54820e-9 * 5 * np.power(T0, 4)
     tau = 1/((I0*I0*R0/(C*T0))*alpha - (g/C))
     Ztes = R0*((1+beta) + ((2+beta)/2)*((I0*I0*R0)/(C*T0))*alpha*tau * (-1 + (1+1j*(2*np.pi*f)*tau)/(-1+1j*(2*np.pi*f)*tau)))
     return Ztes
@@ -130,7 +167,7 @@ def ztes_model_fixed(fixedArgs):
 
     def ztes_model_wrapper(f, *args):
         args = list(args)
-        newargs = (args.pop(0) if item is None else item for item in fixedArgs)
+        newargs = [args.pop(0) if item is None else item for item in fixedArgs]
         ztes = ztes_model(f, *newargs)
         return np.append(ztes.real, ztes.imag)
     return ztes_model_wrapper
@@ -251,15 +288,15 @@ def gen_plot_points_fit(xdata, ydata, xfit, yfit, results, perr, labels, y0=None
     fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot(111)
     ax.plot(xdata, ydata, marker='o', markersize=4, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0.0, linestyle='None')
-    ax.plot(xfit, yfit, 'r-', marker='None', linewidth=2)
-    if y0 is not None:
-        if np.all(np.isreal(y0)):
-            ax.plot(xfit, y0, 'b-', marker='None', linewidth=2, label='Initial guess')
-        else:
-            ax.plot(y0.real, y0.imag, 'b-', marker='None', linewidth=2, label='Initial guess')
-    ax.set_xlabel(xlabel, fontsize=18, horizontalalignment='right', x=1.0)
-    ax.set_ylabel(ylabel, fontsize=18)
-    ax.set_title(title, fontsize=18)
+    ax.plot(xfit, yfit, 'r-', marker='None', linewidth=5)
+#    if y0 is not None:
+#        if np.all(np.isreal(y0)):
+#            ax.plot(xfit, y0, 'b-', marker='None', linewidth=4, label='Initial guess')
+#        else:
+#            ax.plot(y0.real, y0.imag, 'b-', marker='None', linewidth=4, label='Initial guess')
+    ax.set_xlabel(xlabel, fontsize=24, horizontalalignment='right', x=1.0)
+    ax.set_ylabel(ylabel, fontsize=24)
+    ax.set_title(title, fontsize=24)
 
     # Parse other relevant kwargs
     xscale = kwargs.get('xscale', 'linear')
@@ -274,7 +311,7 @@ def gen_plot_points_fit(xdata, ydata, xfit, yfit, results, perr, labels, y0=None
     if kwargs.get('minorticks', None) is not None:
         ax.minorticks_on()
         ax.grid(which='minor')
-    ax.tick_params(axis='both', which='major', labelsize=22)
+    ax.tick_params(axis='both', which='major', labelsize=24)
     # Set up text strings for fit based on the mode
     if mode == 'ratio':
         rn, rl, lin = results
@@ -289,15 +326,26 @@ def gen_plot_points_fit(xdata, ydata, xfit, yfit, results, perr, labels, y0=None
         LG = (I0*I0*R0 * alpha) / (g * T0)
         # tau = C / (g * (1 + LG))
         tau = 1/((I0*I0*R0*alpha)/(C*T0) - (g/C))
-        tI = r'$I_{0} = %.5f \pm %.5f \mathrm{\mu A}$' % (I0*1e6, I0_err*1e6)
-        ta = r'$\alpha = %.5f \pm %.5f$' % (alpha, alpha_err)
-        tb = r'$\beta = %.5f \pm %.5f$' % (beta, beta_err)
-        tR = r'$R_{0} = %.5f \pm %.5f \mathrm{m\Omega}$' % (R0*1e3, R0_err*1e3)
-        tg = r'$G = %.5f \pm %.5f \mathrm{pW/K}$' % (g*1e12, g_err*1e12)
-        tC = r'$C = %.5f \pm %.5f \mathrm{pJ/K}$' % (C*1e12, C_err*1e12)
-        tT = r'$T_{0} = %.5f \pm %.5f \mathrm{mK}$' % (T0*1e3, T0_err*1e3)
-        tLG = r'$\mathcal{L} = %.5f \pm %.5f$' % (LG, 0)
-        tTau = r'$\mathrm{\tau} = %.5f \pm %.5f \mathrm{ms}$' % (tau*1e3, 0)
+        tI = r'$I_{0} = %.3f \mathrm{\mu A}$' % (I0*1e6)
+        ta = r'$\alpha = %.3f \pm %.3f$' % (alpha, alpha_err)
+        tb = r'$\beta = %.3f \pm %.3f$' % (beta, beta_err)
+        tR = r'$R_{0} = %.3f \mathrm{m\Omega}$' % (R0*1e3)
+        tg = r'$G = %.3f \pm %.3f \mathrm{pW/K}$' % (g*1e12, g_err*1e12)
+        tC = r'$C = %.3f \pm %.3f \mathrm{fJ/K}$' % (C*1e15, C_err*1e15)
+        tT = r'$T_{0} = %.3f \pm %.3f \mathrm{mK}$' % (T0*1e3, T0_err*1e3)
+        # Error prop
+        P0 = I0*I0*R0
+        if I0 == 0 or R0 == 0:
+            P0_err = 1e-12
+            LG_err = 1e-1
+        else:
+            P0_err = P0 * np.sqrt(2*(I0_err/I0)**2 + (R0_err/R0)**2)
+            LG_err = LG * np.sqrt((P0_err/P0)**2 + (alpha_err/alpha)**2 + (g_err/g)**2 + (T0_err/T0)**2)
+        tLG = r'$\mathcal{L} = %.3f \pm %.3f$' % (LG, LG_err)
+        # tau is basically C/(G*(L-1))
+        tau_err = tau * np.sqrt((C_err/C)**2 + (g_err/g)**2 + (LG_err/LG)**2)
+        print('tau error is: {} us'.format(tau_err*1e6))
+        tTau = r'$\mathrm{\tau} = %.3f \pm %.3f \mathrm{\mu s}$' % (tau*1e6, tau_err*1e6)
         text_string = tI + '\n' + tR + '\n' + tg + '\n' + tT + '\n' + ta + '\n' + tb + '\n' + tC + '\n' + tLG + '\n' + tTau
     if mode == 'ztes2':
         I0, R0, T0, g0, gTES1, gB, alpha, beta, Ctes, C1 = results
@@ -307,14 +355,14 @@ def gen_plot_points_fit(xdata, ydata, xfit, yfit, results, perr, labels, y0=None
         loop = P0*alpha/(g0*T0)
         tauI = Ctes/(g0*(1-loop))
         tau1 = C1/(gTES1 + gB)
-        tI = r'$I_{0} = %.5f \pm %.5f \mathrm{\mu A}$' % (I0*1e6, I0_err*1e6)
+        tI = r'$I_{0} = %.5f \mathrm{\mu A}$' % (I0*1e6)
         ta = r'$\alpha = %.5f \pm %.5f$' % (alpha, alpha_err)
         tb = r'$\beta = %.5f \pm %.5f$' % (beta, beta_err)
         tR = r'$R_{0} = %.5f \pm %.5f \mathrm{m\Omega}$' % (R0*1e3, R0_err*1e3)
         tg0 = r'$G = %.5f \pm %.5f \mathrm{pW/K}$' % (g0*1e12, g0_err*1e12)
         tgTES1 = r'$GTES1 = %.5f \pm %.5f \mathrm{pW/K}$' % (gTES1*1e12, gTES1_err*1e12)
         tgB = r'$Gb = %.5f \pm %.5f \mathrm{pW/K}$' % (gB*1e12, gB_err*1e12)
-        tCtes = r'$Ctes = %.5f \pm %.5f \mathrm{pJ/K}$' % (Ctes*1e12, Ctes_err*1e12)
+        tCtes = r'$Ctes = %.5f \pm %.5f \mathrm{fJ/K}$' % (Ctes*1e15, Ctes_err*1e15)
         tC1 = r'$C1 = %.5f \pm %.5f \mathrm{pJ/K}$' % (C1*1e12, C1_err*1e12)
         tT = r'$T_{0} = %.5f \pm %.5f \mathrm{mK}$' % (T0*1e3, T0_err*1e3)
         tLG = r'$\mathcal{L} = %.5f \pm %.5f$' % (loop, 0)
@@ -322,13 +370,13 @@ def gen_plot_points_fit(xdata, ydata, xfit, yfit, results, perr, labels, y0=None
         tTau1 = r'$\mathrm{\tau 1} = %.5f \pm %.5f \mathrm{ms}$' % (tau1*1e3, 0)
         text_string = tI + '\n' + tR + '\n' + tg0 + '\n' + tT + '\n' + tgTES1 + '\n' + tgB + '\n' + ta + '\n' + tb + '\n' + tCtes + '\n' + tC1 + '\n' + tLG + '\n' + tTauI + '\n' + tTau1
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
-    ax.text(0.1, 0.6, text_string, transform=ax.transAxes, fontsize=14, verticalalignment='top', horizontalalignment='left', bbox=props)
+    ax.text(0.05, 0.4, text_string, transform=ax.transAxes, fontsize=24, verticalalignment='top', horizontalalignment='left', bbox=props)
     for label in (ax.get_xticklabels() + ax.get_yticklabels()):
-        label.set_fontsize(18)
+        label.set_fontsize(24)
     set_aspect = kwargs.get('set_aspect', None)
     if set_aspect is not None:
         ax.set_aspect(set_aspect, 'datalim')
-    fig.savefig(figname, dpi=150, bbox_inches='tight')
+    fig.savefig(figname, dpi=200, bbox_inches='tight')
     # plt.show()
     # plt.draw()
     plt.close('all')
@@ -379,6 +427,19 @@ def gen_plot_points(xdata, ydata, labels, **kwargs):
 def generate_multi_plot(outdir, temperature, biases, ztes):
     '''Generate a plot with all the ztes curves in it'''
     # Overlay multiple IV plots
+    # Hack in this for now
+    init_dict = {}
+    init_dict['55'] = {'0.0': {'I0': 0, 'R0': 0},
+                       '10.0': {'I0': 1.849e-6, 'R0': 0.0663},
+                       '12.0': {'I0': 1.256e-6, 'R0': 0.1507},
+                       '13.0': {'I0': 1.12e-6, 'R0': 0.1936},
+                       '14.0': {'I0': 1.001e-6, 'R0': 0.2381},
+                       '15.0': {'I0': 0.930e-6, 'R0': 0.2856},
+                       '18.0': {'I0': 0.7553e-6, 'R0': 0.4406},
+                       '20.0': {'I0': 0.704e-6, 'R0': 0.5402},
+                       '100.0': {'I0': 2.691e-6, 'R0': 0.7125}
+                       }
+    Tc0 = '55'
     fig = plt.figure(figsize=(16, 16))
     axes = fig.add_subplot(111)
     xscale = 1
@@ -389,16 +450,40 @@ def generate_multi_plot(outdir, temperature, biases, ztes):
         params = {'marker': 'o', 'markersize': 5, 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': None}
         axes_options = {'xlabel': r'Re TES Impedance [$\Omega$]',
                         'ylabel': r'Im TES Impedance [$\Omega$]',
-                        'title': 'Nyquist Plot of TES Impedances at T = {} mK'.format(temperature)
+                        'title': None, #'Nyquist Plot of TES Impedances at T = {} mK'.format(temperature)
                         }
         axes = ivp.generic_fitplot_with_errors(axes=axes, x=z_array.real, y=z_array.imag, params=params, axes_options=axes_options, xscale=xscale, yscale=yscale)
     # Add a legend?
-    axes.legend(['Bias = {} uA'.format(bias) for bias in biases], markerscale=5, fontsize=18)
-    axes.set_ylim((-1, 1))
+    print('biases are: {}'.format(biases))
+    axes.legend([r'$R/R_{N}$' + ' = {:1.2f}'.format(init_dict[Tc0][str(bias)]['R0']/init_dict[Tc0][str(100.0)]['R0']) for bias in biases], markerscale=5, fontsize=24)
+    axes.set_ylim((-1, 0.25))
     axes.set_xlim((-1, 1))
     axes.set_aspect('equal', 'datalim')
     file_name = outdir + '/' + 'nyquist_plots_zTES_T{}mK'.format(temperature)
     ivp.save_plot(fig, axes, file_name, dpi=200)
+
+    # How about imag
+    fig = plt.figure(figsize=(16, 16))
+    axes = fig.add_subplot(111)
+    xscale = 1
+    yscale = 1
+    for bias, z in ztes.items():
+        tones = np.fromiter(z.keys(), dtype='float')
+        z_array = np.fromiter(z.values(), dtype='c16')
+        params = {'marker': 'o', 'markersize': 5, 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': None}
+        axes_options = {'xlabel': r'Frequency [Hz]',
+                        'ylabel': r'Im TES Impedance [$\Omega$]',
+                        'logx': 'log',
+                        'title': None #'Plot of TES Imag. Impedances at T = {} mK'.format(temperature)
+                        }
+        axes = ivp.generic_fitplot_with_errors(axes=axes, x=tones, y=z_array.imag, params=params, axes_options=axes_options, xscale=xscale, yscale=yscale)
+    # Add a legend?
+    print('biases are: {}'.format(biases))
+    axes.legend([r'$R/R_{N}$' + ' = {:1.2f}'.format(init_dict[Tc0][str(bias)]['R0']/init_dict[Tc0][str(100.0)]['R0']) for bias in biases], markerscale=5, fontsize=18)
+    axes.set_ylim((-1, 0.25))
+    file_name = outdir + '/' + 'all_plots_imag_zTES_T{}mK'.format(temperature)
+    ivp.save_plot(fig, axes, file_name, dpi=200)
+
     return True
 
 
@@ -424,20 +509,20 @@ def generate_model_diagnostic_plots(output_directory, ratio, model_function, res
     if mode == 'ztes':
         labels = {'xlabel': 'Frequency [Hz]',
                   'ylabel': 'Re Ztes',
-                  'title': 'Power Spectrum of Model TES Impedance Real',
+                  'title': None, #'Power Spectrum of Model TES Impedance Real',
                   'figname': output_directory + '/real_ztes_model_{}uA_tones.png'.format(bias)
                   }
     if mode == 'ztes2':
         labels = {'xlabel': 'Frequency [Hz]',
                   'ylabel': 'Re Ztes',
-                  'title': 'Power Spectrum of Model TES 2 Block Impedance Real',
+                  'title': None, #'Power Spectrum of Model TES 2 Block Impedance Real',
                   'figname': output_directory + '/real_ztes_2block_model_{}uA_tones.png'.format(bias)
                   }
     formargs = {'figsize': (16, 8), 'xscale': 'log', 'yscale': 'linear',
                 'minorticks': True
                 }
     if mode == 'ztes' or mode == 'ztes2':
-        formargs['ylim'] = (-0.5, 1)
+        formargs['ylim'] = (-1, 1)
     y0 = model_initial.real if x0 is not None else None
     gen_plot_points_fit(freq, ratio.real, model_freq, model_ratio.real, results, perr, labels, y0, mode, **formargs)
 
@@ -450,7 +535,7 @@ def generate_model_diagnostic_plots(output_directory, ratio, model_function, res
     if mode == 'ztes':
         labels = {'xlabel': 'Frequency [Hz]',
                   'ylabel': 'Im Ztes',
-                  'title': 'Power Spectrum of Model TES Impedance Imaginary',
+                  'title': None, #'Power Spectrum of Model TES Impedance Imaginary',
                   'figname': output_directory + '/imag_ztes_model_{}uA_tones.png'.format(bias)
                   }
     if mode == 'ztes2':
@@ -463,7 +548,7 @@ def generate_model_diagnostic_plots(output_directory, ratio, model_function, res
                 'minorticks': True
                 }
     if mode == 'ztes' or mode == 'ztes2':
-        formargs['ylim'] = (-0.5, 0.1)
+        formargs['ylim'] = (-1, 0.1)
     y0 = model_initial.imag if x0 is not None else None
     gen_plot_points_fit(freq, ratio.imag, model_freq, model_ratio.imag, results, perr, labels, y0, mode, **formargs)
 
@@ -489,7 +574,7 @@ def generate_model_diagnostic_plots(output_directory, ratio, model_function, res
                 'minorticks': True
                 }
     if mode == 'ztes' or mode == 'ztes2':
-        formargs['ylim'] = (0, 1)
+        formargs['ylim'] = (0, 1.5)
     y0 = np.absolute(model_initial) if x0 is not None else None
     gen_plot_points_fit(freq, np.absolute(ratio), model_freq, np.absolute(model_ratio), results, perr, labels, y0, mode, **formargs)
 
@@ -501,9 +586,9 @@ def generate_model_diagnostic_plots(output_directory, ratio, model_function, res
                   'figname': output_directory + '/nyquist_ratio_model.png'
                   }
     if mode == 'ztes':
-        labels = {'xlabel': 'Re Ztes',
-                  'ylabel': 'Im Ztes',
-                  'title': 'Nyquist Plot of Model TES Impedance',
+        labels = {'xlabel': r'Re Ztes [$\Omega$]',
+                  'ylabel': r'Im Ztes [$\Omega$]',
+                  'title': None, #'Nyquist Plot of Model TES Impedance',
                   'figname': output_directory + '/nyquist_ztes_model_{}uA.png'.format(bias)
                   }
     if mode == 'ztes2':
@@ -517,7 +602,7 @@ def generate_model_diagnostic_plots(output_directory, ratio, model_function, res
                 'yscale': 'linear',
                 'set_aspect': 'equal'}
     if mode == 'ztes' or mode == 'ztes2':
-        formargs['xlim'] = (-0.5, 1)
+        formargs['xlim'] = (-0.7, 0.7)
         formargs['ylim'] = (-0.7, 0.1)
     gen_plot_points_fit(ratio.real, ratio.imag, model_ratio.real, model_ratio.imag, results, perr, labels, model_initial, mode, **formargs)
     return True
@@ -867,6 +952,7 @@ def fit_tes_model(ztes, model_func, fixedArgs, **kwargs):
     ztes = np.fromiter(ztes.values(), dtype=np.complex128)
     flat_ztes = np.append(ztes.real, ztes.imag)
     result, pcov = curve_fit(model_func(fixedArgs), tones, flat_ztes, **kwargs)
+    print('The cov is: {}'.format(pcov))
     perr = np.sqrt(np.diag(pcov))
     return result, perr
 
@@ -998,26 +1084,49 @@ def compute_z(input_directory, output_directory, subdir, run, squid, temperature
         print('Attemping to fit the TES thermal model')
         # fitargs = {'p0': (24e-12, 10, 1, 20e-12), 'method': 'lm'}
         # (a, b, C)
-        init_dict = {'10.0': {'I0': 1.849e-6, 'R0': 0.0663},
-                     '12.0': {'I0': 1.256-6, 'R0': 0.1507},
-                     '13.0': {'I0': 1.12e-6, 'R0': 0.1936},
-                     '14.0': {'I0': 1.001e-6, 'R0': 0.2381},
-                     '15.0': {'I0': 0.930e-6, 'R0': 0.2856},
-                     '18.0': {'I0': 0.7553e-6, 'R0': 0.4406},
-                     '20.0': {'I0': 0.704e-6, 'R0': 0.5402}
-                     }
-        T0 = 55e-3
-        g0 = 23.2e-12
-        p0 = [700, 0.9, 0.1e-12]
-        lbounds = (100, 0.8, 1e-14)
-        ubounds = (np.inf, 2, np.inf)
-        fixedArgs = {'I0': init_dict[str(bias)]['I0'], 'R0': init_dict[str(bias)]['R0'], 'T0': T0, 'g': g0}  # Ib = 13.0 uA
+        init_dict = {}
+        init_dict['55'] = {'0.0': {'I0': 0, 'R0': 0},
+                           '10.0': {'I0': 1.849e-6, 'R0': 0.0663},
+                           '12.0': {'I0': 1.256e-6, 'R0': 0.1507},
+                           '13.0': {'I0': 1.12e-6, 'R0': 0.1936},
+                           '14.0': {'I0': 1.001e-6, 'R0': 0.2381},
+                           '15.0': {'I0': 0.930e-6, 'R0': 0.2856},
+                           '18.0': {'I0': 0.7553e-6, 'R0': 0.4406},
+                           '20.0': {'I0': 0.704e-6, 'R0': 0.5402},
+                           '100.0': {'I0': 2.691e-6, 'R0': 0.7125}
+                           }
+        init_dict['61.2'] = {'0.0': {'I0': 0.0, 'R0': 0.0},
+                             '13.4': {'I0': 0.8777e-6, 'R0': 0.1870},
+                             '13.66': {'I0': 0.7435e-6, 'R0': 0.2362},
+                             '14.18': {'I0': 0.6505e-6, 'R0': 0.2971},
+                             '15.25': {'I0': 0.5679e-6, 'R0': 0.4174},
+                             '15.79': {'I0': 0.5370e-6, 'R0': 0.4681},
+                             '16.55': {'I0': 0.4991e-6, 'R0': 0.5420},
+                             '200.0': {'I0': 5.309e-6, 'R0': 0.638}
+                             }
+        Tc0 = '55'  # in mK
+        T0 = {'55': 54.3e-3, '61.2': 61.2e-3}
+        g0 = {'55': 515.37e-9*5*np.power(T0[Tc0], 4), '61.2': 362.09373e-9*5*np.power(T0[Tc0], 4)}
+        g0 = {'55': 1388.29e-9*5*np.power(T0[Tc0], 4), '61.2': 362.09373e-9*5*np.power(T0[Tc0], 4)}
+        p0 = [100, 0.5, 20e-15]
+        lbounds = (10, 0, 1e-15)
+        ubounds = (500, 2, 50e-15)
+        fixedArgs = {'I0': init_dict[Tc0][str(bias)]['I0'], 'R0': init_dict[Tc0][str(bias)]['R0'], 'T0': T0[Tc0], 'g': g0[Tc0]}
         # fixedArgs = {'I0': 0.946e-6, 'R0': 0.2892, 'T0': 55e-3, 'g': 25.372e-12}  # Ib = 15
-        fitargs = {'p0': p0, 'bounds': (lbounds, ubounds), 'method': 'trf'}
+        fitargs = {'p0': p0, 'bounds': (lbounds, ubounds), 'method': 'trf', 'jac': '3-point', 'xtol': 1e-15, 'ftol': 1e-15, 'loss': 'soft_l1', 'tr_solver': 'exact', 'f_scale': 1, 'x_scale': 'jac', 'max_nfev': 10000, 'verbose': 2}
+        #fitargs = {'p0': p0, 'method': 'lm'}
+        # fitargs = {'p0': p0, 'method': 'lm'}
         results, perr = fit_tes_model(ztes, ztes_model_fixed, fixedArgs, **fitargs)
-        #g = 554.54820e-9 * 5 * np.power(results[0], 4)
-        #results = [results[0], g, results[1], results[2], results[3]]
-        #perr = [perr[0], 0, perr[1], perr[2], perr[3]]
+        print('The error vector for a,b,C is: {}'.format(perr))
+        # If we wanted to do a minimizer problem look at the following
+#        tones = np.fromiter(ztes.keys(), dtype=float)
+#        ztesvals = np.fromiter(ztes.values(), dtype=np.complex128)
+#        flat_ztes = np.append(ztesvals.real, ztesvals.imag)
+#        result = minimize(ztes_model_fixed_nll(fixedArgs), x0=np.array(p0), args=(flat_ztes, tones), method='Powell', jac='2-point', hess='3-point', options={'gatol': 1e-7 * flat_ztes.size, 'fatol': 1e-14, 'maxiter': 10000, 'xtol': 1e-12, 'ftol': 1e-14})
+#        print('The minimizer result is: {}'.format(result))
+#        # perr = result.x/100
+#        result = result.x
+#        results = result
 
         # Join results and fixed values into set order: Rn, Rl, Lin
         fixedResults = [fixedArgs.get('I0'), fixedArgs.get('R0'), fixedArgs.get('T0'),
@@ -1026,6 +1135,9 @@ def compute_z(input_directory, output_directory, subdir, run, squid, temperature
         results, perr = list(results), list(perr)
         results = [results.pop(0) if item is None else item for item in fixedResults]
         perr = [perr.pop(0) if item is None else 0 for item in fixedResults]
+        # Hack for now...g-->perr[3] and T0 --> perr[2]
+        perr[2] = 0.04e-3
+        perr[3] = 0.11e-12
         print('The results of the TES fit are as follows:')
         print('I0 = {} uA, R0 = {} mOhm, T0 = {} mK, g = {} pW/K'.format(results[0]*1e6, results[1]*1e3, results[2]*1e3, results[3]*1e12))
         print('alpha = {}, beta = {}, C = {} pJ'.format(results[4], results[5], results[6]*1e12))
@@ -1038,37 +1150,36 @@ def compute_z(input_directory, output_directory, subdir, run, squid, temperature
         x0 = [p0.pop(0) if item is None else item for item in fixedX0]
         print('The actual initial values are: {}'.format(x0))
         generate_model_diagnostic_plots(output_directory, ztes, ztes_model, results, perr, x0, bias, mode='ztes')
-        # Try to fit the 2 block model
-        # I0, R0, T0, g0,| gTES1, gB, alpha, beta, Ctes, C1
-# =============================================================================
-#         T0 = 55e-3
-#         g0 = 23.2e-12
-#         fixedArgs = {'I0': 1.12e-6, 'R0': 0.1936, 'T0': T0, 'g0': g0}
-#         # gTES1, gB, alpha, beta, Ctes, C1
-#         p0 = [1.5e-12, 100e-12, 600, 1, 0.1e-13, 1e-11]
-#         lbounds = (1e-14, 1e-14, 10, 0.2, 1e-14, 1e-14)
-#         ubounds = (24e-12, 1e-10, 1e4, 2, 3e-12, 1e-6)
-#         fitargs = {'p0': p0, 'bounds': (lbounds, ubounds), 'method': 'trf'}
-#         results, perr = fit_tes_model(ztes, ztes_model_2block_fixed, fixedArgs, **fitargs)
-#         fixedResults = [fixedArgs.get('I0'), fixedArgs.get('R0'), fixedArgs.get('T0'), fixedArgs.get('g0'),
-#                         fixedArgs.get('gTES1'), fixedArgs.get('gB'),
-#                         fixedArgs.get('alpha'), fixedArgs.get('beta'),
-#                         fixedArgs.get('Ctes'), fixedArgs.get('C1')]
-#         results, perr = list(results), list(perr)
-#         results = [results.pop(0) if item is None else item for item in fixedResults]
-#         perr = [perr.pop(0) if item is None else 0 for item in fixedResults]
-#         print('The results of the TES fit are as follows:')
-#         print('I0 = {} uA, R0 = {} mOhm, T0 = {} mK, g = {} pW/K'.format(results[0]*1e6, results[1]*1e3, results[2]*1e3, results[3]*1e12))
-#         print('gTES1 = {} pW/K, gB = {} pW/K, alpha = {}, beta = {}, Ctes = {} pJ/K, C1 = {} pJ/K '.format(results[4]*1e12, results[5]*1e12, results[6], results[7], results[8]*1e12, results[9]*1e12))
-#         # Step 5: Diagnostic plots of the model
-#         fixedX0 = [fixedArgs.get('I0'), fixedArgs.get('R0'), fixedArgs.get('T0'),
-#                    fixedArgs.get('g0'), fixedArgs.get('gTES1'), fixedArgs.get('gB'),
-#                    fixedArgs.get('alpha'), fixedArgs.get('beta'),
-#                    fixedArgs.get('Ctes'), fixedArgs.get('C1')]
-#         x0 = [p0.pop(0) if item is None else item for item in fixedX0]
-#         print('The actual initial values are: {}'.format(x0))
-#         generate_model_diagnostic_plots(output_directory, ztes, ztes_model_2block, results, perr, x0, mode='ztes2')
-# =============================================================================
+#        # Try to fit the 2 block model
+#        # I0, R0, T0, g0,| gTES1, gB, alpha, beta, Ctes, C1
+#        Tc0 = '55'  # in mK
+#        T0 = {'55': 52.04e-3, '61.2': 61.2e-3}
+#        g0 = {'55': 514.92216e-9*5*np.power(T0[Tc0], 4), '61.2': 362.09373e-9*5*np.power(T0[Tc0], 4)}
+#        fixedArgs = {'I0': init_dict[Tc0][str(bias)]['I0'], 'R0': init_dict[Tc0][str(bias)]['R0'], 'T0': T0[Tc0], 'g0': g0[Tc0]}
+#        # gTES1, gB, alpha, beta, Ctes, C1
+#        p0 = [24e-12, 8e-8, 800, 1, 0.1e-12, 4e-12]
+#        lbounds = (0.1e-13, 500e-12, 10, 0.2, 0.01e-12, 1e-12)
+#        ubounds = (50e-12, 1e-6, 2000, 2, 1e-12, 6e-12)
+#        fitargs = {'p0': p0, 'bounds': (lbounds, ubounds), 'method': 'trf', 'jac': '3-point', 'xtol': 1e-15, 'ftol': 1e-8, 'loss': 'linear', 'tr_solver': 'exact', 'x_scale': 'jac', 'max_nfev': 10000, 'verbose': 2}
+#        results, perr = fit_tes_model(ztes, ztes_model_2block_fixed, fixedArgs, **fitargs)
+#        fixedResults = [fixedArgs.get('I0'), fixedArgs.get('R0'), fixedArgs.get('T0'), fixedArgs.get('g0'),
+#                        fixedArgs.get('gTES1'), fixedArgs.get('gB'),
+#                        fixedArgs.get('alpha'), fixedArgs.get('beta'),
+#                        fixedArgs.get('Ctes'), fixedArgs.get('C1')]
+#        results, perr = list(results), list(perr)
+#        results = [results.pop(0) if item is None else item for item in fixedResults]
+#        perr = [perr.pop(0) if item is None else 0 for item in fixedResults]
+#        print('The results of the TES fit are as follows:')
+#        print('I0 = {} uA, R0 = {} mOhm, T0 = {} mK, g = {} pW/K'.format(results[0]*1e6, results[1]*1e3, results[2]*1e3, results[3]*1e12))
+#        print('gTES1 = {} pW/K, gB = {} pW/K, alpha = {}, beta = {}, Ctes = {} pJ/K, C1 = {} pJ/K '.format(results[4]*1e12, results[5]*1e12, results[6], results[7], results[8]*1e12, results[9]*1e12))
+#        # Step 5: Diagnostic plots of the model
+#        fixedX0 = [fixedArgs.get('I0'), fixedArgs.get('R0'), fixedArgs.get('T0'),
+#                   fixedArgs.get('g0'), fixedArgs.get('gTES1'), fixedArgs.get('gB'),
+#                   fixedArgs.get('alpha'), fixedArgs.get('beta'),
+#                   fixedArgs.get('Ctes'), fixedArgs.get('C1')]
+#        x0 = [p0.pop(0) if item is None else item for item in fixedX0]
+#        print('The actual initial values are: {}'.format(x0))
+#        generate_model_diagnostic_plots(output_directory, ztes, ztes_model_2block, results, perr, x0, mode='ztes2')
     return ztes
 
 
