@@ -14,6 +14,8 @@ from scipy.stats import median_absolute_deviation as mad
 from matplotlib import pyplot as plt
 
 import pandas as pan
+from numba import jit, prange
+
 import iv_results
 import iv_resistance
 import squid_info
@@ -28,6 +30,7 @@ from readROOT import readROOT
 from writeROOT import writeROOT
 
 from pycallgraph import PyCallGraph
+from pycallgraph import Config
 from pycallgraph.output import GraphvizOutput
 
 EPS = np.finfo(float).eps
@@ -102,6 +105,57 @@ def get_tree_names(input_file):
     del tfile
     return key_list
 
+def average_groups(a, N):  # N is number of groups and a is input array
+    n = len(a)
+    m = n//N
+    w = np.full(N, m)
+    w[:n-m*N] += 1
+    sums = np.add.reduceat(a, np.r_[0, w.cumsum()[:-1]])
+    means = np.true_divide(sums, w)
+    sqsums = np.add.reduceat((a - np.repeat(means, m))**2, np.r_[0, w.cumsum()[:-1]])
+    variances = np.true_divide(sqsums, w)
+    stdevs = np.sqrt(variances)
+    return means, stdevs
+
+
+@jit(nopython=True)
+def nmad(arr, arr_median=None):
+    '''Compute MAD using numpy'''
+    if arr_median is not None:
+        arr_median = np.median(arr)
+    return np.median(np.abs(arr - arr_median))
+
+
+@jit(nopython=True, parallel=True)
+def waveform_processor(samples, number_of_windows, process_type):
+    '''Basic waveform processor'''
+#    subsamples = np.split(samples, number_of_windows, axis=0)
+#    mean_samples = np.mean(subsamples, 1)
+#    std_samples = np.std(subsamples, 1)
+    # If using numba try for loops again since np.split is not supported
+    # Also numpy.append is not supported >:(
+    if process_type == 'mean':
+        mean_samples = np.zeros(number_of_windows)
+        std_samples = np.zeros(number_of_windows)
+        sz = samples.size
+        window_size = sz//number_of_windows
+        for idx in prange(number_of_windows):
+            start_idx = idx*window_size
+            end_idx = (idx+1)*window_size
+            mean_samples[idx] = np.mean(samples[start_idx:end_idx])
+            std_samples[idx] = np.std(samples[start_idx:end_idx])
+    if process_type == 'median':
+        mean_samples = np.zeros(number_of_windows)
+        std_samples = np.zeros(number_of_windows)
+        sz = samples.size
+        window_size = sz//number_of_windows
+        for idx in prange(number_of_windows):
+            start_idx = idx*window_size
+            end_idx = (idx+1)*window_size
+            mean_samples[idx] = np.median(samples[start_idx:end_idx])
+            std_samples[idx] = nmad(samples[start_idx:end_idx], mean_samples[idx])
+    return mean_samples, std_samples
+
 
 def process_waveform(waveform, time_values, sample_length, number_of_windows=1, process_type='mean'):
     '''Function to process waveform into a statistically downsampled representative point
@@ -125,37 +179,38 @@ def process_waveform(waveform, time_values, sample_length, number_of_windows=1, 
     '''
     # Here we will use numpy.split which will split an array into N equal length sections
     # The return is a list of the sub-arrays.
-    process_type = 'median'
+    # process_type = 'median'
     print('Processing waveform with {} windows'.format(number_of_windows))
     # Step 1: How many actual entries will we wind up with?
     number_of_entries = len(waveform) * number_of_windows
     #processed_waveform = {'mean_waveform': np.empty(number_of_entries), 'rms_waveform': np.empty(number_of_entries), 'new_time': np.empty(number_of_entries)}
     processed_waveform = {'mean_waveform': [], 'rms_waveform': [], 'new_time': []}
+    process_type = 'median'
     if process_type == 'mean':
         for event, samples in waveform.items():
             event_metadata = {'base_index': samples.size//number_of_windows, 'event_time': time_values[event]}
-            subsamples = np.split(samples, number_of_windows)
-            sub_times = [np.mean(subtime) for subtime in np.split(time_values[event], number_of_windows)]
-            mean_samples = [np.mean(subsample) for subsample in subsamples]
-            std_samples = [np.std(subsample) for subsample in subsamples]
+            sub_times = [event_metadata['event_time'] + sample_length/(2*number_of_windows) + idx/number_of_windows for idx in range(number_of_windows)]
+            mean_samples, std_samples = waveform_processor(samples, number_of_windows, process_type=process_type)
+            #mean_samples, std_samples = average_groups(samples, number_of_windows)
+            # print('The equality is: {}'.format(np.allclose(mean_samples, mean_samples2)))
+            # print('The equality is: {}'.format(np.allclose(std_samples, std_samples2)))
             # this array is number_of_windows long
             # In principle now we have an array of sub-samples associated with this event
             # We can simply append them now to an existing array. But growing by appending is slow
             # so again we associated subsamples[i] with main[k] through some map of k:<->i
             # Or we can do slice assignment. Clever accounting for the slice of main and subsample will allow this.
-            processed_waveform['mean_waveform'].extend(mean_samples)
-            processed_waveform['rms_waveform'].extend(std_samples)
+            #processed_waveform['mean_waveform'].extend(mean_samples)
+            #processed_waveform['rms_waveform'].extend(std_samples)
             processed_waveform['new_time'].extend(sub_times)
-            #start_index = event*number_of_windows
-            #end_index = start_index + number_of_windows
-            #processed_waveform['mean_waveform'][start_index:end_index] = mean_samples
-            #processed_waveform['rms_waveform'][start_index:end_index] = std_samples
+            start_index = event*number_of_windows
+            end_index = start_index + number_of_windows
+            processed_waveform['mean_waveform'][start_index:end_index] = mean_samples
+            processed_waveform['rms_waveform'][start_index:end_index] = std_samples
             # upper_index + lower_index = n*base_index + base_index + n*base_index = (2n+1)*base_index
             #processed_waveform['new_time'][start_index:end_index] = sub_times
     if process_type == 'median':
         for event, samples in waveform.items():
             event_metadata = {'base_index': samples.size//number_of_windows, 'event_time': time_values[event]}
-            subsamples = np.split(samples, number_of_windows)
             # warning: time_values[event] is just the starting timestamp of the event. To get the timestamp of the particular window requires using sample length
             # What we know: 1 event is 1 second long. Therefore each sample is sample_length s separated from the previous sample in a given event.
             # If we had 1 window we should collapse the timestamp to event_time + (samples.size/2)*sample_length
@@ -164,10 +219,7 @@ def process_waveform(waveform, time_values, sample_length, number_of_windows=1, 
             # event_time + (sample_length/(2*3)), event_time + ((sample_length/(2*3))
             # So times are:
             sub_times = [event_metadata['event_time'] + sample_length/(2*number_of_windows) + idx/number_of_windows for idx in range(number_of_windows)]
-            # event_metadata['event_time'] + (((2*windex + 1)*event_metadata['base_index'])/2)*sample_length
-            # sub_times = np.array([np.mean(subtime) for subtime in np.split(time_values[event], number_of_windows)])
-            median_samples = [np.median(subsample) for subsample in subsamples]
-            mad_samples = [mad(subsample) for subsample in subsamples]
+            median_samples, mad_samples = waveform_processor(samples, number_of_windows, process_type=process_type)
             # this array is number_of_windows long
             # In principle now we have an array of sub-samples associated with this event
             # We can simply append them now to an existing array. But growing by appending is slow
@@ -1423,8 +1475,8 @@ def format_iv_data(iv_data, output_path, new_format=False, number_of_windows=1, 
         for channel in iv_data['Channel']:
             print('Starting processing...')
             st = time.time()
-            with PyCallGraph(output=graphviz):
-                processed_waveforms = process_waveform(iv_data['Waveform' + '{:03d}'.format(int(channel))], time_values, iv_data['SamplingWidth_s'][0], number_of_windows=number_of_windows)
+            #with PyCallGraph(output=graphviz, config=Config(max_depth=1000000, include_stdlib=True)):
+            processed_waveforms = process_waveform(iv_data['Waveform' + '{:03d}'.format(int(channel))], time_values, iv_data['SamplingWidth_s'][0], number_of_windows=number_of_windows)
             print('Process function took: {} s to run'.format(time.time() - st))
             mean_waveforms[channel], rms_waveforms[channel], mean_time_values = processed_waveforms.values()
             # mean_waveforms[channel], rms_waveforms[channel], mean_time_values = process_waveform(iv_data['Waveform' + '{:03d}'.format(int(channel))], time_values, iv_data['SamplingWidth_s'][0], number_of_windows=number_of_windows)
