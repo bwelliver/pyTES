@@ -1,3 +1,4 @@
+import matplotlib
 from matplotlib import pyplot as plt
 import numpy as np
 from numpy import square as pow2
@@ -5,6 +6,8 @@ from numpy import power
 from numpy import sqrt as sqrt
 from tes_fit_functions import lin_sq
 import ROOT as rt
+
+matplotlib.use('Agg')
 
 
 # Container for IV related plot functions

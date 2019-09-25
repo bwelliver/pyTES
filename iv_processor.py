@@ -237,7 +237,7 @@ def walk_normal(xdata, ydata, side, buffer_size=40*16):
     # print('The {} deviation occurs at ev = {} with current = {} and voltage = {} with dMean = {}'.format(side, ev, current[ev], voltage[ev], dMean))
     return event
 
-@jit(nopython=True)
+
 def walk_sc(xdata, ydata, buffer_size=5*16, plane='iv'):
     '''Function to walk the superconducting region of the IV curve and get the left and right edges
     Generally when ib = 0 we should be superconducting so we will start there and go up until the bias
@@ -304,7 +304,7 @@ def walk_sc(xdata, ydata, buffer_size=5*16, plane='iv'):
     return event_values
 
 
-@jit(nopython=True)
+@jit(forceobj=True)
 def get_sc_endpoints(buffer_size, index_min_x, dydx):
     '''A function to try and determine the endpoints for the SC region'''
     # Look for rightmost endpoint, keeping in mind it could be our initial point
