@@ -1,8 +1,8 @@
 import numpy as np
 import ROOT as rt
 
-print('Enabling explicit MT')
-rt.ROOT.EnableImplicitMT()
+#print('Enabling explicit MT')
+#rt.ROOT.EnableImplicitMT()
 #TODO: REPLACE ROOT_DICTIONARY WITH A CLASS
 #class ROOTDictionary:
 #    '''A class to store root objects'''

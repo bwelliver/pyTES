@@ -29,9 +29,9 @@ import ROOT as rt
 from readROOT import readROOT
 from writeROOT import writeROOT
 
-from pycallgraph import PyCallGraph
-from pycallgraph import Config
-from pycallgraph.output import GraphvizOutput
+#from pycallgraph import PyCallGraph
+#from pycallgraph import Config
+#from pycallgraph.output import GraphvizOutput
 
 EPS = np.finfo(float).eps
 
@@ -55,6 +55,7 @@ class InputArguments:
         self.pidLog = ''
         self.numberOfWindows = 1
         self.squid = ''
+        self.tzOffset = 0
         self.thermometer = 'EP'
 
     def set_from_args(self, args):
@@ -126,7 +127,7 @@ def nmad(arr, arr_median=None):
     return np.median(np.abs(arr - arr_median))
 
 
-@jit(nopython=True, parallel=True)
+@jit(nopython=True)
 def waveform_processor(samples, number_of_windows, process_type):
     '''Basic waveform processor'''
 #    subsamples = np.split(samples, number_of_windows, axis=0)
@@ -139,17 +140,27 @@ def waveform_processor(samples, number_of_windows, process_type):
         std_samples = np.zeros(number_of_windows)
         sz = samples.size
         window_size = sz//number_of_windows
-        for idx in prange(number_of_windows):
+        for idx in range(number_of_windows):
             start_idx = idx*window_size
             end_idx = (idx+1)*window_size
             mean_samples[idx] = np.mean(samples[start_idx:end_idx])
             std_samples[idx] = np.std(samples[start_idx:end_idx])
+    if process_type == 'serr_mean':
+        mean_samples = np.zeros(number_of_windows)
+        std_samples = np.zeros(number_of_windows)
+        sz = samples.size
+        window_size = sz//number_of_windows
+        for idx in range(number_of_windows):
+            start_idx = idx*window_size
+            end_idx = (idx+1)*window_size
+            mean_samples[idx] = np.mean(samples[start_idx:end_idx])
+            std_samples[idx] = np.std(samples[start_idx:end_idx])/np.sqrt(window_size)
     if process_type == 'median':
         mean_samples = np.zeros(number_of_windows)
         std_samples = np.zeros(number_of_windows)
         sz = samples.size
         window_size = sz//number_of_windows
-        for idx in prange(number_of_windows):
+        for idx in range(number_of_windows):
             start_idx = idx*window_size
             end_idx = (idx+1)*window_size
             mean_samples[idx] = np.median(samples[start_idx:end_idx])
@@ -157,7 +168,7 @@ def waveform_processor(samples, number_of_windows, process_type):
     return mean_samples, std_samples
 
 
-def process_waveform(waveform, time_values, sample_length, number_of_windows=1, process_type='mean'):
+def process_waveform(waveform, time_values, sample_length, number_of_windows=1, process_type='serr_mean'):
     '''Function to process waveform into a statistically downsampled representative point
         waveform:
             A dictionary whose keys represent the event number. Values are numpy arrays with a length = NumberOfSamples
@@ -181,12 +192,12 @@ def process_waveform(waveform, time_values, sample_length, number_of_windows=1, 
     # The return is a list of the sub-arrays.
     # process_type = 'median'
     print('Processing waveform with {} windows'.format(number_of_windows))
+    print('The len of the waveform is {} and the len of time is {}'.format(len(waveform), time_values.size))
     # Step 1: How many actual entries will we wind up with?
     number_of_entries = len(waveform) * number_of_windows
     #processed_waveform = {'mean_waveform': np.empty(number_of_entries), 'rms_waveform': np.empty(number_of_entries), 'new_time': np.empty(number_of_entries)}
     processed_waveform = {'mean_waveform': [], 'rms_waveform': [], 'new_time': []}
-    process_type = 'median'
-    if process_type == 'mean':
+    if process_type == 'mean' or process_type == 'serr_mean':
         for event, samples in waveform.items():
             event_metadata = {'base_index': samples.size//number_of_windows, 'event_time': time_values[event]}
             sub_times = [event_metadata['event_time'] + sample_length/(2*number_of_windows) + idx/number_of_windows for idx in range(number_of_windows)]
@@ -660,6 +671,55 @@ def walk_normal(xdata, ydata, side, buffer_size=40*16):
 
 
 def get_sc_endpoints(buffer_size, index_min_x, dydx):
+    '''A function to try and determine the endpoints for the SC region'''
+    # Look for rightmost endpoint, keeping in mind it could be our initial point
+    if buffer_size + index_min_x >= dydx.size:
+        # Buffer size and offset would go past end of data
+        right_buffer_size = np.nanmax([dydx.size - index_min_x - 1, 0])
+    else:
+        right_buffer_size = buffer_size
+    slope_buffer = RingBuffer(right_buffer_size, dtype=float)
+    # Now fill the buffer
+    for event in range(right_buffer_size):
+        slope_buffer.append(dydx[index_min_x + event])
+    # The buffer is full with initial values. NOw walk along
+    ev_right = index_min_x + right_buffer_size
+    difference_of_means = 0
+    while difference_of_means < 1e-2 and ev_right < dydx.size - 1:
+        current_mean = slope_buffer.get_nanmean()
+        slope_buffer.append(dydx[ev_right])
+        new_mean = slope_buffer.get_nanmean()
+        difference_of_means = np.abs((current_mean - new_mean)/current_mean)
+        ev_right = ev_right + 1
+    # Now we must check the left direction. Again keep in mind we might start there.
+    if index_min_x - buffer_size <= 0:
+        # The buffer would go past the array edge
+        left_buffer_size = index_min_x
+    else:
+        left_buffer_size = buffer_size
+    if left_buffer_size == 0:
+        # Implies index_min_x is 0. Fit 1 point in?
+        left_buffer_size = 1
+    print('We will create a ringbuffer with size: {}'.format(left_buffer_size))
+    slope_buffer = RingBuffer(left_buffer_size, dtype=float)
+    # Do initial appending
+    for event in range(left_buffer_size):
+        slope_buffer.append(dydx[index_min_x - event])
+    # Walk to the left
+    ev_left = index_min_x - left_buffer_size
+    difference_of_means = 0
+    print('The value of ev_left to start is: {}'.format(ev_left))
+    while difference_of_means < 1e-2 and ev_left >= 0:
+        current_mean = slope_buffer.get_nanmean()
+        slope_buffer.append(dydx[ev_left])
+        new_mean = slope_buffer.get_nanmean()
+        difference_of_means = np.abs((current_mean - new_mean)/current_mean)
+        ev_left -= 1
+    ev_left = ev_left if ev_left >= 0 else ev_left + 1
+    return (ev_left, ev_right)
+
+
+def get_sc_endpoints_old(buffer_size, index_min_x, dydx):
     '''Function to actually locate the end of a SC region'''
     slope_buffer = RingBuffer(buffer_size, dtype=float)
     # First is going from midpoint to the right
@@ -711,9 +771,11 @@ def walk_sc(xdata, ydata, buffer_size=5*16, plane='iv'):
         raise ArrayIsUnsortedException('Input argument x is unsorted')
     # We should select only the physical data points for examination
     di_bias = np.gradient(xdata, edge_order=2)
+    print('The size of di_bias is: {}'.format(di_bias.size))
     c_normal_to_sc_pos = np.logical_and(xdata > 0, di_bias < 0)
     c_normal_to_sc_neg = np.logical_and(xdata <= 0, di_bias > 0)
     c_normal_to_sc = np.logical_or(c_normal_to_sc_pos, c_normal_to_sc_neg)
+    print('The number of normal to sc points is: {}'.format(np.sum(c_normal_to_sc)))
 
     # Also select data that is some fraction of the normal resistance, say 20%
     # First let us compute the gradient (i.e. dy/dx)
@@ -721,9 +783,10 @@ def walk_sc(xdata, ydata, buffer_size=5*16, plane='iv'):
 
     # Set data that is in the SC to N transition to NaN in here
     if plane == 'iv':
-        xdata[~c_normal_to_sc] = np.nan
-        ydata[~c_normal_to_sc] = np.nan
-        dydx[~c_normal_to_sc] = np.nan
+        #xdata[~c_normal_to_sc] = np.nan
+        #ydata[~c_normal_to_sc] = np.nan
+        #dydx[~c_normal_to_sc] = np.nan
+        print('Setting things to nan')
 
     # In the sc region the gradient should be constant
     # So we will walk along and compute the average of N elements at a time.
@@ -751,6 +814,16 @@ def walk_sc(xdata, ydata, buffer_size=5*16, plane='iv'):
         # Occasionally we may have a shifted curve that is not near 0 for some reason (SQUID jump)
         # So find the min and max iTES and then find the central point
     elif plane == 'iv':
+        # Replicate tes plane...except that we have not corrected so (0,0) is not the best
+#        distance = np.zeros(xdata.size)
+#        px, py = (0, 0)
+#        for idx in range(xdata.size):
+#            dx = xdata[idx] - px
+#            dy = ydata[idx] - py
+#            distance[idx] = np.sqrt(dx**2 + dy**2)
+#        index_min_x = np.nanargmin(distance)
+#        print('The point closest to ({}, {}) is at index {} with distance {} and is ({}, {})'.format(px, py, index_min_x, distance[index_min_x], xdata[index_min_x], ydata[index_min_x]))
+        # Find the point closest to 0 iBias.
         ioffset = 0
         index_min_x = np.nanargmin(np.abs(xdata + ioffset))
         # NOTE: The above will fail for small SC regions where vOut normal > vOut sc!!!!
@@ -758,6 +831,7 @@ def walk_sc(xdata, ydata, buffer_size=5*16, plane='iv'):
     # Create ring buffer of to store signal
     # TODO: FIX THIS TO HANDLE SQUID JUMPS
     # Start by walking buffer_size events to the right from the minimum abs. voltage
+    print('The size of dydx is: {}'.format(dydx.size))
     event_values = get_sc_endpoints(buffer_size, index_min_x, dydx)
     return event_values
 
@@ -1421,8 +1495,8 @@ def get_iv_data_from_file(input_path, new_format=False, thermometer='EP'):
 
 def format_iv_data(iv_data, output_path, new_format=False, number_of_windows=1, thermometer='EP'):
     '''Format the IV data into easy to use forms'''
-    graphviz = GraphvizOutput()
-    graphviz.output_file = output_path + '/' + 'basic.png'
+    #graphviz = GraphvizOutput()
+    #graphviz.output_file = output_path + '/' + 'basic.png'
 
     # Now data structure:
     # Everything is recorded on an event level but some events are globally the same (i.e., same timestamp)
@@ -1490,7 +1564,7 @@ def format_iv_data(iv_data, output_path, new_format=False, number_of_windows=1, 
     return formatted_data
 
 
-def get_temperature_steps(output_path, time_values, temperatures, pid_log, thermometer='EP'):
+def get_temperature_steps(output_path, time_values, temperatures, pid_log, thermometer='EP', tz_correction=0):
     '''Returns a list of tuples that corresponds to temperature steps
     Depending on the value of pid_log we will either parse an existing pid log file or if it is None
     attempt to find the temperature steps
@@ -1498,22 +1572,23 @@ def get_temperature_steps(output_path, time_values, temperatures, pid_log, therm
     if pid_log is None:
         timelist = find_temperature_steps(output_path, time_values, temperatures, thermometer)
     else:
-        timelist = parse_temperature_steps(output_path, time_values, temperatures, pid_log)
+        timelist = parse_temperature_steps(output_path, time_values, temperatures, pid_log, tz_correction)
     return timelist
 
 
-def parse_temperature_steps(output_path, time_values, temperatures, pid_log):
+def parse_temperature_steps(output_path, time_values, temperatures, pid_log, tz_correction):
     '''Run through the PID log and parse temperature steps
     The PID log has as the first column the timestamp a PID setting STARTS
     The second column is the power or temperature setting point
     '''
     times = pan.read_csv(pid_log, delimiter='\t', header=None)
     times = times.values[:, 0]
+    times = times + tz_correction  # adjust for any timezone issues
     # Each index of times is now the starting time of a temperature step. Include an appropriate offset for mean computation BUT only a softer one for time boundaries
     # time_list is a list of tuples.
     time_list = []
-    start_offset = 0*60
-    end_offset = 0
+    start_offset = 1*60
+    end_offset = 45
     if times.size > 1:
         for index in range(times.size - 1):
             cut = np.logical_and(time_values > times[index]+start_offset, time_values < times[index+1]-end_offset)
@@ -1593,7 +1668,12 @@ def fit_sc_branch(xdata, ydata, sigma_y, plane):
     print('SC fit gives event_left={} and event_right={}'.format(event_left, event_right))
     print('Diagnostics: The input into curve_fit is as follows:')
     print('\txdata size: {}, ydata size: {}, xdata NaN: {}, ydata NaN: {}'.format(xdata[sort_key][event_left:event_right].size, ydata[sort_key][event_left:event_right].size, nsum(np.isnan(xdata[sort_key][event_left:event_right])), nsum(np.isnan(ydata[sort_key][event_left:event_right]))))
-    result, pcov = curve_fit(fitfuncs.lin_sq, xdata[sort_key][event_left:event_right], ydata[sort_key][event_left:event_right], sigma=sigma_y[sort_key][event_left:event_right], absolute_sigma=True, method='trf')
+    xvalues = xdata[sort_key][event_left:event_right]
+    yvalues = ydata[sort_key][event_left:event_right]
+    ysigma = sigma_y[sort_key][event_left:event_right]
+    print('The values of x, y, and sigmaY are: {} and {} and {}'.format(xvalues, yvalues, ysigma))
+    result, pcov = curve_fit(fitfuncs.lin_sq, xvalues, yvalues, sigma=ysigma, absolute_sigma=True, method='trf')
+    # result, pcov = curve_fit(fitfuncs.lin_sq, xvalues, yvalues, p0=(38, 0), method='trf')
     perr = np.sqrt(np.diag(pcov))
     # In order to properly plot the superconducting branch fit try to find the boundaries of the SC region
     # One possibility is that the region has the smallest and largest y-value excursions. However this may not be the case
@@ -1609,11 +1689,19 @@ def fit_normal_branches(xdata, ydata, sigma_y):
     sort_key = np.argsort(xdata)
     # Get the left side normal branch first
     left_ev = walk_normal(xdata[sort_key], ydata[sort_key], 'left')
-    left_result, pcov = curve_fit(fitfuncs.lin_sq, xdata[sort_key][0:left_ev], ydata[sort_key][0:left_ev], sigma=sigma_y[sort_key][0:left_ev], absolute_sigma=True, method='trf')
+    xvalues = xdata[sort_key][0:left_ev]
+    yvalues = ydata[sort_key][0:left_ev]
+    ysigmas = sigma_y[sort_key][0:left_ev]
+    # cut = ysigmas > 0
+    left_result, pcov = curve_fit(fitfuncs.lin_sq, xvalues, yvalues, sigma=ysigmas, absolute_sigma=True, p0=(2, 0), method='trf')
     left_perr = npsqrt(np.diag(pcov))
     # Now get the other branch
     right_ev = walk_normal(xdata[sort_key], ydata[sort_key], 'right')
-    right_result, pcov = curve_fit(fitfuncs.lin_sq, xdata[sort_key][right_ev:], ydata[sort_key][right_ev:], sigma=sigma_y[sort_key][right_ev:], absolute_sigma=True, method='trf')
+    xvalues = xdata[sort_key][right_ev:]
+    yvalues = ydata[sort_key][right_ev:]
+    ysigmas = sigma_y[sort_key][right_ev:]
+    # cut = ysigmas > 0
+    right_result, pcov = curve_fit(fitfuncs.lin_sq, xvalues, yvalues, sigma=ysigmas, absolute_sigma=True, p0=(2, 0), method='trf')
     right_perr = np.sqrt(np.diag(pcov))
     return left_result, left_perr, right_result, right_perr
 
@@ -1920,7 +2008,7 @@ def get_power_temperature_curves(output_path, data_channel, iv_dictionary):
     power = np.empty(0)
     power_rms = np.empty(0)
     iTES = np.empty(0)
-    stat_mode = 'direct-mean'
+    stat_mode = 'direct-serr-mean'
     for temperature, iv_data in iv_dictionary.items():
         # Create cut to select only data going in the Normal to SC mode
         # This happens in situations as follows:
@@ -1932,9 +2020,10 @@ def get_power_temperature_curves(output_path, data_channel, iv_dictionary):
         c_normal_to_sc_neg = np.logical_and(iv_data['iBias'] <= 0, di_bias > 0)
         c_normal_to_sc = np.logical_or(c_normal_to_sc_pos, c_normal_to_sc_neg)
         # Also select data that is some fraction of the normal resistance, say 20-30%
-        r_n = 700e-3
+        #TODO: Make this a parameter
+        r_n = 580e-3
         r_0 = 0.5*r_n
-        d_r = 150e-3
+        d_r = r_n/6
         cut = np.logical_and(iv_data['rTES'] > r_0 - d_r, iv_data['rTES'] < r_0 + d_r)
         cut = np.logical_and(cut, c_normal_to_sc)
         if nsum(cut) > 0:
@@ -1974,23 +2063,36 @@ def get_power_temperature_curves(output_path, data_channel, iv_dictionary):
                 iTES = np.append(iTES, np.mean(iv_data['iTES'][cut]))
                 # power_rms = np.append(power_rms, np.mean(iv_data['pTES_rms'][cut]))
                 power_rms = np.append(power_rms, np.std(iv_data['pTES'][cut]))
+            if stat_mode == 'direct-serr-mean':
+                temperatures = np.append(temperatures, float(temperature)*1e-3)
+                power = np.append(power, np.mean(iv_data['pTES'][cut]))
+                iTES = np.append(iTES, np.mean(iv_data['iTES'][cut]))
+                # power_rms = np.append(power_rms, np.mean(iv_data['pTES_rms'][cut]))
+                power_rms = np.append(power_rms, np.std(iv_data['pTES'][cut])/np.sqrt(iv_data['pTES'][cut].size))
         else:
             print('For T = {} mK there were no values used.'.format(temperature))
     # print('The main T vector is: {}'.format(temperatures))
     # print('The iTES vector is: {}'.format(iTES))
+    #TODO: Make these input values?
     cut_temperature = np.logical_and(temperatures > 35e-3, temperatures < 53e-3)  # This should be the expected Tc
     cut_power = power < 1e-6
     cut_temperature = np.logical_and(cut_temperature, cut_power)
     # Attempt to fit it to a power function
     # [k, n, Ttes, Pp]
-    lbounds = [100e-9, 3, 28e-3]
-    ubounds = [10e-6, 6, 70e-3]
+    lbounds = [100e-9, 1, 28e-3]
+    ubounds = [10e-3, 6, 70e-3]
     # max_nfev=1e4 if using trf
     # (k, n, Ttes, Pp)
-    fixedArgs = {'Pp': 0}
-    x0 = [500e-9, 5, 55e-3]
+    fixedArgs = {'Pp': 0} # Holding P0 as 0 since there is some degeneracy with kTc^n and P0
+    x0 = [1000e-9, 5, 55e-3]
     # fitargs = {'p0': x0, 'method': 'lm', 'maxfev': int(5e4)}
-    fitargs = {'p0': x0, 'bounds': (lbounds, ubounds), 'method': 'trf', 'jac': '3-point', 'tr_solver': 'exact', 'x_scale': 'jac', 'xtol': 1e-15, 'ftol': 1e-15, 'gtol': None, 'loss': 'linear', 'max_nfev': 10000, 'verbose': 2}
+    use_sigmas = True
+    if use_sigmas:
+        # This fitarg will use the errors on y
+        fitargs = {'p0': x0, 'bounds': (lbounds, ubounds), 'absolute_sigma': True, 'sigma': power_rms[cut_temperature], 'method': 'trf', 'jac': '3-point', 'tr_solver': 'exact', 'x_scale': 'jac', 'xtol': 1e-15, 'ftol': 1e-15, 'gtol': None, 'loss': 'linear', 'max_nfev': 10000, 'verbose': 2}
+    else:
+        # This fitarg below will not use the errors on y
+        fitargs = {'p0': x0, 'bounds': (lbounds, ubounds), 'method': 'trf', 'jac': '3-point', 'tr_solver': 'exact', 'x_scale': 'jac', 'xtol': 1e-15, 'ftol': 1e-15, 'gtol': None, 'loss': 'linear', 'max_nfev': 10000, 'verbose': 2}
     results, pcov = curve_fit(fitfuncs.tes_power_polynomial_fixed(fixedArgs), temperatures[cut_temperature], power[cut_temperature], **fitargs)
     print('The covariance matrix is: {}'.format(pcov))
     perr = np.sqrt(np.diag(pcov))
@@ -2049,9 +2151,10 @@ def get_resistance_temperature_curves_new(output_path, data_channel, iv_dictiona
     fixed_name = 'iTES'
     fixed_value = 0.1e-6
     delta_value = 0.05e-6
-    stat_flag = 'direct-median'
+    stat_flag = 'direct-serr-mean'
     target = 20
-    r_normal = 0.700
+    r_normal = 0.570
+    # TODO: See if we can make this..better
     # We need to handle the case of going from SC --> N and N --> SC separately so select cuts for these.
     norm_to_sc = {'T': np.empty(0), 'R': np.empty(0), 'rmsR': np.empty(0)}
     sc_to_norm = {'T': np.empty(0), 'R': np.empty(0), 'rmsR': np.empty(0)}
@@ -2078,8 +2181,8 @@ def get_resistance_temperature_curves_new(output_path, data_channel, iv_dictiona
         cut_fixed_sc_to_norm = np.logical_and(fixed_cut, ~cut_norm_to_sc)
         # Now implement cut on resistance values for each case. I guess we should use the
         # region with most events?
-        frac_rn = 0.95
-        rsc_thresh = 40e-3
+        frac_rn = 0.8
+        rsc_thresh = 100e-3
         cut_R_normal = iv_data['rTES'] > frac_rn*r_normal
         cut_R_biased = np.logical_and(iv_data['rTES'] > rsc_thresh, iv_data['rTES'] < frac_rn*r_normal)
         cut_R_sc = iv_data['rTES'] < rsc_thresh
@@ -2132,6 +2235,12 @@ def get_resistance_temperature_curves_new(output_path, data_channel, iv_dictiona
                 norm_to_sc['T'] = np.append(norm_to_sc['T'], np.random.normal(float(temperature)*1e-3, 0.001e-3, nsum(cut_fixed_norm_to_sc)))
                 norm_to_sc['R'] = np.append(norm_to_sc['R'], iv_data['rTES'][cut_fixed_norm_to_sc])
                 norm_to_sc['rmsR'] = np.append(norm_to_sc['rmsR'], iv_data['rTES_rms'][cut_fixed_norm_to_sc])
+            if stat_flag == 'direct-serr-mean':
+                # Take raw data points
+                norm_to_sc['T'] = np.append(norm_to_sc['T'], float(temperature)*1e-3)
+                norm_to_sc['R'] = np.append(norm_to_sc['R'], np.mean(iv_data['rTES'][cut_fixed_norm_to_sc]))
+                N = iv_data['rTES_rms'][cut_fixed_norm_to_sc].size
+                norm_to_sc['rmsR'] = np.append(norm_to_sc['rmsR'], np.std(iv_data['rTES_rms'][cut_fixed_norm_to_sc])/np.sqrt(N))
         if nsum(cut_fixed_sc_to_norm) > 0:
             sc_to_norm['T'] = np.append(sc_to_norm['T'], float(temperature)*1e-3)
             if stat_flag == 'median':
@@ -2146,6 +2255,10 @@ def get_resistance_temperature_curves_new(output_path, data_channel, iv_dictiona
             if stat_flag == 'direct-median':
                 sc_to_norm['R'] = np.append(sc_to_norm['R'], np.median(iv_data['rTES'][cut_fixed_sc_to_norm]))
                 sc_to_norm['rmsR'] = np.append(sc_to_norm['rmsR'], mad(iv_data['rTES'][cut_fixed_sc_to_norm]))
+            if stat_flag == 'direct-serr-mean':
+                sc_to_norm['R'] = np.append(sc_to_norm['R'], np.mean(iv_data['rTES'][cut_fixed_sc_to_norm]))
+                N = iv_data['rTES'][cut_fixed_sc_to_norm].size
+                sc_to_norm['rmsR'] = np.append(sc_to_norm['rmsR'], np.std(iv_data['rTES'][cut_fixed_sc_to_norm])/np.sqrt(N))
 
     # Now we have arrays of R and T for a fixed iTES so try to fit each domain
     # SC --> N first
@@ -2154,6 +2267,7 @@ def get_resistance_temperature_curves_new(output_path, data_channel, iv_dictiona
     fit_result = iv_results.FitParameters()
     # Try to do a smart Tc0 estimate:
     sort_key = np.argsort(norm_to_sc['T'])
+    print('The size of norm_to_sc[R] is: {}, and norm_to_sc[T] is: {} and sort_key is {}'.format(norm_to_sc['R'].size, norm_to_sc['T'].size, sort_key.size))
     T0 = norm_to_sc['T'][sort_key][np.gradient(norm_to_sc['R'][sort_key], norm_to_sc['T'][sort_key], edge_order=2).argmax()]*1.01
     x_0 = [0.7, 0, T0, 1e-3]
     lbounds = (0, 0, 0, 0)
@@ -2533,21 +2647,24 @@ def chop_data_by_temperature_steps(formatted_data, timelist, bias_channel, data_
     iv_dictionary = {}
     # The following defines a range of temperatures to reject. That is:
     # reject = cut_temperature_min < T < cut_temperature_max
-    cut_temperature_max = 5  # Should be the max rejected temperature
+    #FIXME:
+    # Put these in units of mK for now...this is a hack!
+    cut_temperature_max = 1  # Should be the max rejected temperature
     cut_temperature_min = 0  # Should be the minimum rejected temperature
-    expected_duration = 3600  # TODO: make this an input argument or auto-determined somehow
+    expected_duration = 4800  # TODO: make this an input argument or auto-determined somehow
     for values in timelist:
         start_time, stop_time, mean_temperature = values
         print('The value and type of mean_time_values is: {} and {}'.format(formatted_data['mean_time_values'], type(formatted_data['mean_time_values'])))
         print('The value and type of stop_time is: {} and {}'.format(stop_time, type(stop_time)))
         cut = np.logical_and(formatted_data['mean_time_values'] >= start_time + time_buffer, formatted_data['mean_time_values'] <= stop_time)
+        cut = np.logical_and(cut, formatted_data['rms_waveforms'][data_channel] > 0)
         timestamps = formatted_data['mean_time_values'][cut]
         i_bias = formatted_data['mean_waveforms'][bias_channel][cut]/r_bias
         i_bias_rms = formatted_data['rms_waveforms'][bias_channel][cut]/r_bias
         v_out = formatted_data['mean_waveforms'][data_channel][cut]
         v_out_rms = formatted_data['rms_waveforms'][data_channel][cut]
         # Let us toss out T values wherein the digitizer rails
-        if np.any(v_out_rms < 1e-9):
+        if np.any(v_out_rms < 1e-15):
             print('Invalid digitizer response for T: {} mK'.format(np.round(mean_temperature*1e3, 3)))
             continue
         if stop_time - start_time > expected_duration:
@@ -2579,7 +2696,7 @@ def chop_data_by_temperature_steps(formatted_data, timelist, bias_channel, data_
 def get_iv_data(argin):
     '''Function that returns a formatted iv dictionary from waveform root file'''
     formatted_data = get_pyiv_data(argin.inputPath, argin.outputPath, new_format=argin.newFormat, number_of_windows=argin.numberOfWindows, thermometer=argin.thermometer)
-    timelist = get_temperature_steps(argin.outputPath, formatted_data['time_values'], formatted_data['temperatures'], pid_log=argin.pidLog, thermometer=argin.thermometer)
+    timelist = get_temperature_steps(argin.outputPath, formatted_data['time_values'], formatted_data['temperatures'], pid_log=argin.pidLog, thermometer=argin.thermometer, tz_correction=argin.tzOffset)
     iv_dictionary = chop_data_by_temperature_steps(formatted_data, timelist, argin.biasChannel, argin.dataChannel, argin.squid)
     return iv_dictionary
 
@@ -2613,6 +2730,10 @@ def input_parser():
     parser.add_argument('-T', '--thermometer', default='EP',
                         help='Specify the name of the thermometer to use. Can be either EP for EPCal (default) or NT for the noise thermometer')
     parser.add_argument('-S', '--squid', help='Specify the serial number of the SQUID being used.')
+    parser.add_argument('-z', '--tzOffset', default=0.0, type=float,
+                        help='The number of hours of timezone offset to use.\
+                        Default is 0 and assumes timestamps to convert are from the same timezone.\
+                        If you need to convert to an earlier timezone use a negative number.')
     args = parser.parse_args()
     return args
 

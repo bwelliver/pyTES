@@ -20,6 +20,15 @@ class SQUIDParameters:
             self.Rsh = 21.0e-3
             self.Rbias = 10000.0
             self.Cbias = 100e-12
+        elif serial == 'S0082':
+            self.serial = 'S0082'
+            self.Li = 6e-9
+            self.Mi = 1/24.65
+            self.Mfb = 1/32.9
+            self.Rfb = 10000.0
+            self.Rsh = 20e-3
+            self.Rbias = 10000.0
+            self.Cbias = 100e-12
         elif serial == 'S0094':
             self.serial = 'S0094'
             self.Li = 6e-9
@@ -33,7 +42,7 @@ class SQUIDParameters:
             self.serial = 'S0204'
             self.Li = 6e-9
             self.Mi = 1/25.135
-            self.Mfb = 1/33.43164
+            self.Mfb = 1/33.39
             self.Rfb = 10000.0
             self.Rsh = 20.2e-3
             self.Rbias = 10000.0

@@ -20,15 +20,18 @@ def mkdpaths(dirpath):
     return True
 
 
-def load_signal_express_file(fname, sample_duration):
+def load_signal_express_file(fname, sample_duration, tz_offset):
     '''
     Pandas allows us to open the file and correctly parse the file by padding with nan
     '''
     # Read the file. The first row is header information. The first column should be 'Time'
     # Subsequent columns are the channel information. Specifically they are at the ai# line.
-    unix_offset = -2082844800 + 7*3600  # Time from start of labview time relative to start of unix time (in seconds)
+    tz_correction = tz_offset * 3600  # The timezone correction to apply
+    unix_offset = -2082844800  # Time from start of labview time relative to start of unix time (in seconds)
+    time_correction = unix_offset + tz_correction
     data = pan.read_csv(fname, delimiter='\t')
     headers = data.columns
+    #print('The headers are: {}'.format(headers))
     branches = []
     # TODO: header may not be ai# format, could be text such as Voltage - Vin
     pat = r'ai\d'
@@ -46,13 +49,14 @@ def load_signal_express_file(fname, sample_duration):
     waveform_duration = 1
     num_entries = int(waveform_duration * sample_duration)
     waveform_size = int(waveform_duration * sample_rate)
+    # print('The num of entries and waveform size are {} and {}'.format(num_entries, waveform_size))
     data_dictionary = {}
     # print('Converting to data dictionary')
     for header in headers:
         # TODO: FIX THIS SO IT WORKS DAMNIT. EVERY 1 SECOND IS AN ENTRY.
         event_data = data[header]
         if header == 'Time':
-            event_data += unix_offset
+            event_data += time_correction
             # Split into second and microsecond part
             timestamp_s = np.array(np.floor(event_data), dtype=int)
             timestamp_mus = np.array(event_data*1e6 - timestamp_s*1e6, dtype=int)
@@ -64,7 +68,7 @@ def load_signal_express_file(fname, sample_duration):
                 entry_timestamp_mus[entry] = timestamp_mus[entry*waveform_size]
             data_dictionary['Timestamp_s'] = entry_timestamp_s
             data_dictionary['Timestamp_mus'] = entry_timestamp_mus
-        else:
+        elif header.lower().startswith('time') is False:
             # A channel. Get the channel number
             # Note: Here we must make num_entries arrays containing waveform_duration * sample_rate sized arrays
             if header.lower().find('vin') > -1:
@@ -81,6 +85,7 @@ def load_signal_express_file(fname, sample_duration):
                     waveform[sample_index] = event_data[entry*waveform_size + sample_index]
                 data_dictionary['Waveform' + '{:03d}'.format(channel)][entry] = waveform
     # Now the data from the file is in the data_dictionary. Add in the extras we need to manually create
+    #print('The number of entries is: {}'.format(num_entries))
     data_dictionary['NumberOfSamples'] = np.zeros(num_entries) + waveform_size
     data_dictionary['SamplingWidth_s'] = np.zeros(num_entries) + 1/sample_rate
     return data_dictionary
@@ -99,11 +104,11 @@ def write_to_root(output_file, data_dictionary):
     return True
 
 
-def logfile_converter(output_directory, logfile, sample_duration):
+def logfile_converter(output_directory, logfile, sample_duration, tz_offset):
     '''The actual function that converts a particular logfile into a root file
     We should avoid putting all this into a for loop so we can parallelize it perhaps
     '''
-    data_dictionary = load_signal_express_file(logfile, sample_duration)
+    data_dictionary = load_signal_express_file(logfile, sample_duration, tz_offset)
     output_file = basename(logfile)
     output_file = output_file.split('.')[0]
     output_file = output_directory + '/' + output_file + '.root'
@@ -112,7 +117,7 @@ def logfile_converter(output_directory, logfile, sample_duration):
     return True
 
 
-def convert_logfile(input_directory, output_directory, run_number, sample_duration, use_parallel=False):
+def convert_logfile(input_directory, output_directory, run_number, sample_duration, tz_offset, use_parallel=False):
     '''Main function to convert a signal express logfile into a ROOT file of the format used in the PXIDAQ'''
     print('run number {}'.format(run_number))
     # list_of_files = glob.glob('{}/*{}*.txt'.format(inputDirectory, runNumber))
@@ -128,13 +133,13 @@ def convert_logfile(input_directory, output_directory, run_number, sample_durati
         results = []
         for logfile in list_of_files:
             print('Converting file {}'.format(logfile))
-            result = logfile_converter(output_directory, logfile, sample_duration)
+            result = logfile_converter(output_directory, logfile, sample_duration, tz_offset)
             results.append(result)
     else:
         # Attempt at using joblib
         print('Performing conversions in parallel')
         num_cores = multiprocessing.cpu_count()
-        results = Parallel(n_jobs=num_cores)(delayed(logfile_converter)(output_directory, logfile, sample_duration) for logfile in list_of_files)
+        results = Parallel(n_jobs=num_cores)(delayed(logfile_converter)(output_directory, logfile, sample_duration, tz_offset) for logfile in list_of_files)
     if np.all(results):
         if len(results) == len(list_of_files):
             print('All files converted')
@@ -159,6 +164,10 @@ def get_args():
                         help='Specify the duration (in seconds) that a file lasts')
     parser.add_argument('-r', '--runNumber',
                         help='Specify the run number in the log file to convert')
+    parser.add_argument('-z', '--tzOffset', default=0.0, type=float,
+                        help='The number of hours of timezone offset to use.\
+                        Default is 0 and assumes timestamps to convert are from the same timezone.\
+                        If you need to convert to an earlier timezone use a negative number.')
     parser.add_argument('-p', '--useParallel', action='store_true',
                         help='If flag is set use parallel dispatcher to process files as opposed to performing conversion serially')
     args = parser.parse_args()
@@ -171,5 +180,5 @@ def get_args():
 
 if __name__ == '__main__':
     ARGS = get_args()
-    convert_logfile(ARGS.inputDirectory, ARGS.outputDirectory, ARGS.runNumber, ARGS.sample_duration, ARGS.useParallel)
+    convert_logfile(ARGS.inputDirectory, ARGS.outputDirectory, ARGS.runNumber, ARGS.sample_duration, ARGS.tzOffset, ARGS.useParallel)
     print('All done')

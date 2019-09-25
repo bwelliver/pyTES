@@ -1,12 +1,11 @@
-import matplotlib as mp
 from matplotlib import pyplot as plt
 import numpy as np
 from numpy import square as pow2
 from numpy import power
 from numpy import sqrt as sqrt
-from numpy import sum as nsum
-from pyTESFitFunctions import lin_sq
+from tes_fit_functions import lin_sq
 import ROOT as rt
+
 
 # Container for IV related plot functions
 def axis_option_parser(axes, options):
@@ -32,15 +31,15 @@ def test_plot(x, y, xlab, ylab, fName):
     fig = plt.figure(figsize=(8, 6))
     axes = fig.add_subplot(111)
     axes.plot(x, y, marker='o', markersize=2, markeredgecolor='black', markeredgewidth=0.0, linestyle='None')
-    #axes.set_xscale(log)
+    # axes.set_xscale(log)
     axes.set_xlabel(xlab)
     axes.set_ylabel(ylab)
-    #axes.set_title(title)
+    # axes.set_title(title)
     axes.grid()
     fig.savefig(fName, dpi=150, bbox_inches='tight')
     plt.close('all')
-    #plt.draw()
-    #plt.show()
+    # plt.draw()
+    # plt.show()
     return None
 
 
@@ -52,35 +51,35 @@ def test_steps(x, y, v, t0, xlab, ylab, fName):
     axes.plot(x, y, marker='o', markersize=1, markeredgecolor='black', markeredgewidth=0.0, linestyle='None')
     # Next add horizontal lines for each step it thinks it found
     for item in v:
-        axes.plot([item[0]-t0,item[1]-t0], [item[2], item[2]], marker='.', linestyle='-', color='r')
-    #axes.set_xscale(log)
+        axes.plot([item[0]-t0, item[1]-t0], [item[2], item[2]], marker='.', linestyle='-', color='r')
+    # axes.set_xscale(log)
     axes.set_xlabel(xlab)
     axes.set_ylabel(ylab)
-    #axes.set_title(title)
+    # axes.set_title(title)
     axes.grid()
     fig.savefig(fName, dpi=150, bbox_inches='tight')
     plt.close('all')
-    #plt.draw()
-    #plt.show()
+    # plt.draw()
+    # plt.show()
     return None
 
 
 def generic_fitplot_with_errors(axes, x, y, params, axes_options, xscale=1, yscale=1):
     '''A function that puts data on a specified axis with error bars'''
-    out = axes.errorbar(x*xscale, y*yscale, elinewidth=3, capsize=2, **params)
+    ax_out = axes.errorbar(x*xscale, y*yscale, elinewidth=3, capsize=2, **params)
     # Parse options
     axes = axis_option_parser(axes, axes_options)
-    #axes.yaxis.label.set_size(18)
-    #axes.xaxis.label.set_size(18)
+    # axes.yaxis.label.set_size(18)
+    # axes.xaxis.label.set_size(18)
     axes.grid(True)
-    #for label in (axes.get_xticklabels() + axes.get_yticklabels()):
+    # for label in (axes.get_xticklabels() + axes.get_yticklabels()):
     #    label.set_fontsize(18)
     return axes
 
 
 def fancy_fitplot_with_errors(axes, x, y, params, axes_options, xscale=1, yscale=1):
     '''A function that puts data on a specified axis with error bars'''
-    out = axes.errorbar(x*xscale, y*yscale, elinewidth=3, capsize=2, **params)
+    ax_out = axes.errorbar(x*xscale, y*yscale, elinewidth=3, capsize=2, **params)
     # Parse options
     axes = axis_option_parser(axes, axes_options)
     axes.yaxis.label.set_size(18)
@@ -111,22 +110,22 @@ def iv_fit_textbox(axes, R, model):
     '''old: add_fit_textbox'''
     '''Add decoration textbox to a plot'''
 
-    lR = r'$\mathrm{Left R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.left.value*1e3, R.left.rms*1e3)
-    lOff = r'$\mathrm{Left V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.left.result[1]*1e3, model.left.error[1]*1e3)
+    lR = r'$\mathrm{Left R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$' % (R.left.value*1e3, R.left.rms*1e3)
+    lOff = r'$\mathrm{Left V_{off}} = %.5f \pm %.5f \mathrm{mV}$' % (model.left.result[1]*1e3, model.left.error[1]*1e3)
 
-    sR = r'$\mathrm{SC R_{p}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.parasitic.value*1e3, R.parasitic.rms*1e3)
-    sOff = r'$\mathrm{SC V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.sc.result[1]*1e3, model.sc.error[1]*1e3)
+    sR = r'$\mathrm{SC R_{p}} = %.5f \pm %.5f \mathrm{m \Omega}$' % (R.parasitic.value*1e3, R.parasitic.rms*1e3)
+    sOff = r'$\mathrm{SC V_{off}} = %.5f \pm %.5f \mathrm{mV}$' % (model.sc.result[1]*1e3, model.sc.error[1]*1e3)
 
-    rR = r'$\mathrm{Right R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.right.value*1e3, R.right.rms*1e3)
-    rOff = r'$\mathrm{Right V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.right.result[1]*1e3, model.right.error[1]*1e3)
+    rR = r'$\mathrm{Right R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$' % (R.right.value*1e3, R.right.rms*1e3)
+    rOff = r'$\mathrm{Right V_{off}} = %.5f \pm %.5f \mathrm{mV}$' % (model.right.result[1]*1e3, model.right.error[1]*1e3)
 
     textStr = lR + '\n' + lOff + '\n' + sR + '\n' + sOff + '\n' + rR + '\n' + rOff
     # these are matplotlib.patch.Patch properties
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
-    #anchored_text = AnchoredText(textstr, loc=4)
-    #axes.add_artist(anchored_text)
+    # anchored_text = AnchoredText(textstr, loc=4)
+    # axes.add_artist(anchored_text)
     # place a text box in upper left in axes coords
-    out = axes.text(0.65, 0.9, textStr, transform=axes.transAxes, fontsize=14, verticalalignment='top', bbox=props)
+    ax_out = axes.text(0.65, 0.9, textStr, transform=axes.transAxes, fontsize=14, verticalalignment='top', bbox=props)
     for label in (axes.get_xticklabels() + axes.get_yticklabels()):
         label.set_fontsize(18)
     return axes
@@ -135,9 +134,9 @@ def iv_fit_textbox(axes, R, model):
 def pr_fit_textbox(axes, model):
     '''old: add_power_voltage_textbox'''
     '''Add dectoration textbox for a power vs resistance fit'''
-    lR = r'$\mathrm{R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(1/model.left.result[0]*1e3, model.left.error[0]/pow2(model.left.result[0])*1e3)
-    lI = r'$\mathrm{I_{para}} = %.5f \pm %.5f \mathrm{uA}$'%(model.left.result[1]*1e6, model.left.error[1]*1e6)
-    lP = r'$\mathrm{P_{para}} = %.5f \pm %.5f \mathrm{fW}$'%(model.left.result[2]*1e15, model.left.error[2]*1e15)
+    lR = r'$\mathrm{R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$' % (1/model.left.result[0]*1e3, model.left.error[0]/pow2(model.left.result[0])*1e3)
+    lI = r'$\mathrm{I_{para}} = %.5f \pm %.5f \mathrm{uA}$' % (model.left.result[1]*1e6, model.left.error[1]*1e6)
+    lP = r'$\mathrm{P_{para}} = %.5f \pm %.5f \mathrm{fW}$' % (model.left.result[2]*1e15, model.left.error[2]*1e15)
 
     textStr = lR + '\n' + lI + '\n' + lP
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
@@ -152,18 +151,18 @@ def rt_fit_textbox(axes, model):
     # First is the ascending (SC to N) parameters
     textStr = ''
     if model.left.result is not None:
-        lR = r'SC $\rightarrow$ N: $\mathrm{R_{n}} = %.2f \pm %.2f \mathrm{m \Omega}$'%(model.left.result[0]*1e3, model.left.error[0]*1e3)
-        lRp = r'SC $\rightarrow$ N: $\mathrm{R_{p}} = %.2f \pm %.2f \mathrm{m \Omega}$'%(model.left.result[1]*1e3, model.left.error[1]*1e3)
-        lTc = r'SC $\rightarrow$ N: $\mathrm{T_{c}} = %.2f \pm %.2f \mathrm{mK}$'%(model.left.result[2]*1e3, model.left.error[2]*1e3)
-        lTw = r'SC $\rightarrow$ N: $\mathrm{\Delta T_{c}} = %.2f \pm %.2f \mathrm{mK}$'%(model.left.result[3]*1e3, model.left.error[3]*1e3)
+        lR = r'SC $\rightarrow$ N: $\mathrm{R_{n}} = %.2f \pm %.2f \mathrm{m \Omega}$' % (model.left.result[0]*1e3, model.left.error[0]*1e3)
+        lRp = r'SC $\rightarrow$ N: $\mathrm{R_{p}} = %.2f \pm %.2f \mathrm{m \Omega}$' % (model.left.result[1]*1e3, model.left.error[1]*1e3)
+        lTc = r'SC $\rightarrow$ N: $\mathrm{T_{c}} = %.2f \pm %.2f \mathrm{mK}$' % (model.left.result[2]*1e3, model.left.error[2]*1e3)
+        lTw = r'SC $\rightarrow$ N: $\mathrm{\Delta T_{c}} = %.2f \pm %.2f \mathrm{mK}$' % (model.left.result[3]*1e3, model.left.error[3]*1e3)
         textStr += lR + '\n' + lRp + '\n' + lTc + '\n' + lTw
     # Next the descending (N to SC) parameters...these are the main physical ones
     if model.right.result is not None:
-        rR = r'N $\rightarrow$ SC: $\mathrm{R_{n}} = %.2f \pm %.2f \mathrm{m \Omega}$'%(model.right.result[0]*1e3, model.right.error[0]*1e3)
-        rRp = r'N $\rightarrow$ SC: $\mathrm{R_{p}} = %.2f \pm %.2f \mathrm{m \Omega}$'%(model.right.result[1]*1e3, model.right.error[1]*1e3)
-        rTc = r'N $\rightarrow$ SC: $\mathrm{T_{c}} = %.2f \pm %.2f \mathrm{mK}$'%(model.right.result[2]*1e3, model.right.error[2]*1e3)
-        rTw = r'N $\rightarrow$ SC: $\mathrm{\Delta T_{c}} = %.2f \pm %.2f \mathrm{mK}$'%(model.right.result[3]*1e3, model.right.error[3]*1e3)
-        if textStr is not '':
+        rR = r'N $\rightarrow$ SC: $\mathrm{R_{n}} = %.2f \pm %.2f \mathrm{m \Omega}$' % (model.right.result[0]*1e3, model.right.error[0]*1e3)
+        rRp = r'N $\rightarrow$ SC: $\mathrm{R_{p}} = %.2f \pm %.2f \mathrm{m \Omega}$' % (model.right.result[1]*1e3, model.right.error[1]*1e3)
+        rTc = r'N $\rightarrow$ SC: $\mathrm{T_{c}} = %.2f \pm %.2f \mathrm{mK}$' % (model.right.result[2]*1e3, model.right.error[2]*1e3)
+        rTw = r'N $\rightarrow$ SC: $\mathrm{\Delta T_{c}} = %.2f \pm %.2f \mathrm{mK}$' % (model.right.result[3]*1e3, model.right.error[3]*1e3)
+        if textStr != '':
             textStr += '\n'
         textStr += rR + '\n' + rRp + '\n' + rTc + '\n' + rTw
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
@@ -180,14 +179,14 @@ def pt_fit_textbox(axes, model):
     dn = model.left.error[1]
     Ttes = model.left.result[2]
     dTtes = model.left.error[2]
-    Pp = model.left.result[3]
-    dPp = model.left.error[3]
+    # Pp = model.left.result[3]
+    # dPp = model.left.error[3]
     # Pn = model.left.result[4]
     # dPn = model.left.error[4]
     lk = r'$k = %.2f \pm %.2f \mathrm{ nW/K^{%.2f}}$' % (k*1e9, dk*1e9, n)
     ln = r'$n = %.2f \pm %.2f$' % (n, dn)
     lTt = r'$T_{TES} = %.2f \pm %.2f \mathrm{ mK}$' % (Ttes*1e3, dTtes*1e3)
-    #lPp = r'$P_{0} = %.2f \pm %.2f \mathrm{ fW}$' % (Pp*1e15, dPp*1e15)
+    # lPp = r'$P_{0} = %.2f \pm %.2f \mathrm{ fW}$' % (Pp*1e15, dPp*1e15)
     # lPn = r'$P_{N} = %.5f \pm %.5f \mathrm{ fW}$' % (Pn*1e15, dPn*1e15)
     # Compute G at T = Ttes
     # G = dP/dT
@@ -206,7 +205,7 @@ def pt_fit_textbox(axes, model):
 def save_plot(fig, axes, fName, dpi=150):
     '''Save a specified plot'''
     fName = fName + '.png' if fName.split('.png') != 2 else fName
-    #for label in (axes.get_xticklabels() + axes.get_yticklabels()):
+    # for label in (axes.get_xticklabels() + axes.get_yticklabels()):
     #    label.set_fontsize(18)
     fig.savefig(fName, dpi=dpi, bbox_inches='tight')
     plt.close('all')
@@ -215,11 +214,11 @@ def save_plot(fig, axes, fName, dpi=150):
 
 def iv_fitplot(data, model, R, Rp, fName, axes_options, xscale=1, yscale=1):
     '''Wrapper for plotting an iv curve with fit parameters'''
-    x,y,xerr,yerr = data
+    x, y, xerr, yerr = data
     fName = fName + '.png' if fName.split('.png') != 2 else fName
-    fig = plt.figure(figsize=(16,12))
+    fig = plt.figure(figsize=(16, 12))
     axes = fig.add_subplot(111)
-    yFit1 = lin_sq(x, *model.right.result)
+    # yFit1 = lin_sq(x, *model.right.result)
     axes.errorbar(x*xscale, y*yscale, marker='o', markersize=2, markeredgecolor='black', markerfacecolor='black', markeredgewidth=0, linestyle='None', xerr=xerr*xscale, yerr=yerr*yscale)
     if model.left.result is not None:
         yFit = lin_sq(x, *model.left.result)
@@ -238,23 +237,23 @@ def iv_fitplot(data, model, R, Rp, fName, axes_options, xscale=1, yscale=1):
         label.set_fontsize(18)
     # Now generate text strings
     # model values are [results, perr] --> [[m, b], [merr, berr]]
-    #R = convert_fit_to_resistance(model, fit_type='iv', Rp=Rp.value, Rp_rms=Rp.rms)
-    lR = r'$\mathrm{Left \ R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.left.value*1e3, R.left.rms*1e3)
-    lOff = r'$\mathrm{Left \ V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.left.result[1]*1e3, model.left.error[1]*1e3)
+    # R = convert_fit_to_resistance(model, fit_type='iv', Rp=Rp.value, Rp_rms=Rp.rms)
+    lR = r'$\mathrm{Left \ R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$' % (R.left.value*1e3, R.left.rms*1e3)
+    lOff = r'$\mathrm{Left \ V_{off}} = %.5f \pm %.5f \mathrm{mV}$' % (model.left.result[1]*1e3, model.left.error[1]*1e3)
 
-    sR = r'$\mathrm{R_{sc} - R_{p}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.sc.value*1e3, R.sc.rms*1e3)
-    sOff = r'$\mathrm{V_{sc,off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.sc.result[1]*1e3, model.sc.error[1]*1e3)
+    sR = r'$\mathrm{R_{sc} - R_{p}} = %.5f \pm %.5f \mathrm{m \Omega}$' % (R.sc.value*1e3, R.sc.rms*1e3)
+    sOff = r'$\mathrm{V_{sc,off}} = %.5f \pm %.5f \mathrm{mV}$' % (model.sc.result[1]*1e3, model.sc.error[1]*1e3)
 
-    rR = r'$\mathrm{Right \ R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(R.right.value*1e3, R.right.rms*1e3)
-    rOff = r'$\mathrm{Right \ V_{off}} = %.5f \pm %.5f \mathrm{mV}$'%(model.right.result[1]*1e3, model.right.error[1]*1e3)
+    rR = r'$\mathrm{Right \ R_{n}} = %.5f \pm %.5f \mathrm{m \Omega}$' % (R.right.value*1e3, R.right.rms*1e3)
+    rOff = r'$\mathrm{Right \ V_{off}} = %.5f \pm %.5f \mathrm{mV}$' % (model.right.result[1]*1e3, model.right.error[1]*1e3)
 
-    pR = r'$\mathrm{R_{p}} = %.5f \pm %.5f \mathrm{m \Omega}$'%(Rp.value*1e3, Rp.rms*1e3)
+    pR = r'$\mathrm{R_{p}} = %.5f \pm %.5f \mathrm{m \Omega}$' % (Rp.value*1e3, Rp.rms*1e3)
 
     textStr = lR + '\n' + lOff + '\n' + pR + '\n' + sR + '\n' + sOff + '\n' + rR + '\n' + rOff
     # these are matplotlib.patch.Patch properties
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.5)
-    #anchored_text = AnchoredText(textstr, loc=4)
-    #axes.add_artist(anchored_text)
+    # anchored_text = AnchoredText(textstr, loc=4)
+    # axes.add_artist(anchored_text)
     # place a text box in upper left in axes coords
     axes.text(0.65, 0.9, textStr, transform=axes.transAxes, fontsize=14, verticalalignment='top', bbox=props)
     fig.savefig(fName, dpi=150, bbox_inches='tight')
@@ -412,4 +411,3 @@ def make_root_plot(output_path, data_channel, temperature, iv_data, model, Rp, x
     del mg
     del c
     return None
-

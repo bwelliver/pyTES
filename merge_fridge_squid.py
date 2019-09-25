@@ -159,10 +159,11 @@ def get_squid_data(inSQUIDFile, newFormat):
     for inDir in inSQUIDFile:
         lof += glob.glob('{}/*.root'.format(inDir))
     # NATURAL SORT
+    print('Before sorting there are {} files to use'.format(len(lof)))
     dre = re.compile(r'(\d+)')
     lof.sort(key=lambda l: [int(s) if s.isdigit() else s.lower() for s in re.split(dre, l)])
     # lof = glob.glob('/Users/bwelliver/cuore/bolord/squid/*{0}*.root'.format(run))
-    print('There are {} files to merge'.format(len(lof)))
+    print('After sorting there are {} files to merge'.format(len(lof)))
     if newFormat is False:
         tree = 'data_tree'
         branches = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform']

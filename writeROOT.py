@@ -1,5 +1,7 @@
 '''Module to write root files based on an input dictionary that mimics the data structure to be written'''
 
+import numpy as np
+
 from array import array
 import ROOT as rt
 # rt.gROOT.ProcessLine("#include<vector>")
@@ -74,11 +76,11 @@ def writeTTree(tdata):
 def writeTBranch(tree, branch_data):
     '''Create and write branches to the root file in whatever tree we have
     Incoming branch_data is a dictionary where the key specifies the branch name and the value is the branch value
-    If the incoming branch_data[key] is itself an array it will be a vector<double> branch.
+    If the incoming branch_data[key] is itself an array (either a dict of arrays or numpy.ndarray, 2D) it will be a vector<double> branch.
     '''
     dloc = {}
     for branchkey in branch_data.keys():
-        if isinstance(branch_data[branchkey], dict):
+        if isinstance(branch_data[branchkey], dict) or (isinstance(branch_data[branchkey], np.ndarray) and len(branch_data[branchkey].shape) == 2):
             # v = vec
             # print('Vector found')
             nentries = branch_data[branchkey][0].size
@@ -97,7 +99,7 @@ def writeTBranch(tree, branch_data):
     # Now loop over the branches and fill them
     for event in range(nentries):
         for branchkey in branch_data.keys():
-            if isinstance(branch_data[branchkey], dict):
+            if isinstance(branch_data[branchkey], dict) or (isinstance(branch_data[branchkey], np.ndarray) and len(branch_data[branchkey].shape) == 2):
                 # keys of branch_data[branchkey] are event
                 # To get values of event: waveform = branch_data[branchkey][event]
                 if dloc[branchkey].size() == 0:
