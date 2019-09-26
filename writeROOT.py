@@ -83,10 +83,14 @@ def writeTBranch(tree, branch_data):
         if isinstance(branch_data[branchkey], dict) or (isinstance(branch_data[branchkey], np.ndarray) and len(branch_data[branchkey].shape) == 2):
             # v = vec
             # print('Vector found')
-            nentries = branch_data[branchkey][0].size
+            if isinstance(branch_data[branchkey], dict):
+                nentries = len(branch_data[branchkey])
+            else:
+                nentries = branch_data[branchkey].shape[0]
+            nsamples = branch_data[branchkey][0].size
             std = getattr(rt, 'std')
             # We can try to pre-allocate the vector by putting nentries at the end
-            dloc[branchkey] = std.vector('double')(nentries)
+            dloc[branchkey] = std.vector('double')(nsamples)
             # dloc[branchkey] = v
             # Caution: We may need to do something else here about the vectors
             # print('The address of the vector is {}'.format(dloc[branchkey]))
@@ -97,6 +101,9 @@ def writeTBranch(tree, branch_data):
             dloc[branchkey] = array('d', [0.0])
             tree.Branch(branchkey, dloc[branchkey], branchkey + '/D')
     # Now loop over the branches and fill them
+    # In the event the thing we are trying to fill is a vector nentries is supposed to be the number of things in vector, aka vector::size
+    # In the event the thing we are trying to fill is not a vector it is the number of entries in the array...should this be so?
+    # Ultimately nentries should be the number of distinct 'events' that there are
     for event in range(nentries):
         for branchkey in branch_data.keys():
             if isinstance(branch_data[branchkey], dict) or (isinstance(branch_data[branchkey], np.ndarray) and len(branch_data[branchkey].shape) == 2):
@@ -108,6 +115,7 @@ def writeTBranch(tree, branch_data):
                         dloc[branchkey].push_back(float(value))
                 else:
                     # print('Using indexed assignment for branch {} and event {}'.format(branchkey, event))
+                    # print('The size of the branch_data for this branchkey is: {}'.format(len(branch_data[branchkey])))
                     for idx, value in enumerate(branch_data[branchkey][event]):
                         dloc[branchkey][idx] = float(value)
                         # print(dloc[branchkey][idx])

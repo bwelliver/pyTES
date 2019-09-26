@@ -10,7 +10,8 @@ from numba import jit
 from iv_input_arguments import InputArguments
 import iv_processor
 import tes_parameters
-import iv_plots as ivp
+import iv_plots as ivplt
+import tes_characterization as tes_char
 from ring_buffer import RingBuffer
 import squid_info
 
@@ -145,145 +146,6 @@ def save_iv_to_root(output_file, iv_dictionary, branches=None):
     return status
 
 
-@jit(nopython=True)
-def nmad(arr, arr_median=None):
-    '''Compute MAD using numpy'''
-    if arr_median is not None:
-        arr_median = np.median(arr)
-    return np.median(np.abs(arr - arr_median))
-
-
-@jit(nopython=True)
-def waveform_processor(samples, number_of_windows, process_type):
-    '''Basic waveform processor'''
-#    subsamples = np.split(samples, number_of_windows, axis=0)
-#    mean_samples = np.mean(subsamples, 1)
-#    std_samples = np.std(subsamples, 1)
-    # If using numba try for loops again since np.split is not supported
-    # Also numpy.append is not supported >:(
-    if process_type == 'mean':
-        mean_samples = np.zeros(number_of_windows)
-        std_samples = np.zeros(number_of_windows)
-        sz = samples.size
-        window_size = sz//number_of_windows
-        for idx in range(number_of_windows):
-            start_idx = idx*window_size
-            end_idx = (idx+1)*window_size
-            mean_samples[idx] = np.mean(samples[start_idx:end_idx])
-            std_samples[idx] = np.std(samples[start_idx:end_idx])
-    if process_type == 'serr_mean':
-        mean_samples = np.zeros(number_of_windows)
-        std_samples = np.zeros(number_of_windows)
-        sz = samples.size
-        window_size = sz//number_of_windows
-        for idx in range(number_of_windows):
-            start_idx = idx*window_size
-            end_idx = (idx+1)*window_size
-            mean_samples[idx] = np.mean(samples[start_idx:end_idx])
-            std_samples[idx] = np.std(samples[start_idx:end_idx])/np.sqrt(window_size)
-    if process_type == 'median':
-        mean_samples = np.zeros(number_of_windows)
-        std_samples = np.zeros(number_of_windows)
-        sz = samples.size
-        window_size = sz//number_of_windows
-        for idx in range(number_of_windows):
-            start_idx = idx*window_size
-            end_idx = (idx+1)*window_size
-            mean_samples[idx] = np.median(samples[start_idx:end_idx])
-            std_samples[idx] = nmad(samples[start_idx:end_idx], mean_samples[idx])
-    return mean_samples, std_samples
-
-
-def process_waveform(waveform, time_values, sample_length, number_of_windows=1, process_type='serr_mean'):
-    '''Function to process waveform into a statistically downsampled representative point
-        waveform:
-            (Deprecated): A dictionary whose keys represent the event number. Values are numpy arrays with a length = NumberOfSamples
-            The timestamp of waveform[event][sample] is time_values[event] + sample*sample_length
-            A nEvent x nSample ndarray, where the first index represents the event number.
-            The timestamp for waveform[event][sample] is time_values[event] + sample*sample_length as in (dict)waveform case
-        time_values:
-            An array containing the start time (with microsecond resolution) of an event
-        sample_length:
-            The length in seconds of a sample within an event. waveform[event].size*sample_length = event duration
-        number_of_windows:
-            How many windows should an event be split into for statistical sampling
-        process_type:
-            The particular type of processing to use.
-            mean:
-                For the given division of the event performs a mean and std over samples to obtain statistically
-                representative values
-            median:
-                TODO
-    This will return 2 dictionaries keyed by event number and an appropriately re-sampled time_values array
-    '''
-    # Here we will use numpy.split which will split an array into N equal length sections
-    # The return is a list of the sub-arrays.
-    # process_type = 'median'
-    print('Processing waveform with {} windows'.format(number_of_windows))
-    print('The len of the waveform is {} and the len of time is {}'.format(len(waveform), time_values.size))
-    # Step 1: How many actual entries will we wind up with?
-    number_of_entries = len(waveform) * number_of_windows
-    processed_waveform = {'mean_waveform': np.empty(number_of_entries), 'rms_waveform': np.empty(number_of_entries), 'new_time': np.empty(number_of_entries)}
-    #processed_waveform = {'mean_waveform': [], 'rms_waveform': [], 'new_time': []}
-    if process_type == 'mean' or process_type == 'serr_mean':
-        if isinstance(waveform, dict):
-            for event, samples in waveform.items():
-                event_metadata = {'base_index': samples.size//number_of_windows, 'event_time': time_values[event]}
-                sub_times = [event_metadata['event_time'] + sample_length/(2*number_of_windows) + idx/number_of_windows for idx in range(number_of_windows)]
-                mean_samples, std_samples = waveform_processor(samples, number_of_windows, process_type=process_type)
-                #mean_samples, std_samples = average_groups(samples, number_of_windows)
-                #processed_waveform['mean_waveform'].extend(mean_samples)
-                #processed_waveform['rms_waveform'].extend(std_samples)
-                processed_waveform['new_time'].extend(sub_times)
-                start_index = event*number_of_windows
-                end_index = start_index + number_of_windows
-                processed_waveform['mean_waveform'][start_index:end_index] = mean_samples
-                processed_waveform['rms_waveform'][start_index:end_index] = std_samples
-                # upper_index + lower_index = n*base_index + base_index + n*base_index = (2n+1)*base_index
-                #processed_waveform['new_time'][start_index:end_index] = sub_times
-        else:
-            # TODO: Is there a better numpy equivalent to enumerate?
-            for event, samples in enumerate(waveform):
-                event_metadata = {'base_index': samples.size//number_of_windows, 'event_time': time_values[event]}
-                sub_times = [event_metadata['event_time'] + sample_length/(2*number_of_windows) + idx/number_of_windows for idx in range(number_of_windows)]
-                mean_samples, std_samples = waveform_processor(samples, number_of_windows, process_type=process_type)
-                #mean_samples, std_samples = average_groups(samples, number_of_windows)
-                #processed_waveform['mean_waveform'].extend(mean_samples)
-                #processed_waveform['rms_waveform'].extend(std_samples)
-                #processed_waveform['new_time'].extend(sub_times)
-                start_index = event*number_of_windows
-                end_index = start_index + number_of_windows
-                processed_waveform['new_time'][start_index:end_index] = sub_times
-                processed_waveform['mean_waveform'][start_index:end_index] = mean_samples
-                processed_waveform['rms_waveform'][start_index:end_index] = std_samples
-    if process_type == 'median':
-        for event, samples in waveform.items():
-            event_metadata = {'base_index': samples.size//number_of_windows, 'event_time': time_values[event]}
-            # warning: time_values[event] is just the starting timestamp of the event. To get the timestamp of the particular window requires using sample length
-            # What we know: 1 event is 1 second long. Therefore each sample is sample_length s separated from the previous sample in a given event.
-            # If we had 1 window we should collapse the timestamp to event_time + (samples.size/2)*sample_length
-            # If we have 2 windows now each should be the middle of their respective blocks. event_time + (samples.size)/(2*2) and event_time + (2+1)*(samples.size)/(2*2)
-            # If we have 3 windows then should be in middle of each third.
-            # event_time + (sample_length/(2*3)), event_time + ((sample_length/(2*3))
-            # So times are:
-            sub_times = [event_metadata['event_time'] + sample_length/(2*number_of_windows) + idx/number_of_windows for idx in range(number_of_windows)]
-            median_samples, mad_samples = waveform_processor(samples, number_of_windows, process_type=process_type)
-            # this array is number_of_windows long
-            # In principle now we have an array of sub-samples associated with this event
-            # We can simply append them now to an existing array. But growing by appending is slow
-            # so again we associated subsamples[i] with main[k] through some map of k:<->i
-            # Or we can do slice assignment. Clever accounting for the slice of main and subsample will allow this.
-            processed_waveform['mean_waveform'].extend(median_samples)
-            processed_waveform['rms_waveform'].extend(mad_samples)
-            processed_waveform['new_time'].extend(sub_times)
-            #start_index = event*number_of_windows
-            #end_index = start_index + number_of_windows
-            #processed_waveform['mean_waveform'][start_index:end_index] = median_samples
-            #processed_waveform['rms_waveform'][start_index:end_index] = mad_samples
-            # upper_index + lower_index = n*base_index + base_index + n*base_index = (2n+1)*base_index
-            #processed_waveform['new_time'][start_index:end_index] = sub_times
-    return processed_waveform
-
 def format_and_make_output_path(path, output_path):
     '''This function will format the output path into an absolute path and make
     the directory if needed.
@@ -372,7 +234,7 @@ def parse_temperature_steps(output_path, time_values, temperatures, pid_log, tz_
         mean_temperature = np.mean(temperatures[cut])
         time_list.append((start_time, end_time, mean_temperature, serr_temperature))
         d_t = time_values - time_values[0]
-    ivp.test_steps(d_t, temperatures, time_list, time_values[0], 'Time', 'T', output_path + '/' + 'test_temperature_steps.png')
+    ivplt.test_steps(d_t, temperatures, time_list, time_values[0], 'Time', 'T', output_path + '/' + 'test_temperature_steps.png')
     return time_list
 
 
@@ -471,7 +333,7 @@ def get_iv_temperature_data(argin):
 def plot_iv_curves(output_path, data_channel, number_of_windows, squid, iv_dictionary):
     '''Simple function to loop through IV data and generate the plots'''
     # Next loop through to generate plots
-    iv_curves = iv_windower(iv_dictionary, number_of_windows)
+    iv_curves = iv_processor.iv_windower(iv_dictionary, number_of_windows)
     min_temperature = list(iv_dictionary.keys())[np.argmin([float(temperature) for temperature in iv_dictionary.keys()])]
     r_parasitic = iv_dictionary[min_temperature]['parasitic']
     for temperature, iv_data in sorted(iv_dictionary.items()):
@@ -483,37 +345,27 @@ def plot_iv_curves(output_path, data_channel, number_of_windows, squid, iv_dicti
                         'title': 'Channel {} Output Voltage vs Bias Current for temperatures = {} mK'.format(data_channel, temperature)
                         }
         model_resistance = iv_processor.convert_fit_to_resistance(iv_data['fit_parameters'], squid, fit_type='iv', r_p=r_parasitic.value, r_p_rms=r_parasitic.rms)
-        ivp.iv_fitplot(plt_data, iv_data['fit_parameters'], model_resistance, r_parasitic, file_name, axes_options, xscale=1e6, yscale=1e3)
+        ivplt.iv_fitplot(plt_data, iv_data['fit_parameters'], model_resistance, r_parasitic, file_name, axes_options, xscale=1e6, yscale=1e3)
         # Let's make a ROOT style plot (yuck)
-        # ivp.make_root_plot(output_path, data_channel, temperature, iv_data, fit_parameters_dictionary[temperature], parasitic_dictionary[min_temperature], xscale=1e6, yscale=1e3)
+        # ivplt.make_root_plot(output_path, data_channel, temperature, iv_data, fit_parameters_dictionary[temperature], parasitic_dictionary[min_temperature], xscale=1e6, yscale=1e3)
     return True
 
 
-def iv_windower(iv_dictionary, number_of_windows):
-    '''Returns a dictionary of windowed IV data'''
-    iv_curves = {}
-    if number_of_windows > 0:
-        for temperature, iv_data in sorted(iv_dictionary.items()):
-            st = time.time()
-            processed_waveforms = process_waveform(iv_data['iBias'], iv_data['timestamps'], iv_data['sampling_width'][0], number_of_windows=number_of_windows)
-            print('Process function took: {} s to run'.format(time.time() - st))
-            iBias, iBias_err, time_values = processed_waveforms.values()
-            st = time.time()
-            processed_waveforms = process_waveform(iv_data['vOut'], iv_data['timestamps'], iv_data['sampling_width'][0], number_of_windows=number_of_windows)
-            print('Process function took: {} s to run'.format(time.time() - st))
-            vOut, vOut_err, time_values = processed_waveforms.values()
-            # Here iBias is a simple 1D array...
-            iv_curves[temperature] = {'iBias': iBias, 'iBias_rms': iBias_err, 'vOut': vOut, 'vOut_rms': vOut_err, 'timestamps': time_values}
-    else:
-        for temperature, iv_data in sorted(iv_dictionary.items()):
-            # Take an estimate for the distribution width using 5% of the total data
-            end_idx = int(0.05*iv_data['iBias'].size)
-            # Here iv_data[iBias] is an nEvent x nSamples ndarray
-            iv_curves[temperature] = {
-                    'iBias': iv_data['iBias'], 'iBias_rms':  np.std(iv_data['iBias'].flatten()[0:end_idx])/np.sqrt(end_idx),
-                    'vOut': iv_data['vOut'], 'vOut_rms': np.std(iv_data['vOut'].flatten()[0:end_idx])/np.sqrt(end_idx), 'timestamps': iv_data['timestamps']
-                    }
-    return iv_curves
+def process_tes_curves(iv_dictionary, number_of_windows=0):
+    '''Process the IV TES data and find Rsc and Rn values
+    Here we assume incoming data streams are all ndarrays of some shape and not dictionaries
+    '''
+
+    # 1. window the data
+    iv_curves = iv_processor.iv_windower(iv_dictionary, number_of_windows, mode='tes')
+    # 2. Get fit parameters
+    for temperature, iv_data in sorted(iv_curves.items()):
+        print('Processing TES data for temperature = {} mK'.format(temperature))
+        st = time.time()
+        fit_params = iv_processor.fit_iv_regions(xdata=iv_data['vTES'], ydata=iv_data['iTES'], sigma_y=iv_data['vTES_rms'], plane='tes')
+        print('It took the fit protocol {} s to complete.'.format(time.time() - st))
+        iv_dictionary[temperature]['tes_fit_parameters'] = fit_params
+    return iv_dictionary
 
 
 def process_iv_curves(output_path, data_channel, squid, iv_dictionary, number_of_windows=0):
@@ -539,7 +391,7 @@ def process_iv_curves(output_path, data_channel, squid, iv_dictionary, number_of
     # Variable lookup:
     # iv_dictionary: Contains all the raw IV data, i, v, t, dt, T
     # iv_curves: Contains the 'windowed' IV data for just i, ierr, v, verr, t
-    iv_curves = iv_windower(iv_dictionary, number_of_windows)
+    iv_curves = iv_processor.iv_windower(iv_dictionary, number_of_windows)
     # Next try to obtain a measure of the parasitic series resistance. Note that this value is subtracted
     # from subsquent fitted values of the TES resistance and is assumed to be T indepdent.
     parasitic_dictionary, min_temperature = iv_processor.get_parasitic_resistances(iv_curves, squid)
@@ -571,9 +423,9 @@ def process_iv_curves(output_path, data_channel, squid, iv_dictionary, number_of
 #                        'title': 'Channel {} Output Voltage vs Bias Current for temperatures = {} mK'.format(data_channel, temperature)
 #                        }
 #        model_resistance = iv_processor.convert_fit_to_resistance(fit_parameters_dictionary[temperature], squid, fit_type='iv', r_p=parasitic_dictionary[min_temperature].value, r_p_rms=parasitic_dictionary[min_temperature].rms)
-#        ivp.iv_fitplot(plt_data, fit_parameters_dictionary[temperature], model_resistance, parasitic_dictionary[min_temperature], file_name, axes_options, xscale=1e6, yscale=1e3)
+#        ivplt.iv_fitplot(plt_data, fit_parameters_dictionary[temperature], model_resistance, parasitic_dictionary[min_temperature], file_name, axes_options, xscale=1e6, yscale=1e3)
         # Let's make a ROOT style plot (yuck)
-        # ivp.make_root_plot(output_path, data_channel, temperature, iv_data, fit_parameters_dictionary[temperature], parasitic_dictionary[min_temperature], xscale=1e6, yscale=1e3)
+        # ivplt.make_root_plot(output_path, data_channel, temperature, iv_data, fit_parameters_dictionary[temperature], parasitic_dictionary[min_temperature], xscale=1e6, yscale=1e3)
     # Let's figure out what this function should return:
     # 1. iv_dictionary --> now offset corrected
     # 2. min_temp, fit_parameters, parasitics --> last 2 are keyed by T like iv_dictionary...combine into it?
@@ -599,11 +451,51 @@ def get_tes_values(iv_dictionary, squid):
         rTES = tes_parameters.compute_rTES(iv_data['iBias'], iTES, r_sh, r_p)
         vTES = tes_parameters.compute_vTES(iv_data['iBias'], iTES, r_sh, r_p)
         pTES = tes_parameters.compute_pTES(iTES, vTES)
+        print('Shape check:\n\tThe shape of vOut is: {}\n\tThe shape of iTES is: {}'.format(iv_data['vOut'].shape, iTES.shape))
         iv_data['iTES'] = iTES
         iv_data['vTES'] = vTES
         iv_data['rTES'] = rTES
         iv_data['pTES'] = pTES
     return iv_dictionary
+
+
+def tes_plots(output_path, data_channel, squid, temperature, data):
+    '''Helper function to generate standard TES plots
+    iTES vs vTES
+    rTES vs iTES
+    rTES vs vTES
+    rTES vs iBias
+    pTES vs rTES
+    pTES vs vTES
+    '''
+    # Current vs Voltage
+    ivplt.plot_current_vs_voltage(output_path, data_channel, squid, temperature, data)
+    # Resistance vs Current
+    ivplt.plot_resistance_vs_current(output_path, data_channel, temperature, data)
+    # Resistance vs Voltage
+    ivplt.plot_resistance_vs_voltage(output_path, data_channel, temperature, data)
+    # Resistance vs Bias Current
+    ivplt.plot_resistance_vs_bias_current(output_path, data_channel, temperature, data)
+    # Power vs rTES
+    ivplt.plot_power_vs_resistance(output_path, data_channel, temperature, data)
+    # Power vs vTES
+    ivplt.plot_power_vs_voltage(output_path, data_channel, temperature, data)
+    return True
+
+
+def make_tes_plots(output_path, data_channel, squid, number_of_windows, iv_dictionary, individual=False):
+    '''Loop through data to generate TES specific plots'''
+    # Generate windowed values if needed.
+    iv_curves = iv_processor.iv_windower(iv_dictionary, number_of_windows, mode='tes')
+    for temperature, data in iv_curves.items():
+        data['tes_fit_parameters'] = iv_dictionary[temperature]['tes_fit_parameters']
+    if individual is True:
+        for temperature, data in iv_curves.items():
+            print('The keys in the data are: {}'.format(data.keys()))
+            tes_plots(output_path, data_channel, squid, temperature, data)
+    # Make a for all temperatures here
+    ivplt.make_tes_multiplot(output_path=output_path, data_channel=data_channel, squid=squid, iv_dictionary=iv_curves)
+    return True
 
 
 def iv_main(argin):
@@ -637,7 +529,20 @@ def iv_main(argin):
         # Save actual data
         output_file = argin.outputPath + '/root/iv_data.root'
         save_iv_to_root(output_file, iv_dictionary, branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'iTES', 'rTES', 'vTES', 'pTES'])
-
+    if argin.readTESROOT is True:
+        iv_dictionary = read_from_ivroot(argin.outputPath + '/root/iv_data.root', branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'iTES', 'rTES', 'vTES', 'pTES'])
+        # Things will be dicts here so we should convert to arrays
+        for temperature, iv_data in iv_dictionary.items():
+            for key, value in iv_data.items():
+                if isinstance(value, dict):
+                    iv_data[key] = iv_processor.convert_dict_to_ndarray(value)
+                    # iv_dictionary[temperature][key] = new_value
+    # Step 5: Process the TES values
+    iv_dictionary = process_tes_curves(iv_dictionary, argin.numberOfWindows)
+    if argin.plotTES is True:
+        make_tes_plots(output_path=argin.outputPath, data_channel=argin.dataChannel, squid=argin.squid, number_of_windows=argin.numberOfWindows, iv_dictionary=iv_dictionary, individual=True)
+    # Step 6: Compute interesting curves
+    tes_char.get_resistance_temperature_curves_new(argin.outputPath, argin.dataChannel, argin.numberOfWindows, iv_dictionary)
 
     ######### old stuff below here ##########
 #    iv_curves = {}

@@ -1,4 +1,5 @@
 '''IV Processing Module'''
+import time
 
 import numpy as np
 from numpy import square as pow2
@@ -15,6 +16,18 @@ import iv_resistance
 import squid_info
 import pytes_errors as pyTESErrors
 from ring_buffer import RingBuffer
+
+
+def convert_dict_to_ndarray(data_dictionary):
+    '''A simple function to convert an IV dictionary whose keys are event indices and values
+    are sample arrays into a 2D array
+    '''
+    n_events = len(data_dictionary)
+    sz_array = data_dictionary[0].size
+    ndarray = np.empty((n_events, sz_array))
+    for event, sample in data_dictionary.items():
+        ndarray[event] = sample
+    return ndarray
 
 
 def convert_fit_to_resistance(fit_parameters, squid, fit_type='iv', r_p=None, r_p_rms=None):
@@ -87,6 +100,193 @@ def convert_fit_to_resistance(fit_parameters, squid, fit_type='iv', r_p=None, r_
     resistance.right.set_values(r_right, r_right_rms)
     resistance.sc.set_values(r_sc, r_sc_rms)
     return resistance
+
+
+@jit(nopython=True)
+def nmad(arr, arr_median=None):
+    '''Compute MAD using numpy'''
+    if arr_median is not None:
+        arr_median = np.median(arr)
+    return np.median(np.abs(arr - arr_median))
+
+
+@jit(nopython=True)
+def waveform_processor(samples, number_of_windows, process_type):
+    '''Basic waveform processor'''
+#    subsamples = np.split(samples, number_of_windows, axis=0)
+#    mean_samples = np.mean(subsamples, 1)
+#    std_samples = np.std(subsamples, 1)
+    # If using numba try for loops again since np.split is not supported
+    # Also numpy.append is not supported >:(
+    if process_type == 'mean':
+        mean_samples = np.zeros(number_of_windows)
+        std_samples = np.zeros(number_of_windows)
+        sz = samples.size
+        window_size = sz//number_of_windows
+        for idx in range(number_of_windows):
+            start_idx = idx*window_size
+            end_idx = (idx+1)*window_size
+            mean_samples[idx] = np.mean(samples[start_idx:end_idx])
+            std_samples[idx] = np.std(samples[start_idx:end_idx])
+    if process_type == 'serr_mean':
+        mean_samples = np.zeros(number_of_windows)
+        std_samples = np.zeros(number_of_windows)
+        sz = samples.size
+        window_size = sz//number_of_windows
+        for idx in range(number_of_windows):
+            start_idx = idx*window_size
+            end_idx = (idx+1)*window_size
+            mean_samples[idx] = np.mean(samples[start_idx:end_idx])
+            std_samples[idx] = np.std(samples[start_idx:end_idx])/np.sqrt(window_size)
+    if process_type == 'median':
+        mean_samples = np.zeros(number_of_windows)
+        std_samples = np.zeros(number_of_windows)
+        sz = samples.size
+        window_size = sz//number_of_windows
+        for idx in range(number_of_windows):
+            start_idx = idx*window_size
+            end_idx = (idx+1)*window_size
+            mean_samples[idx] = np.median(samples[start_idx:end_idx])
+            std_samples[idx] = nmad(samples[start_idx:end_idx], mean_samples[idx])
+    return mean_samples, std_samples
+
+
+def process_waveform(waveform, time_values, sample_length, number_of_windows=1, process_type='serr_mean'):
+    '''Function to process waveform into a statistically downsampled representative point
+        waveform:
+            (Deprecated): A dictionary whose keys represent the event number. Values are numpy arrays with a length = NumberOfSamples
+            The timestamp of waveform[event][sample] is time_values[event] + sample*sample_length
+            A nEvent x nSample ndarray, where the first index represents the event number.
+            The timestamp for waveform[event][sample] is time_values[event] + sample*sample_length as in (dict)waveform case
+        time_values:
+            An array containing the start time (with microsecond resolution) of an event
+        sample_length:
+            The length in seconds of a sample within an event. waveform[event].size*sample_length = event duration
+        number_of_windows:
+            How many windows should an event be split into for statistical sampling
+        process_type:
+            The particular type of processing to use.
+            mean:
+                For the given division of the event performs a mean and std over samples to obtain statistically
+                representative values
+            median:
+                TODO
+    This will return 2 dictionaries keyed by event number and an appropriately re-sampled time_values array
+    '''
+    # Here we will use numpy.split which will split an array into N equal length sections
+    # The return is a list of the sub-arrays.
+    # process_type = 'median'
+    print('Processing waveform with {} windows'.format(number_of_windows))
+    print('The len of the waveform is {} and the len of time is {}'.format(len(waveform), time_values.size))
+    # Step 1: How many actual entries will we wind up with?
+    number_of_entries = len(waveform) * number_of_windows
+    processed_waveform = {'mean_waveform': np.empty(number_of_entries), 'rms_waveform': np.empty(number_of_entries), 'new_time': np.empty(number_of_entries)}
+    #processed_waveform = {'mean_waveform': [], 'rms_waveform': [], 'new_time': []}
+    if process_type == 'mean' or process_type == 'serr_mean':
+        if isinstance(waveform, dict):
+            for event, samples in waveform.items():
+                event_metadata = {'base_index': samples.size//number_of_windows, 'event_time': time_values[event]}
+                sub_times = [event_metadata['event_time'] + sample_length/(2*number_of_windows) + idx/number_of_windows for idx in range(number_of_windows)]
+                mean_samples, std_samples = waveform_processor(samples, number_of_windows, process_type=process_type)
+                #mean_samples, std_samples = average_groups(samples, number_of_windows)
+                #processed_waveform['mean_waveform'].extend(mean_samples)
+                #processed_waveform['rms_waveform'].extend(std_samples)
+                processed_waveform['new_time'].extend(sub_times)
+                start_index = event*number_of_windows
+                end_index = start_index + number_of_windows
+                processed_waveform['mean_waveform'][start_index:end_index] = mean_samples
+                processed_waveform['rms_waveform'][start_index:end_index] = std_samples
+                # upper_index + lower_index = n*base_index + base_index + n*base_index = (2n+1)*base_index
+                #processed_waveform['new_time'][start_index:end_index] = sub_times
+        else:
+            # TODO: Is there a better numpy equivalent to enumerate?
+            for event, samples in enumerate(waveform):
+                event_metadata = {'base_index': samples.size//number_of_windows, 'event_time': time_values[event]}
+                sub_times = [event_metadata['event_time'] + sample_length/(2*number_of_windows) + idx/number_of_windows for idx in range(number_of_windows)]
+                mean_samples, std_samples = waveform_processor(samples, number_of_windows, process_type=process_type)
+                #mean_samples, std_samples = average_groups(samples, number_of_windows)
+                #processed_waveform['mean_waveform'].extend(mean_samples)
+                #processed_waveform['rms_waveform'].extend(std_samples)
+                #processed_waveform['new_time'].extend(sub_times)
+                start_index = event*number_of_windows
+                end_index = start_index + number_of_windows
+                processed_waveform['new_time'][start_index:end_index] = sub_times
+                processed_waveform['mean_waveform'][start_index:end_index] = mean_samples
+                processed_waveform['rms_waveform'][start_index:end_index] = std_samples
+    if process_type == 'median':
+        for event, samples in waveform.items():
+            event_metadata = {'base_index': samples.size//number_of_windows, 'event_time': time_values[event]}
+            # warning: time_values[event] is just the starting timestamp of the event. To get the timestamp of the particular window requires using sample length
+            # What we know: 1 event is 1 second long. Therefore each sample is sample_length s separated from the previous sample in a given event.
+            # If we had 1 window we should collapse the timestamp to event_time + (samples.size/2)*sample_length
+            # If we have 2 windows now each should be the middle of their respective blocks. event_time + (samples.size)/(2*2) and event_time + (2+1)*(samples.size)/(2*2)
+            # If we have 3 windows then should be in middle of each third.
+            # event_time + (sample_length/(2*3)), event_time + ((sample_length/(2*3))
+            # So times are:
+            sub_times = [event_metadata['event_time'] + sample_length/(2*number_of_windows) + idx/number_of_windows for idx in range(number_of_windows)]
+            median_samples, mad_samples = waveform_processor(samples, number_of_windows, process_type=process_type)
+            # this array is number_of_windows long
+            # In principle now we have an array of sub-samples associated with this event
+            # We can simply append them now to an existing array. But growing by appending is slow
+            # so again we associated subsamples[i] with main[k] through some map of k:<->i
+            # Or we can do slice assignment. Clever accounting for the slice of main and subsample will allow this.
+            processed_waveform['mean_waveform'].extend(median_samples)
+            processed_waveform['rms_waveform'].extend(mad_samples)
+            processed_waveform['new_time'].extend(sub_times)
+            #start_index = event*number_of_windows
+            #end_index = start_index + number_of_windows
+            #processed_waveform['mean_waveform'][start_index:end_index] = median_samples
+            #processed_waveform['rms_waveform'][start_index:end_index] = mad_samples
+            # upper_index + lower_index = n*base_index + base_index + n*base_index = (2n+1)*base_index
+            #processed_waveform['new_time'][start_index:end_index] = sub_times
+    return processed_waveform
+
+
+def iv_windower(iv_dictionary, number_of_windows, mode='iv'):
+    '''Returns a dictionary of windowed IV data'''
+    iv_curves = {}
+    if mode == 'iv':
+        process_keys = ['iBias', 'vOut']
+    if mode == 'tes':
+        process_keys = ['iBias', 'vOut', 'iTES', 'vTES', 'rTES', 'pTES']
+    if number_of_windows > 0:
+        for temperature, iv_data in sorted(iv_dictionary.items()):
+            iv_curves[temperature] = {}
+            for key in process_keys:
+                st = time.time()
+                processed_waveforms = process_waveform(iv_data[key], iv_data['timestamps'], iv_data['sampling_width'][0], number_of_windows=number_of_windows)
+                print('Process function took {} s to run'.format(time.time() - st))
+                value, value_err, time_values = processed_waveforms.values()
+                iv_curves[temperature][key] = value
+                iv_curves[temperature][key + '_rms'] = value_err
+                iv_curves[temperature]['timestamps'] = time_values
+#        for temperature, iv_data in sorted(iv_dictionary.items()):
+#            st = time.time()
+#            processed_waveforms = process_waveform(iv_data['iBias'], iv_data['timestamps'], iv_data['sampling_width'][0], number_of_windows=number_of_windows)
+#            print('Process function took: {} s to run'.format(time.time() - st))
+#            iBias, iBias_err, time_values = processed_waveforms.values()
+#            st = time.time()
+#            processed_waveforms = process_waveform(iv_data['vOut'], iv_data['timestamps'], iv_data['sampling_width'][0], number_of_windows=number_of_windows)
+#            print('Process function took: {} s to run'.format(time.time() - st))
+#            vOut, vOut_err, time_values = processed_waveforms.values()
+#            # Here iBias is a simple 1D array...
+#            iv_curves[temperature] = {'iBias': iBias, 'iBias_rms': iBias_err, 'vOut': vOut, 'vOut_rms': vOut_err, 'timestamps': time_values}
+    else:
+        for temperature, iv_data in sorted(iv_dictionary.items()):
+            iv_curves[temperature] = {}
+            for key in process_keys:
+                end_idx = int(0.05*iv_data[key].size)
+                iv_curves[temperature][key] = iv_data[key]
+                iv_curves[temperature][key + '_rms'] = np.std(iv_data[key].flatten()[0:end_idx])/np.sqrt(end_idx)
+            iv_curves[temperature]['timestamps'] = iv_data['timestamps']
+#            # Take an estimate for the distribution width using 5% of the total data
+#            end_idx = int(0.05*iv_data['iBias'].size)
+#            # Here iv_data[iBias] is an nEvent x nSamples ndarray
+#            iv_curves[temperature] = {
+#                    'iBias': iv_data['iBias'], 'iBias_rms':  np.std(iv_data['iBias'].flatten()[0:end_idx])/np.sqrt(end_idx),
+#                    'vOut': iv_data['vOut'], 'vOut_rms': np.std(iv_data['vOut'].flatten()[0:end_idx])/np.sqrt(end_idx), 'timestamps': iv_data['timestamps']
+#                    }
+    return iv_curves
 
 
 def fit_iv_regions(xdata, ydata, sigma_y, plane='iv'):
@@ -186,6 +386,30 @@ def fit_normal_branches(xdata, ydata, sigma_y):
     return left_result, left_perr, right_result, right_perr
 
 
+@jit(nopython=True)
+def get_normal_endpoints(buffer_size, dydx):
+    '''Get the normal branch endpoints'''
+
+    # In the normal region the gradient should be constant
+    # So we will walk along and compute the average of N elements at a time.
+    # If the new average differs from the previous by some amount mark that as the boundary to the bias region
+    dbuff = RingBuffer(buffer_size, 0, np.float32)
+    for event in range(buffer_size):
+        dbuff.append(dydx[event])
+    # Now our buffer is initialized so loop over all events until we find a change
+    event = buffer_size
+    difference_of_means = 0
+    d_event = 0
+    while difference_of_means < 1e-2 and event < dydx.size - 1:
+        current_mean = dbuff.get_nanmean()
+        dbuff.append(dydx[event])
+        new_mean = dbuff.get_nanmean()
+        difference_of_means = np.abs((current_mean - new_mean)/current_mean)
+        event += 1
+        d_event += 1
+    return event
+
+
 def walk_normal(xdata, ydata, side, buffer_size=40*16):
     '''Function to walk the normal branches and find the line fit
     To do this we will start at the min or max input current and compute a walking derivative
@@ -210,27 +434,10 @@ def walk_normal(xdata, ydata, side, buffer_size=40*16):
     xdata[~c_normal_to_sc] = np.nan
     ydata[~c_normal_to_sc] = np.nan
     dydx[~c_normal_to_sc] = np.nan
-
     if side == 'right':
         # Flip the array
         dydx = dydx[::-1]
-    # In the normal region the gradient should be constant
-    # So we will walk along and compute the average of N elements at a time.
-    # If the new average differs from the previous by some amount mark that as the boundary to the bias region
-    dbuff = RingBuffer(buffer_size, dtype=float)
-    for event in range(buffer_size):
-        dbuff.append(dydx[event])
-    # Now our buffer is initialized so loop over all events until we find a change
-    event = buffer_size
-    difference_of_means = 0
-    d_event = 0
-    while difference_of_means < 1e-2 and event < dydx.size - 1:
-        current_mean = dbuff.get_nanmean()
-        dbuff.append(dydx[event])
-        new_mean = dbuff.get_nanmean()
-        difference_of_means = np.abs((current_mean - new_mean)/current_mean)
-        event += 1
-        d_event += 1
+    event = get_normal_endpoints(buffer_size, dydx)
     if side == 'right':
         # Flip event index back the right way
         event = dydx.size - 1 - event
@@ -304,7 +511,7 @@ def walk_sc(xdata, ydata, buffer_size=5*16, plane='iv'):
     return event_values
 
 
-@jit(forceobj=True)
+@jit(nopython=True)
 def get_sc_endpoints(buffer_size, index_min_x, dydx):
     '''A function to try and determine the endpoints for the SC region'''
     # Look for rightmost endpoint, keeping in mind it could be our initial point
@@ -313,7 +520,8 @@ def get_sc_endpoints(buffer_size, index_min_x, dydx):
         right_buffer_size = np.nanmax([dydx.size - index_min_x - 1, 0])
     else:
         right_buffer_size = buffer_size
-    slope_buffer = RingBuffer(right_buffer_size, dtype=float)
+    right_buffer_size = np.int32(right_buffer_size)
+    slope_buffer = RingBuffer(right_buffer_size, np.int32(0), np.float32)
     # Now fill the buffer
     for event in range(right_buffer_size):
         slope_buffer.append(dydx[index_min_x + event])
@@ -335,15 +543,16 @@ def get_sc_endpoints(buffer_size, index_min_x, dydx):
     if left_buffer_size == 0:
         # Implies index_min_x is 0. Fit 1 point in?
         left_buffer_size = 1
-    print('We will create a ringbuffer with size: {}'.format(left_buffer_size))
-    slope_buffer = RingBuffer(left_buffer_size, dtype=float)
+    # print('We will create a ringbuffer with size: {}'.format(left_buffer_size))
+    left_buffer_size = np.int32(left_buffer_size)
+    slope_buffer = RingBuffer(left_buffer_size, 0, np.float32)
     # Do initial appending
     for event in range(left_buffer_size):
         slope_buffer.append(dydx[index_min_x - event])
     # Walk to the left
     ev_left = index_min_x - left_buffer_size
     difference_of_means = 0
-    print('The value of ev_left to start is: {}'.format(ev_left))
+    # print('The value of ev_left to start is: {}'.format(ev_left))
     while difference_of_means < 1e-2 and ev_left >= 0:
         current_mean = slope_buffer.get_nanmean()
         slope_buffer.append(dydx[ev_left])

@@ -2,26 +2,33 @@
 The RingBuffer is a FIFO style and fills from left to right, so that oldest
 entries are at the end of the buffer. Requires numpy.'''
 import numpy as np
+from numba import jitclass
+from numba import int32, float32
+
+spec = [('size_max', int32), ('_data', float32[:]), ('size', int32)]
 
 
+@jitclass(spec)
 class RingBuffer:
     '''Main RingBuffer class object. Initialization parameters can be specified
     as the max size, default storage values and storage types. The default value
     is 0.0 and type is float.'''
-    def __init__(self, size_max, default_value=0.0, dtype=float):
+    def __init__(self, size_max, default_value=0, dtype=np.float32):
         '''initialization'''
         self.size_max = size_max
-        self._data = np.empty(size_max, dtype=dtype)
-        self._data.fill(default_value)
+        self._data = np.full(size_max, default_value, dtype=np.float32)
+        # self._data = np.empty(size_max, dtype=dtype)
+        # self._data.fill(default_value)
         self.size = 0
 
     def append(self, value):
         '''append an element'''
         self._data = np.roll(self._data, 1)
         self._data[0] = value
-        self.size += 1
-        if self.size == self.size_max:
-            self.__class__ = RingBufferFull
+        if self.size != self.size_max:
+            self.size += 1
+        # if self.size == self.size_max:
+        #    self.__class__ = RingBufferFull
 
     def get_sum(self):
         '''sum of the current values'''
@@ -73,18 +80,18 @@ class RingBuffer:
         '''get element'''
         return self._data[key]
 
-    def __repr__(self):
-        '''return string representation'''
-        string_rep = self._data.__repr__()
-        string_rep = string_rep + '\t' + str(self.size)
-        string_rep = string_rep + '\t' + self.get_all()[::-1].__repr__()
-        string_rep = string_rep + '\t' + self.get_partial()[::-1].__repr__()
-        return string_rep
+#    def __repr__(self):
+#        '''return string representation'''
+#        string_rep = self._data.__repr__()
+#        string_rep = string_rep + '\t' + str(self.size)
+#        string_rep = string_rep + '\t' + self.get_all()[::-1].__repr__()
+#        string_rep = string_rep + '\t' + self.get_partial()[::-1].__repr__()
+#        return string_rep
 
 
-class RingBufferFull(RingBuffer):
-    '''Sub-class to handle appending data when a RingBuffer is full'''
-    def append(self, value):
-        '''append an element when buffer is full'''
-        self._data = np.roll(self._data, 1)
-        self._data[0] = value
+#class RingBufferFull(RingBuffer):
+#    '''Sub-class to handle appending data when a RingBuffer is full'''
+#    def append(self, value):
+#        '''append an element when buffer is full'''
+#        self._data = np.roll(self._data, 1)
+#        self._data[0] = value
