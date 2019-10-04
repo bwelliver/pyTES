@@ -410,7 +410,7 @@ def get_normal_endpoints(buffer_size, dydx):
     return event
 
 
-def walk_normal(xdata, ydata, side, buffer_size=40*16):
+def walk_normal(xdata, ydata, side, buffer_size=40):
     '''Function to walk the normal branches and find the line fit
     To do this we will start at the min or max input current and compute a walking derivative
     If the derivative starts to change then this indicates we entered the biased region and should stop
@@ -422,6 +422,7 @@ def walk_normal(xdata, ydata, side, buffer_size=40*16):
     # Check buffer is at least 5% of the data size
     if buffer_size < 0.05*xdata.size:
         buffer_size = int(0.05*xdata.size)
+    buffer_size = 200
     # We should select only the physical data points for examination
     di_bias = np.gradient(xdata, edge_order=2)
     c_normal_to_sc_pos = np.logical_and(xdata > 0, di_bias < 0)
@@ -445,7 +446,7 @@ def walk_normal(xdata, ydata, side, buffer_size=40*16):
     return event
 
 
-def walk_sc(xdata, ydata, buffer_size=5*16, plane='iv'):
+def walk_sc(xdata, ydata, buffer_size=16, plane='iv'):
     '''Function to walk the superconducting region of the IV curve and get the left and right edges
     Generally when ib = 0 we should be superconducting so we will start there and go up until the bias
     then return to 0 and go down until the bias
@@ -457,6 +458,7 @@ def walk_sc(xdata, ydata, buffer_size=5*16, plane='iv'):
     # Check buffer size
     if buffer_size < 0.05*xdata.size:
         buffer_size = int(0.05*xdata.size)
+    buffer_size = 200
     # We should select only the physical data points for examination
     di_bias = np.gradient(xdata, edge_order=2)
     print('The size of di_bias is: {}'.format(di_bias.size))

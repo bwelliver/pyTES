@@ -15,8 +15,8 @@ class SQUIDParameters:
             self.serial = 'S0121'
             self.Li = 6e-9
             self.Mi = 1/26.062
-            self.Mfb = 1/33.488
-            self.Rfb = 10000.0
+            self.Mfb = 1/33.6
+            self.Rfb = 0.7e3
             self.Rsh = 21.0e-3
             self.Rbias = 10000.0
             self.Cbias = 100e-12
@@ -24,8 +24,8 @@ class SQUIDParameters:
             self.serial = 'S0082'
             self.Li = 6e-9
             self.Mi = 1/24.65
-            self.Mfb = 1/32.9
-            self.Rfb = 10000.0
+            self.Mfb = 1/32.62
+            self.Rfb = 3e3
             self.Rsh = 20e-3
             self.Rbias = 10000.0
             self.Cbias = 100e-12
@@ -34,7 +34,7 @@ class SQUIDParameters:
             self.Li = 6e-9
             self.Mi = 1/23.99
             self.Mfb = 1/32.9
-            self.Rfb = 10000.0
+            self.Rfb = 10e3
             self.Rsh = 22.8e-3
             self.Rbias = 10000.0
             self.Cbias = 100e-12
@@ -42,8 +42,8 @@ class SQUIDParameters:
             self.serial = 'S0204'
             self.Li = 6e-9
             self.Mi = 1/25.135
-            self.Mfb = 1/33.39
-            self.Rfb = 10000.0
+            self.Mfb = 1/33.806
+            self.Rfb = 30e3
             self.Rsh = 20.2e-3
             self.Rbias = 10000.0
             self.Cbias = 100e-12
@@ -51,8 +51,8 @@ class SQUIDParameters:
             self.serial = 'S0206'
             self.Li = 6e-9
             self.Mi = 1/26.467
-            self.Mfb = 1/33.9915
-            self.Rfb = 10000.0
+            self.Mfb = 1/33.32
+            self.Rfb = 10e3
             self.Rsh = 21e-3
             self.Rbias = 10000.0
             self.Cbias = 100e-12

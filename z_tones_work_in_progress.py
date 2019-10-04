@@ -12,7 +12,7 @@ from matplotlib import pyplot as plt
 from scipy.optimize import curve_fit
 from scipy.optimize import minimize
 
-import IVPlots as ivp
+import iv_plots as ivp
 import squid_info
 
 
@@ -233,11 +233,29 @@ def ztes_model_2block_fixed(fixedArgs):
 def ratio_model_function(f, *args):
     '''Complex version of ratio fit'''
     # rn, rl, lin = [0.71431989, 24.46217e-3 + 21e-3, *args]
-    rn, rl, lin = args
+    rn, rl, lin, lsc, csc = args
     # rn, rl, lin = args
-    zl = 1j * 2 * np.pi * f * lin
+    w = 2*np.pi*f
+    zl = 1j * w * lin
     zn = rn + rl + zl
     zsc = rl + zl
+    if lsc > 0:
+        zlsc = 1j * w * lsc
+        # zsc = (rl + zl)|| zlsc
+        zsc = 1/(1/(rl + zl) + 1/zlsc)
+    if csc > 0:
+        zc = 1/(1j*w*csc)
+        zsc = 1/(1/(rl + zl) + 1/zc)
+    # More complicated model?
+    if csc > 0 and lsc > 0:
+        zlsc = 1j * w * lsc
+        zc = 1/(1j*w*csc)
+        zlsc = 1/(1/(rl + zl) + 1/(zc + zlsc))
+        zn = 1/(1/(rl + zl) + 1/(rn + zc + zlsc))
+    zn = rn + rl + zl
+    zsc = rl + zl
+    # zn[w==0] = rn + rl
+    # zsc[w==0] = rl
     return zn/zsc
 
 
@@ -246,7 +264,9 @@ def ratio_model_fixed(fixedArgs):
     Rn = fixedArgs.get('Rn', None)
     Rl = fixedArgs.get('Rl', None)
     Lin = fixedArgs.get('Lin', None)
-    fixedArgs = [Rn, Rl, Lin]
+    Lsc = fixedArgs.get('Lsc', None)
+    Csc = fixedArgs.get('Csc', None)
+    fixedArgs = [Rn, Rl, Lin, Lsc, Csc]
 
     def ratio_model_function_wrapper(f, *args):
         '''Wrapper with flat version of the fit'''
@@ -314,12 +334,14 @@ def gen_plot_points_fit(xdata, ydata, xfit, yfit, results, perr, labels, y0=None
     ax.tick_params(axis='both', which='major', labelsize=24)
     # Set up text strings for fit based on the mode
     if mode == 'ratio':
-        rn, rl, lin = results
-        rn_err, rl_err, lin_err = perr
+        rn, rl, lin, lsc, csc = results
+        rn_err, rl_err, lin_err, lsc_err, csc_err = perr
         tRn = r'$R_{n} = %.5f \pm %.5f \mathrm{m\Omega}$' % (rn*1e3, rn_err*1e3)
         tRl = r'$R_{L} = %.5f \pm %.5f \mathrm{m\Omega}$' % (rl*1e3, rl_err*1e3)
         tLin = r'$L_{in} = %.5f \pm %.5f \mathrm{\mu H}$' % (lin*1e6, lin_err*1e6)
-        text_string = tRn + '\n' + tRl + '\n' + tLin
+        tLsc = r'$L_{sc} = %.5f \pm %.5f \mathrm{\mu H}$' % (lsc*1e6, lsc_err*1e6)
+        tCsc = r'$C_{sc} = %.5f \pm %.5f \mathrm{pF}$' % (csc*1e12, csc_err*1e12)
+        text_string = tRn + '\n' + tRl + '\n' + tLin + '\n' + tLsc + '\n' + tCsc
     if mode == 'ztes':
         I0, R0, T0, g, alpha, beta, C = results
         I0_err, R0_err, T0_err, g_err, alpha_err, beta_err, C_err = perr
@@ -738,11 +760,12 @@ def get_whitenoise_data_pandas(data_files):
         cols = data.columns.tolist()
         df = data[cols[0]][1] - data[cols[0]][0]
         # First order try get all integer data below 30k?
+        upper_limit = 200e3  # kHz
         if df < 1:
             steps = int(1/df)
         else:
             steps = 1
-        cut = data[cols[0]] < 30e3
+        cut = data[cols[0]] < upper_limit
         print('Step size is: {}'.format(steps))
         tones = data[cols[0]][cut][0::steps].to_numpy()
         rdata = data[cols[1]][cut][0::steps].to_numpy()
@@ -829,14 +852,14 @@ def parse_lvm_file(infile, intype='response', freq=None):
     return None
 
 
-def get_list_of_files(input_directory, subdir, run, temperature, current):
+def get_list_of_files(input_directory, subdir, run, fll, temperature, current):
     '''Get the list of files
     In general useful information is encoded in the file names and also user specified
     input_directory/*run{}/*T{}mK*/*{}uA*.txt''
     '''
-    globstring = '{}/*run{}/*T{}mK*/{}/*_{}uA*.txt'.format(input_directory, run, temperature, subdir, current)
+    globstring = '{}/*run{}/{}/*T{}mK*/{}/*_{}uA*.txt'.format(input_directory, run, fll, temperature, subdir, current)
     print('The glob is: {}'.format(globstring))
-    list_of_files = glob.glob('{}/*run{}/*T{}mK*/{}/*_{}uA*.txt'.format(input_directory, run, temperature, subdir, current))
+    list_of_files = glob.glob('{}/*run{}/{}/*T{}mK*/{}/*_{}uA*.txt'.format(input_directory, run, fll, temperature, subdir, current))
     list_of_files.sort(key=natural_sort_key)
     return list_of_files
 
@@ -908,33 +931,36 @@ def get_response(data_files, tones):
     return data
 
 
-def get_tones_and_response(input_directory, subdir, run, temperature, current, invert=True, whiteNoise=False):
+def get_tones_and_response(input_directory, subdir, run, fll, temperature, current, invert=True, whiteNoise=False):
     '''Function that will return a dictionary of tones and corresponding ratios
     '''
     # The value of current tells what files go grab so in principle we do NOT need to pass it
     # to other functions since the list we have to work with should only contain the correct currents
     if whiteNoise is False:
-        list_of_files = get_list_of_files(input_directory, subdir, run, temperature, current)
+        list_of_files = get_list_of_files(input_directory, subdir, run, fll, temperature, current)
         frequency_files, data_files = split_files_by_type(list_of_files)
         tones = get_tones(frequency_files)
         response = get_response(data_files, tones)
     if whiteNoise is True:
-        list_of_files = get_list_of_files(input_directory, subdir, run, temperature, current)
+        list_of_files = get_list_of_files(input_directory, subdir, run, fll, temperature, current)
         print('The list of files for current {} is: {}'.format(current, list_of_files))
         tones, response = get_whitenoise_response(list_of_files)
     response = invert_ratio(response, invert=invert)
     return tones, response
 
 
-def get_ratio(input_directory, subdir, run, temperature, sc, normal, whiteNoise=False):
+def get_ratio(input_directory, subdir, run, fll, temperature, sc, normal, whiteNoise=False):
     '''Process steps to return a dictionary comprised of keys that are the tones and values
     that are the complex response at that particular tone
     '''
     # Step 1: Get the SC and normal tones and ratios
-    sc_tones, sc_response = get_tones_and_response(input_directory, subdir, run, temperature, current=sc, whiteNoise=whiteNoise)
-    n_tones, n_response = get_tones_and_response(input_directory, subdir, run, temperature, current=normal, whiteNoise=whiteNoise)
+    sc_tones, sc_response = get_tones_and_response(input_directory, subdir, run, fll, temperature, current=sc, whiteNoise=whiteNoise)
+    n_tones, n_response = get_tones_and_response(input_directory, subdir, run, fll, temperature, current=normal, whiteNoise=whiteNoise)
     if np.any(sc_tones != n_tones):
         print('Warning: SC tones and Normal tones do not agree!')
+        print('sc_tones = {}'.format(sc_tones))
+        print('n_tones = {}'.format(n_tones))
+        print('equality: {}'.format(sc_tones == n_tones))
         raise Exception('SC and Normal tone lists are not the same!')
     if np.any(sc_tones != list(sc_response.keys())):
         print('Warning! Response dictionary keys not the same as tone list!')
@@ -974,11 +1000,12 @@ def get_transfer_function(squid, n_response, results):
     '''
     squid_parameters = squid_info.SQUIDParameters(squid)
     Rfb = squid_parameters.Rfb
+    #Rfb = 100_000  #TODO: delete this after your test!!!!!!!!!!!!!!!!!
     Zbias = squid_parameters.Rbias
     M = squid_parameters.M
     Rsh = squid_parameters.Rsh
     dc_factor = (Rsh * Rfb * M)/Zbias
-    Rn, Rl, L = results
+    Rn, Rl, L, Lsc, Csc = results
     # zcirc_normal = Rn + Rl + (2 * 1j * np.pi) * L * np.fromiter(n_response.keys(), dtype=float)
     # Keeping in mind n_response is a dictionary with keys = tones and values = complex response
     # we compute g to be a similar thingsa
@@ -989,7 +1016,7 @@ def get_transfer_function(squid, n_response, results):
     return g
 
 
-def compute_transfer_function(input_directory, output_directory, subdir, run, squid, normalR, loadR, temperature, sc, normal, whiteNoise=False):
+def compute_transfer_function(input_directory, output_directory, subdir, run, fll, squid, normalR, loadR, temperature, sc, normal, whiteNoise=False):
     '''Function to handle computation and diagnostic plots related
     to the transfer function.
     Outputs:
@@ -1000,18 +1027,21 @@ def compute_transfer_function(input_directory, output_directory, subdir, run, sq
     These outputs are fit results
     '''
     # Step 1: Get the ratio dictionary
-    ratio, n_response = get_ratio(input_directory, subdir, run, temperature, sc, normal, whiteNoise=whiteNoise)
+    ratio, n_response = get_ratio(input_directory, subdir, run, fll, temperature, sc, normal, whiteNoise=whiteNoise)
     # Step 2: Diagnostic plots of the ratio?
     print('Generating diagnostic plots in {}'.format(output_directory))
     generate_diagnostic_plots(output_directory, ratio, mode='ratio')
-    # Step 3: Fit to a model [rn, rl, lin]
-    fixedArgs = {'Rn': normalR, 'Rl': loadR}
+    # Step 3: Fit to a model [rn, rl, lin, lsc, csc]
+    fixedArgs = {'Rn': normalR, 'Lsc': 0, 'Csc': 0}
+    p0 = (10e-3, 1e-9, 1e-9, 1e-12)
+    lbounds = (0, 0, 0, 0)
+    ubounds = (np.inf, np.inf, np.inf, np.inf)
     print('Attempting to fit ratio model')
-    fitargs = {'p0': [10e-3, 0.1e-8], 'method': 'lm'}
-    # fitargs = {'p0': (10e-3, 0.1e-8), 'bounds': ((0, 0), (np.inf, np.inf)), 'method': 'trf'}
+    fitargs = {'p0': [10e-3, 0.1e-8, 0.1e-8, 1e-12], 'method': 'lm'}
+    fitargs = {'p0': p0, 'bounds': (lbounds, ubounds), 'method': 'trf'}
     results, perr = fit_ratio_model(ratio, ratio_model_fixed, fixedArgs, **fitargs)
-    # Join results and fixed values into set order: Rn, Rl, Lin
-    fixedResults = [fixedArgs.get('Rn'), fixedArgs.get('Rl'), fixedArgs.get('Lin')]
+    # Join results and fixed values into set order: Rn, Rl, Lin, Lsc
+    fixedResults = [fixedArgs.get('Rn'), fixedArgs.get('Rl'), fixedArgs.get('Lin'), fixedArgs.get('Lsc'), fixedArgs.get('Csc')]
     results, perr = list(results), list(perr)
     results = [results.pop(0) if item is None else item for item in fixedResults]
     perr = [perr.pop(0) if item is None else 0 for item in fixedResults]
@@ -1021,7 +1051,7 @@ def compute_transfer_function(input_directory, output_directory, subdir, run, sq
     # Step 5: Now we can create G(w)
     g = get_transfer_function(squid, n_response, results)
     generate_diagnostic_plots(output_directory, g, mode='transfer')
-    Rn, Rl, L = results
+    Rn, Rl, L, Lsc, Csc = results
     return (g, Rn, Rl, L)
 
 
@@ -1067,10 +1097,10 @@ def get_ztes(squid, bias_response, G, Rl, Lin):
     return ztes
 
 
-def compute_z(input_directory, output_directory, subdir, run, squid, temperature, bias, G, Rn, Rl, Lin, fitModel=False, whiteNoise=False):
+def compute_z(input_directory, output_directory, subdir, run, fll, squid, temperature, bias, G, Rn, Rl, Lin, fitModel=False, whiteNoise=False):
     '''Function to compute the complex impedance given information about the transfer function'''
     # Step 1: Get the tones and response for the particular bias current
-    tones, response = get_tones_and_response(input_directory, subdir, run, temperature, current=bias, whiteNoise=whiteNoise)
+    tones, response = get_tones_and_response(input_directory, subdir, run, fll, temperature, current=bias, whiteNoise=whiteNoise)
     # Step 2: Compute the complex TES impedance
     ztes = get_ztes(squid, response, G, Rl, Lin)
     # For fun get zcirc
@@ -1183,7 +1213,7 @@ def compute_z(input_directory, output_directory, subdir, run, squid, temperature
     return ztes
 
 
-def process_complex_impedance(indir, outdir, subdir, only_transfer, run, squid, normalR, loadR, temperature, sc, normal, biases, fitModel=False, whiteNoise=False):
+def process_complex_impedance(indir, outdir, subdir, fll, only_transfer, run, squid, normalR, loadR, temperature, sc, normal, biases, fitModel=False, whiteNoise=False):
     '''Main function that implements complex impedance computations'''
 
     # Step 1: Generate the transfer function if we don't have it already
@@ -1191,13 +1221,13 @@ def process_complex_impedance(indir, outdir, subdir, only_transfer, run, squid, 
     # an infinite number of solutions exist of the form a*(Rn + Rl + 2jpifL) / a*(Rl + 2jpifL)
     # (i.e., a*Rn, a*Rl, a*Lin). We *MUST* provide at least 1 of these as fixed values to get an
     # appropriate scaling factor.
-    G, Rn, Rl, Lin = compute_transfer_function(indir, outdir, subdir, run, squid, normalR, loadR, temperature, sc, normal, whiteNoise=whiteNoise)
+    G, Rn, Rl, Lin = compute_transfer_function(indir, outdir, subdir, run, fll, squid, normalR, loadR, temperature, sc, normal, whiteNoise=whiteNoise)
 
     # Step 2: Compute the complex impedance
     ztes = {}
     if not only_transfer:
         for bias in biases:
-            ztes[bias] = compute_z(indir, outdir, subdir, run, squid, temperature, bias, G, Rn, Rl, Lin, fitModel=fitModel, whiteNoise=whiteNoise)
+            ztes[bias] = compute_z(indir, outdir, subdir, run, fll, squid, temperature, bias, G, Rn, Rl, Lin, fitModel=fitModel, whiteNoise=whiteNoise)
         # Make plot with all ztes curves
         generate_multi_plot(outdir, temperature, biases, ztes)
     return ztes
@@ -1211,6 +1241,7 @@ def get_args():
     parser.add_argument('-o', '--outputDirectory',
                         help='Specify the full path of the output directory to put plots and root files.\
                         If it is not a full path, a plots and root subdirectory will be added in the input directory')
+    parser.add_argument('-F', '--FLL', help='Specify the FLL number and channel, e.g., FLL2Ch1')
     parser.add_argument('-d', '--subDirectory',
                         help='Specify a subdirectory name inside the inputDirectory/run$/T$mK/ root directory to get files from')
     parser.add_argument('-f', '--fitModel', action='store_true', help='Indicates whether to perform the fit of the TES models or not')
@@ -1232,7 +1263,7 @@ def get_args():
                         help='Specify the bias mode bias current in uA')
     parser.add_argument('-w', '--whiteNoise', action='store_true', help='Read in white noise file instead of sweep')
     args = parser.parse_args()
-    plotDir = '{}/run{}/T{}mK/{}'.format(args.inputDirectory, args.run, args.temperature, args.subDirectory)
+    plotDir = '{}/run{}/{}/T{}mK/{}'.format(args.inputDirectory, args.run, args.FLL, args.temperature, args.subDirectory)
     args.outputDirectory = args.outputDirectory if args.outputDirectory else plotDir
     return args
 
@@ -1240,6 +1271,6 @@ def get_args():
 if __name__ == '__main__':
     ARGS = get_args()
     print('The bias argument is: {}'.format(ARGS))
-    ztes = process_complex_impedance(ARGS.inputDirectory, ARGS.outputDirectory, ARGS.subDirectory, ARGS.onlyTransfer,
+    ztes = process_complex_impedance(ARGS.inputDirectory, ARGS.outputDirectory, ARGS.subDirectory, ARGS.FLL, ARGS.onlyTransfer,
                                      ARGS.run, ARGS.squid, ARGS.normalResistance, ARGS.loadResistance,
                                      ARGS.temperature, ARGS.sc, ARGS.normal, ARGS.bias, ARGS.fitModel, ARGS.whiteNoise)

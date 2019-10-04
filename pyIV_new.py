@@ -528,7 +528,7 @@ def iv_main(argin):
         iv_dictionary = get_tes_values(iv_dictionary, argin.squid)
         # Save actual data
         output_file = argin.outputPath + '/root/iv_data.root'
-        save_iv_to_root(output_file, iv_dictionary, branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'iTES', 'rTES', 'vTES', 'pTES'])
+        # save_iv_to_root(output_file, iv_dictionary, branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'iTES', 'rTES', 'vTES', 'pTES'])
     if argin.readTESROOT is True:
         iv_dictionary = read_from_ivroot(argin.outputPath + '/root/iv_data.root', branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'iTES', 'rTES', 'vTES', 'pTES'])
         # Things will be dicts here so we should convert to arrays
@@ -543,7 +543,7 @@ def iv_main(argin):
         make_tes_plots(output_path=argin.outputPath, data_channel=argin.dataChannel, squid=argin.squid, number_of_windows=argin.numberOfWindows, iv_dictionary=iv_dictionary, individual=True)
     # Step 6: Compute interesting curves
     tes_char.get_resistance_temperature_curves_new(argin.outputPath, argin.dataChannel, argin.numberOfWindows, iv_dictionary)
-
+    tes_char.get_power_temperature_curves(argin.outputPath, argin.dataChannel, argin.numberOfWindows, iv_dictionary)
     ######### old stuff below here ##########
 #    iv_curves = {}
 #    # First step is to get basic IV data into a dictionary format. Either read raw files or load from a saved root file
