@@ -451,22 +451,26 @@ def generate_multi_plot(outdir, temperature, biases, ztes):
     # Overlay multiple IV plots
     # Hack in this for now
     init_dict = {}
-    init_dict['55'] = {'0.0': {'I0': 0, 'R0': 0},
-                       '10.0': {'I0': 1.849e-6, 'R0': 0.0663},
-                       '12.0': {'I0': 1.256e-6, 'R0': 0.1507},
-                       '13.0': {'I0': 1.12e-6, 'R0': 0.1936},
-                       '14.0': {'I0': 1.001e-6, 'R0': 0.2381},
-                       '15.0': {'I0': 0.930e-6, 'R0': 0.2856},
-                       '18.0': {'I0': 0.7553e-6, 'R0': 0.4406},
-                       '20.0': {'I0': 0.704e-6, 'R0': 0.5402},
-                       '100.0': {'I0': 2.691e-6, 'R0': 0.7125}
-                       }
-    Tc0 = '55'
+    init_dict['53.7'] = {'0.0': {'I0': 0, 'R0': 0},
+                           '118.0': {'I0': 1.62e-5, 'R0': 100.8e-3},
+                           '120.0': {'I0': 1.56e-5, 'R0': 100.8e-3},
+                           '124.7': {'I0': 1.45e-5, 'R0': 126.7e-3},
+                           # '127.0': {'I0': 1.411e-5, 'R0': 134.2e-3},
+                           '130.0': {'I0': 1.36e-5, 'R0': 146.5e-3},
+                           '140.0': {'I0': 1.24e-5, 'R0': 183.0e-3},
+                           '150.0': {'I0': 1.14e-5, 'R0': 218.9e-3},
+                           '190.0': {'I0': 9.27e-6, 'R0': 367e-3},
+                           '210.0': {'I0': 8.71e-6, 'R0': 444.8e-3},
+                           '500.0': {'I0': 38.2e-6, 'R0': 503.2e-3}
+                           }
+    Tc0 = '53.7'
     fig = plt.figure(figsize=(16, 16))
     axes = fig.add_subplot(111)
     xscale = 1
     yscale = 1
     for bias, z in ztes.items():
+        if bias == '127.0':
+            continue
         tones = np.fromiter(z.keys(), dtype='float')
         z_array = np.fromiter(z.values(), dtype='c16')
         params = {'marker': 'o', 'markersize': 5, 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': None}
@@ -477,7 +481,7 @@ def generate_multi_plot(outdir, temperature, biases, ztes):
         axes = ivp.generic_fitplot_with_errors(axes=axes, x=z_array.real, y=z_array.imag, params=params, axes_options=axes_options, xscale=xscale, yscale=yscale)
     # Add a legend?
     print('biases are: {}'.format(biases))
-    axes.legend([r'$R/R_{N}$' + ' = {:1.2f}'.format(init_dict[Tc0][str(bias)]['R0']/init_dict[Tc0][str(100.0)]['R0']) for bias in biases], markerscale=5, fontsize=24)
+    axes.legend([r'$R/R_{N}$' + ' = {:1.2f}'.format(init_dict[Tc0][str(bias)]['R0']/init_dict[Tc0][str(500.0)]['R0']) for bias in biases], markerscale=5, fontsize=24)
     axes.set_ylim((-1, 0.25))
     axes.set_xlim((-1, 1))
     axes.set_aspect('equal', 'datalim')
@@ -490,6 +494,8 @@ def generate_multi_plot(outdir, temperature, biases, ztes):
     xscale = 1
     yscale = 1
     for bias, z in ztes.items():
+        if bias == '127.0':
+            continue
         tones = np.fromiter(z.keys(), dtype='float')
         z_array = np.fromiter(z.values(), dtype='c16')
         params = {'marker': 'o', 'markersize': 5, 'markeredgewidth': 0, 'linestyle': 'None', 'xerr': None, 'yerr': None}
@@ -501,7 +507,7 @@ def generate_multi_plot(outdir, temperature, biases, ztes):
         axes = ivp.generic_fitplot_with_errors(axes=axes, x=tones, y=z_array.imag, params=params, axes_options=axes_options, xscale=xscale, yscale=yscale)
     # Add a legend?
     print('biases are: {}'.format(biases))
-    axes.legend([r'$R/R_{N}$' + ' = {:1.2f}'.format(init_dict[Tc0][str(bias)]['R0']/init_dict[Tc0][str(100.0)]['R0']) for bias in biases], markerscale=5, fontsize=18)
+    axes.legend([r'$R/R_{N}$' + ' = {:1.2f}'.format(init_dict[Tc0][str(bias)]['R0']/init_dict[Tc0][str(500.0)]['R0']) for bias in biases], markerscale=5, fontsize=18)
     axes.set_ylim((-1, 0.25))
     file_name = outdir + '/' + 'all_plots_imag_zTES_T{}mK'.format(temperature)
     ivp.save_plot(fig, axes, file_name, dpi=200)
@@ -760,7 +766,7 @@ def get_whitenoise_data_pandas(data_files):
         cols = data.columns.tolist()
         df = data[cols[0]][1] - data[cols[0]][0]
         # First order try get all integer data below 30k?
-        upper_limit = 200e3  # kHz
+        upper_limit = 30e3  # kHz
         if df < 1:
             steps = int(1/df)
         else:
@@ -1115,15 +1121,17 @@ def compute_z(input_directory, output_directory, subdir, run, fll, squid, temper
         # fitargs = {'p0': (24e-12, 10, 1, 20e-12), 'method': 'lm'}
         # (a, b, C)
         init_dict = {}
-        init_dict['55'] = {'0.0': {'I0': 0, 'R0': 0},
-                           '10.0': {'I0': 1.849e-6, 'R0': 0.0663},
-                           '12.0': {'I0': 1.256e-6, 'R0': 0.1507},
-                           '13.0': {'I0': 1.12e-6, 'R0': 0.1936},
-                           '14.0': {'I0': 1.001e-6, 'R0': 0.2381},
-                           '15.0': {'I0': 0.930e-6, 'R0': 0.2856},
-                           '18.0': {'I0': 0.7553e-6, 'R0': 0.4406},
-                           '20.0': {'I0': 0.704e-6, 'R0': 0.5402},
-                           '100.0': {'I0': 2.691e-6, 'R0': 0.7125}
+        init_dict['53.7'] = {'0.0': {'I0': 0, 'R0': 0},
+                           '118.0': {'I0': 1.62e-5, 'R0': 100.8e-3},
+                           '120.0': {'I0': 1.56e-5, 'R0': 100.8e-3},
+                           '124.7': {'I0': 1.45e-5, 'R0': 126.7e-3},
+                           '127.0': {'I0': 1.411e-5, 'R0': 134.2e-3},
+                           '130.0': {'I0': 1.36e-5, 'R0': 146.5e-3},
+                           '140.0': {'I0': 1.24e-5, 'R0': 183.0e-3},
+                           '150.0': {'I0': 1.14e-5, 'R0': 218.9e-3},
+                           '190.0': {'I0': 9.27e-6, 'R0': 367e-3},
+                           '210.0': {'I0': 8.71e-6, 'R0': 444.8e-3},
+                           '500.0': {'I0': 38.2e-6, 'R0': 503.2e-3}
                            }
         init_dict['61.2'] = {'0.0': {'I0': 0.0, 'R0': 0.0},
                              '13.4': {'I0': 0.8777e-6, 'R0': 0.1870},
@@ -1134,13 +1142,13 @@ def compute_z(input_directory, output_directory, subdir, run, fll, squid, temper
                              '16.55': {'I0': 0.4991e-6, 'R0': 0.5420},
                              '200.0': {'I0': 5.309e-6, 'R0': 0.638}
                              }
-        Tc0 = '55'  # in mK
-        T0 = {'55': 54.3e-3, '61.2': 61.2e-3}
-        g0 = {'55': 515.37e-9*5*np.power(T0[Tc0], 4), '61.2': 362.09373e-9*5*np.power(T0[Tc0], 4)}
-        g0 = {'55': 1388.29e-9*5*np.power(T0[Tc0], 4), '61.2': 362.09373e-9*5*np.power(T0[Tc0], 4)}
-        p0 = [100, 0.5, 20e-15]
+        Tc0 = '53.7'  # in mK
+        T0 = {'53.7': 53.7e-3, '61.2': 61.2e-3}
+        g0 = {'53.7': 6217.45e-9*4.12*np.power(T0[Tc0], 3.12), '61.2': 362.09373e-9*5*np.power(T0[Tc0], 4)}
+        # [alpha, beta, C]
+        p0 = [100, 0.5, 20e-13]
         lbounds = (10, 0, 1e-15)
-        ubounds = (500, 2, 50e-15)
+        ubounds = (500, 2, 100e-12)
         fixedArgs = {'I0': init_dict[Tc0][str(bias)]['I0'], 'R0': init_dict[Tc0][str(bias)]['R0'], 'T0': T0[Tc0], 'g': g0[Tc0]}
         # fixedArgs = {'I0': 0.946e-6, 'R0': 0.2892, 'T0': 55e-3, 'g': 25.372e-12}  # Ib = 15
         fitargs = {'p0': p0, 'bounds': (lbounds, ubounds), 'method': 'trf', 'jac': '3-point', 'xtol': 1e-15, 'ftol': 1e-15, 'loss': 'soft_l1', 'tr_solver': 'exact', 'f_scale': 1, 'x_scale': 'jac', 'max_nfev': 10000, 'verbose': 2}

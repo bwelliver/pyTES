@@ -90,9 +90,9 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
     # Rtes = R(i,T) so we are really asking for R(i=constant, T).
     iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
     fixed_name = 'iTES'
-    fixed_value = 0.2e-6
-    delta_value = 0.1e-6
-    r_normal = 0.550
+    fixed_value = 0.1e-6
+    delta_value = 0.05e-6
+    r_normal = 0.690
 
     norm_to_sc = {'T': np.empty(0), 'R': np.empty(0), 'rmsR': np.empty(0)}
     sc_to_norm = {'T': np.empty(0), 'R': np.empty(0), 'rmsR': np.empty(0)}
@@ -115,53 +115,53 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
         # ultimately we will need to do data[cut_norm_to_sc][fixed_cut[cut_norm_to_sc]]
         # This means fixed_cut[cut_norm_to_sc] is cut_fixed_norm_to_sc now
         ### Test plot for iBias vs time
-        debug = False
-        if debug and float(temperature) < 31:
-            timestamps0 = iv_data['timestamps'][0]
-            timestamps = iv_data['timestamps'] - timestamps0
-            sample_width = iv_data['sampling_width'][0]
-            iBias = iv_data['iBias']
-            iTES = iv_data['iTES']
-            rTES = iv_data['rTES']
-            vOut = iv_data['vOut']
-            sample_times = np.tile([i*sample_width for i in range(iBias.shape[1])], [timestamps.size, 1])
-            full_timestamps = sample_times + timestamps[:, None]
-            ts = full_timestamps[cut_norm_to_sc].flatten()
-            iBias = iBias[cut_norm_to_sc].flatten()
-            rTES = rTES[cut_norm_to_sc].flatten()
-            iTES = iTES[cut_norm_to_sc].flatten()
-            fixed_cut = np.logical_and(iv_data[fixed_name][cut_norm_to_sc] > fixed_value - delta_value, iv_data[fixed_name][cut_norm_to_sc] < fixed_value + delta_value)
-            fixed_cut = fixed_cut.flatten()
-            fixed_cut = np.logical_and(fixed_cut, ts < 2e2)
-            print('The shape of timestamps is: {} and the shape of iBias is: {}'.format(ts.shape, iBias.shape))
-            fig = plt.figure(figsize=(16, 12))
-            axes = fig.add_subplot(111)
-            xscale = 1e6
-            yscale = 1e3
-            params = {'marker': 'o', 'markersize': 2, 'markeredgecolor': 'black', 'markerfacecolor': 'black',
-                      'markeredgewidth': 0, 'linestyle': 'None',
-                      'xerr': None, 'yerr': None
-                      }
-            axes_options = {'xlabel': 'Time', 'ylabel': 'Bias Current [uA]',
-                            'title': 'Channel {} Output Voltage vs t for temperatures = {} mK'.format(data_channel, temperature)}
-
-            axes = ivplt.generic_fitplot_with_errors(axes=axes, x=ts[fixed_cut], y=rTES[fixed_cut], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
-
-            fixed_cut = np.logical_and(iv_data[fixed_name][cut_sc_to_norm] > fixed_value - delta_value, iv_data[fixed_name][cut_sc_to_norm] < fixed_value + delta_value)
-            fixed_cut = fixed_cut.flatten()
-            ts = full_timestamps[cut_sc_to_norm].flatten()
-            iBias = iv_data['iBias'][cut_sc_to_norm].flatten()
-            rTES = iv_data['rTES'][cut_sc_to_norm].flatten()
-            iTES = iv_data['iTES'][cut_sc_to_norm].flatten()
-            fixed_cut = np.logical_and(fixed_cut, ts < 2e2)
-            params = {'marker': 'o', 'markersize': 2, 'markeredgecolor': 'red', 'markerfacecolor': 'red',
-                      'markeredgewidth': 0, 'linestyle': 'None',
-                      'xerr': None, 'yerr': None
-                      }
-            ivplt.generic_fitplot_with_errors(axes=axes, x=ts[fixed_cut], y=rTES[fixed_cut], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
-            file_name = output_path + '/' + 'vOut_vs_t_ch_' + str(data_channel) + '_' + temperature + 'mK'
-            ivplt.save_plot(fig, axes, file_name)
-            raise Exception('Debug halt')
+#        debug = False
+#        if debug and float(temperature) < 31:
+#            timestamps0 = iv_data['timestamps'][0]
+#            timestamps = iv_data['timestamps'] - timestamps0
+#            sample_width = iv_data['sampling_width'][0]
+#            iBias = iv_data['iBias']
+#            iTES = iv_data['iTES']
+#            rTES = iv_data['rTES']
+#            vOut = iv_data['vOut']
+#            sample_times = np.tile([i*sample_width for i in range(iBias.shape[1])], [timestamps.size, 1])
+#            full_timestamps = sample_times + timestamps[:, None]
+#            ts = full_timestamps[cut_norm_to_sc].flatten()
+#            iBias = iBias[cut_norm_to_sc].flatten()
+#            rTES = rTES[cut_norm_to_sc].flatten()
+#            iTES = iTES[cut_norm_to_sc].flatten()
+#            fixed_cut = np.logical_and(iv_data[fixed_name][cut_norm_to_sc] > fixed_value - delta_value, iv_data[fixed_name][cut_norm_to_sc] < fixed_value + delta_value)
+#            fixed_cut = fixed_cut.flatten()
+#            fixed_cut = np.logical_and(fixed_cut, ts < 2e2)
+#            print('The shape of timestamps is: {} and the shape of iBias is: {}'.format(ts.shape, iBias.shape))
+#            fig = plt.figure(figsize=(16, 12))
+#            axes = fig.add_subplot(111)
+#            xscale = 1e6
+#            yscale = 1e3
+#            params = {'marker': 'o', 'markersize': 2, 'markeredgecolor': 'black', 'markerfacecolor': 'black',
+#                      'markeredgewidth': 0, 'linestyle': 'None',
+#                      'xerr': None, 'yerr': None
+#                      }
+#            axes_options = {'xlabel': 'Time', 'ylabel': 'Bias Current [uA]',
+#                            'title': 'Channel {} Output Voltage vs t for temperatures = {} mK'.format(data_channel, temperature)}
+#
+#            axes = ivplt.generic_fitplot_with_errors(axes=axes, x=ts[fixed_cut], y=rTES[fixed_cut], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
+#
+#            fixed_cut = np.logical_and(iv_data[fixed_name][cut_sc_to_norm] > fixed_value - delta_value, iv_data[fixed_name][cut_sc_to_norm] < fixed_value + delta_value)
+#            fixed_cut = fixed_cut.flatten()
+#            ts = full_timestamps[cut_sc_to_norm].flatten()
+#            iBias = iv_data['iBias'][cut_sc_to_norm].flatten()
+#            rTES = iv_data['rTES'][cut_sc_to_norm].flatten()
+#            iTES = iv_data['iTES'][cut_sc_to_norm].flatten()
+#            fixed_cut = np.logical_and(fixed_cut, ts < 2e2)
+#            params = {'marker': 'o', 'markersize': 2, 'markeredgecolor': 'red', 'markerfacecolor': 'red',
+#                      'markeredgewidth': 0, 'linestyle': 'None',
+#                      'xerr': None, 'yerr': None
+#                      }
+#            ivplt.generic_fitplot_with_errors(axes=axes, x=ts[fixed_cut], y=rTES[fixed_cut], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
+#            file_name = output_path + '/' + 'vOut_vs_t_ch_' + str(data_channel) + '_' + temperature + 'mK'
+#            ivplt.save_plot(fig, axes, file_name)
+#            raise Exception('Debug halt')
         cut_fixed_norm_to_sc = np.logical_and(iv_data[fixed_name][cut_norm_to_sc] > fixed_value - delta_value, iv_data[fixed_name][cut_norm_to_sc] < fixed_value + delta_value)
         cut_fixed_norm_to_sc = np.logical_and(cut_fixed_norm_to_sc, iv_data['rTES'][cut_norm_to_sc] > -50e-3)
         cut_fixed_norm_to_sc = cut_fixed_norm_to_sc.flatten()
@@ -207,18 +207,19 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
     perr = np.sqrt(np.diag(pcov))
     print('Descending (N -> SC): Rn = {} mOhm, r_p = {} mOhm, Tc = {} mK, Tw = {} mK'.format(*[i*1e3 for i in result]))
     fit_result.right.set_values(result, perr)
+    tc = result[2]
     # Make output plot
     ivplt.make_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, fixed_value, norm_to_sc, sc_to_norm, model_func, fit_result)
-    return True
+    return tc
 
 
-def get_power_temperature_curves(output_path, data_channel, number_of_windows, iv_dictionary):
+def get_power_temperature_curves(output_path, data_channel, number_of_windows, iv_dictionary, tc=None):
     '''Generate a power vs temperature curve for a TES'''
     # Need to select power in the biased region, i.e. where P(R) ~ constant
     # Try something at 0.5*Rn
     iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
-    rN = 0.220
-    deltaR = 50e-3
+    rN = 200e-3
+    deltaR = 30e-3
     temperatures = np.empty(0)
     power = np.empty(0)
     power_rms = np.empty(0)
@@ -246,17 +247,24 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     # print('The main T vector is: {}'.format(temperatures))
     # print('The iTES vector is: {}'.format(iTES))
     # TODO: Make these input values?
-    cut_temperature = np.logical_and(temperatures > 35e-3, temperatures < 53e-3)  # This should be the expected Tc
+    max_temp = tc or 60e-3
+    cut_temperature = np.logical_and(temperatures > 35e-3, temperatures < max_temp)  # This should be the expected Tc
     cut_power = power < 1e-6
     cut_temperature = np.logical_and(cut_temperature, cut_power)
-    # Attempt to fit it to a power function
     # [k, n, Ttes, Pp]
-    lbounds = [100e-9, 1, 28e-3]
-    ubounds = [10e-3, 6, 70e-3]
-    # max_nfev=1e4 if using trf
-    # (k, n, Ttes, Pp)
-    fixedArgs = {'Pp': 0} # Holding P0 as 0 since there is some degeneracy with kTc^n and P0
-    x0 = [1000e-9, 5, 55e-3]
+    if tc is None:
+        print('No Tc was passed, floating Tc')
+        lbounds = [1e-9, 0, 1e-3]
+        ubounds = [1, 10, 250e-3]
+        fixedArgs = {'Pp': 0}
+        x0 = [100e-9, 5, 50e-3]
+    else:
+        print('Tc = {} mK was passed. Fixing to this value'.format(tc))
+        lbounds = [1e-9, 0]
+        ubounds = [1, 10]
+        fixedArgs = {'Pp': 0, 'Ttes': tc}
+        x0 = [100e-9, 5]
+    # Attempt to fit it to a power function
     # fitargs = {'p0': x0, 'method': 'lm', 'maxfev': int(5e4)}
     use_sigmas = True
     if use_sigmas:

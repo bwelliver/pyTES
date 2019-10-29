@@ -342,7 +342,7 @@ def readROOT(inFile, tree, branches, method='single', tobject=None, directory=No
         # For now this is to load a TVector object to a numpy vector
         tObject = tFile.Get(tobject)
         if tObject.ClassName() == 'TVectorT<double>':
-            npData = {tobject: np.asarray(tObject)}
+            npData = {tobject: np.array(tObject)}
     # Destroy chain and other things
     if tTree is not None:
         del getEv

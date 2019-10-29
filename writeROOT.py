@@ -1,5 +1,5 @@
 '''Module to write root files based on an input dictionary that mimics the data structure to be written'''
-
+import time
 import numpy as np
 
 from array import array
@@ -63,8 +63,8 @@ def writeTTree(tdata):
     Incoming tdata is a dictionary whose keys specify the tree names
     The value of a tree is a dictionary whose keys are branch names and values are branch values
     '''
+    TTree = getattr(rt, 'TTree')
     for key, value in tdata.items():
-        TTree = getattr(rt, 'TTree')
         tree = TTree(key, key)
         for subkey, subvalue in value.items():
             if subkey == 'TBranch':
@@ -78,23 +78,20 @@ def writeTBranch(tree, branch_data):
     Incoming branch_data is a dictionary where the key specifies the branch name and the value is the branch value
     If the incoming branch_data[key] is itself an array (either a dict of arrays or numpy.ndarray, 2D) it will be a vector<double> branch.
     '''
+    AddressOf = getattr(rt, 'AddressOf')
+    std = getattr(rt, 'std')
     dloc = {}
     for branchkey in branch_data.keys():
         if isinstance(branch_data[branchkey], dict) or (isinstance(branch_data[branchkey], np.ndarray) and len(branch_data[branchkey].shape) == 2):
-            # v = vec
-            # print('Vector found')
             if isinstance(branch_data[branchkey], dict):
                 nentries = len(branch_data[branchkey])
             else:
                 nentries = branch_data[branchkey].shape[0]
             nsamples = branch_data[branchkey][0].size
-            std = getattr(rt, 'std')
             # We can try to pre-allocate the vector by putting nentries at the end
             dloc[branchkey] = std.vector('double')(nsamples)
-            # dloc[branchkey] = v
             # Caution: We may need to do something else here about the vectors
             # print('The address of the vector is {}'.format(dloc[branchkey]))
-            AddressOf = getattr(rt, 'AddressOf')
             tree.Branch(branchkey, 'std::vector<double>', AddressOf(dloc[branchkey]))
         else:
             nentries = branch_data[branchkey].size
@@ -104,6 +101,7 @@ def writeTBranch(tree, branch_data):
     # In the event the thing we are trying to fill is a vector nentries is supposed to be the number of things in vector, aka vector::size
     # In the event the thing we are trying to fill is not a vector it is the number of entries in the array...should this be so?
     # Ultimately nentries should be the number of distinct 'events' that there are
+    print('There are {} entries to write.'.format(nentries))
     for event in range(nentries):
         for branchkey in branch_data.keys():
             if isinstance(branch_data[branchkey], dict) or (isinstance(branch_data[branchkey], np.ndarray) and len(branch_data[branchkey].shape) == 2):
@@ -156,6 +154,7 @@ def writeROOT(input_file, data):
     # Make the ROOT file first
     TFile = getattr(rt, 'TFile')
     tfile = TFile(input_file, 'RECREATE')
+    # tfile.SetCompressionLevel(0)
     # Now we parse the dictionary. It is a good idea here to separate things by type
     for key, value in data.items():
         if key == 'TDirectoryFile':

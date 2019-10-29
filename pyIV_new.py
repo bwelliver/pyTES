@@ -5,14 +5,12 @@ import argparse
 
 import numpy as np
 import pandas as pan
-from numba import jit
 
 from iv_input_arguments import InputArguments
 import iv_processor
 import tes_parameters
 import iv_plots as ivplt
 import tes_characterization as tes_char
-from ring_buffer import RingBuffer
 import squid_info
 
 import ROOT as rt
@@ -185,15 +183,6 @@ def get_iv_data_from_file(input_path, new_format=False, thermometer='EP'):
     return iv_data
 
 
-def get_pyiv_data(input_path, output_path, new_format=True, number_of_windows=1, thermometer='EP'):
-    '''Function to gather iv data in correct format
-    Returns time values, temperatures, mean waveforms, rms waveforms and the list of times for temperature jumps
-    '''
-    iv_data = get_iv_data_from_file(input_path, new_format=new_format, thermometer=thermometer)
-    formatted_data = format_iv_data(iv_data, output_path, new_format=new_format, number_of_windows=number_of_windows, thermometer=thermometer)
-    return formatted_data
-
-
 def parse_temperature_steps(output_path, time_values, temperatures, pid_log, tz_correction):
     '''Run through the PID log and parse temperature steps
     The PID log has as the first column the timestamp a PID setting STARTS
@@ -250,7 +239,7 @@ def get_temperature_steps(output_path, time_values, temperatures, pid_log, therm
     return timelist
 
 
-def chop_data_by_temperature_steps(iv_data, timelist, thermometer_name, bias_channel, data_channel, thermometer, squid):
+def chop_data_by_temperature_steps(iv_data, timelist, thermometer_name, bias_channel, data_channel, squid):
     '''Chop up waveform data based on temperature steps'''
     squid_parameters = squid_info.SQUIDParameters(squid)
     r_bias = squid_parameters.Rbias
@@ -326,7 +315,7 @@ def get_iv_temperature_data(argin):
     else:
         thermometer_name = 'NT'
     timelist = get_temperature_steps(argin.outputPath, time_values=time_values, temperatures=iv_data[thermometer_name], pid_log=argin.pidLog, thermometer=argin.thermometer, tz_correction=argin.tzOffset)
-    iv_dictionary = chop_data_by_temperature_steps(iv_data, timelist, thermometer_name, argin.biasChannel, argin.dataChannel, thermometer_name, argin.squid)
+    iv_dictionary = chop_data_by_temperature_steps(iv_data, timelist, thermometer_name, argin.biasChannel, argin.dataChannel, argin.squid)
     return iv_dictionary
 
 
@@ -368,7 +357,7 @@ def process_tes_curves(iv_dictionary, number_of_windows=0):
     return iv_dictionary
 
 
-def process_iv_curves(output_path, data_channel, squid, iv_dictionary, number_of_windows=0):
+def process_iv_curves(squid, iv_dictionary, number_of_windows=0):
     '''Processes the IV data to obtain electrical parameters
     The IV curve has 3 regions -- normal, biased, superconducting
     When the temperature becomes warm enough the superconducting
@@ -446,7 +435,7 @@ def get_tes_values(iv_dictionary, squid):
     min_temperature = list(iv_dictionary.keys())[np.argmin([float(temperature) for temperature in iv_dictionary.keys()])]
     r_parasitic = iv_dictionary[min_temperature]['parasitic']
     r_p = r_parasitic.value
-    for temperature, iv_data in iv_dictionary.items():
+    for iv_data in iv_dictionary.values():
         iTES = tes_parameters.compute_iTES(iv_data['vOut'], r_fb, m_ratio)
         rTES = tes_parameters.compute_rTES(iv_data['iBias'], iTES, r_sh, r_p)
         vTES = tes_parameters.compute_vTES(iv_data['iBias'], iTES, r_sh, r_p)
@@ -519,7 +508,7 @@ def iv_main(argin):
         iv_dictionary = read_from_ivroot(argin.outputPath + '/root/iv_data.root', branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width'])
     if argin.readTESROOT is False:
         # Step 3: Process IV data and correct (i,v) offsets, get Rp, and generate plots
-        iv_dictionary = process_iv_curves(argin.outputPath, argin.dataChannel, argin.squid, iv_dictionary, argin.numberOfWindows)
+        iv_dictionary = process_iv_curves(argin.squid, iv_dictionary, argin.numberOfWindows)
         plot_iv_curves(argin.outputPath, argin.dataChannel, argin.numberOfWindows, argin.squid, iv_dictionary)
         # TODO: Save fit and parasitics?
         #output_file = argin.outputPath + '/root/iv_fit_parameters.root'
@@ -527,8 +516,9 @@ def iv_main(argin):
         # Step 4: Using (i,v) compute TES quantities and insert into the iv_dictionary
         iv_dictionary = get_tes_values(iv_dictionary, argin.squid)
         # Save actual data
+        print('Saving ROOT file with TES quantities computed')
         output_file = argin.outputPath + '/root/iv_data.root'
-        # save_iv_to_root(output_file, iv_dictionary, branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'iTES', 'rTES', 'vTES', 'pTES'])
+        save_iv_to_root(output_file, iv_dictionary, branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'iTES', 'rTES', 'vTES', 'pTES'])
     if argin.readTESROOT is True:
         iv_dictionary = read_from_ivroot(argin.outputPath + '/root/iv_data.root', branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'iTES', 'rTES', 'vTES', 'pTES'])
         # Things will be dicts here so we should convert to arrays
@@ -542,39 +532,8 @@ def iv_main(argin):
     if argin.plotTES is True:
         make_tes_plots(output_path=argin.outputPath, data_channel=argin.dataChannel, squid=argin.squid, number_of_windows=argin.numberOfWindows, iv_dictionary=iv_dictionary, individual=True)
     # Step 6: Compute interesting curves
-    tes_char.get_resistance_temperature_curves_new(argin.outputPath, argin.dataChannel, argin.numberOfWindows, iv_dictionary)
-    tes_char.get_power_temperature_curves(argin.outputPath, argin.dataChannel, argin.numberOfWindows, iv_dictionary)
-    ######### old stuff below here ##########
-#    iv_curves = {}
-#    # First step is to get basic IV data into a dictionary format. Either read raw files or load from a saved root file
-#    if argin.readROOT is False and argin.readTESROOT is False:
-#        iv_curves['iv'] = get_iv_data(argin)
-#        # Next try to correct squid jumps
-#        # iv_curves['iv'] = correct_squid_jumps(argin.outputPath, iv_curves['iv'])
-#        iv_curves = compute_extra_quantities(iv_curves)
-#        # Next save the iv_curves
-#        save_iv_to_root(argin.outputPath, iv_curves['iv'])
-#    if argin.readROOT is True and argin.readTESROOT is False:
-#        # If we saved the root file and want to load it do so here
-#        iv_curves['iv'] = read_from_ivroot(argin.outputPath + '/root/iv_data.root', branches=['iBias', 'iBias_rms', 'vOut', 'vOut_rms', 'timestamps'])
-#    # Next we can process the IV curves to get Rn and r_p values. Once we have r_p we can obtain vTES and go onward
-#    if argin.readTESROOT is False:
-#        iv_curves = process_iv_curves(argin.outputPath, argin.dataChannel, argin.squid, iv_curves)
-#        save_iv_to_root(argin.outputPath, iv_curves['iv'])
-#        iv_curves = get_tes_values(iv_curves, argin.squid)
-#        save_iv_to_root(argin.outputPath, iv_curves['iv'])
-#        print('Obtained TES values')
-#    if argin.readTESROOT is True:
-#        iv_curves['iv'] = read_from_ivroot(argin.outputPath + '/root/iv_data.root', branches=['iBias', 'iBias_rms', 'vOut', 'vOut_rms', 'timestamps', 'iTES', 'iTES_rms', 'vTES', 'vTES_rms', 'rTES', 'rTES_rms', 'pTES', 'pTES_rms'])
-#        # Note: We would need to also save or re-generate the fit_parameters dictionary?
-#    # This step onwards assumes iv_dictionary contains TES values
-#    iv_curves = process_tes_curves(iv_curves)
-#    # Make TES Plots
-#    if argin.plotTES is True:
-#        make_tes_plots(output_path=argin.outputPath,  data_channel=argin.dataChannel, squid=argin.squid, iv_dictionary=iv_curves['iv'], fit_dictionary=iv_curves['tes_fit_parameters'], individual=True)
-#    # Next let's do some special processing...R vs T, P vs T type of thing
-#    get_power_temperature_curves(argin.outputPath, argin.dataChannel, iv_curves['iv'])
-#    get_resistance_temperature_curves_new(argin.outputPath, argin.dataChannel, iv_curves['iv'])
+    tc = tes_char.get_resistance_temperature_curves_new(argin.outputPath, argin.dataChannel, argin.numberOfWindows, iv_dictionary)
+    tes_char.get_power_temperature_curves(argin.outputPath, argin.dataChannel, argin.numberOfWindows, iv_dictionary, tc=tc)
     return True
 
 
@@ -617,7 +576,7 @@ def input_parser():
 
 if __name__ == '__main__':
     ARGS = input_parser()
-    argin = InputArguments()
-    argin.set_from_args(ARGS)
-    iv_main(argin)
+    ARGIN = InputArguments()
+    ARGIN.set_from_args(ARGS)
+    iv_main(ARGIN)
     print('done')
