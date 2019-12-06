@@ -90,9 +90,9 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
     # Rtes = R(i,T) so we are really asking for R(i=constant, T).
     iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
     fixed_name = 'iTES'
-    fixed_value = 0.1e-6
-    delta_value = 0.05e-6
-    r_normal = 0.690
+    fixed_value = 0.2e-6
+    delta_value = 0.07e-6
+    r_normal = 0.800
 
     norm_to_sc = {'T': np.empty(0), 'R': np.empty(0), 'rmsR': np.empty(0)}
     sc_to_norm = {'T': np.empty(0), 'R': np.empty(0), 'rmsR': np.empty(0)}
@@ -166,6 +166,11 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
         cut_fixed_norm_to_sc = np.logical_and(cut_fixed_norm_to_sc, iv_data['rTES'][cut_norm_to_sc] > -50e-3)
         cut_fixed_norm_to_sc = cut_fixed_norm_to_sc.flatten()
         if cut_fixed_norm_to_sc.sum() > 0:
+            # Try raw T and R
+            # norm_to_sc['T'] = np.append(norm_to_sc['T'], iv_data['temperatures'].flatten()[cut_fixed_norm_to_sc])
+            # rTES = iv_data['rTES'][cut_norm_to_sc].flatten()
+            # norm_to_sc['R'] = np.append(norm_to_sc['R'], rTES[cut_fixed_norm_to_sc])
+            # norm_to_sc['rmsR'] = np.append(norm_to_sc['rmsR'], np.ones(cut_fixed_norm_to_sc.sum())*np.std(rTES[cut_fixed_norm_to_sc])/np.sqrt(cut_fixed_norm_to_sc.sum()))
             norm_to_sc['T'] = np.append(norm_to_sc['T'], float(temperature)*1e-3)
             rTES = iv_data['rTES'][cut_norm_to_sc].flatten()
             norm_to_sc['R'] = np.append(norm_to_sc['R'], np.mean(rTES[cut_fixed_norm_to_sc]))
@@ -218,8 +223,8 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     # Need to select power in the biased region, i.e. where P(R) ~ constant
     # Try something at 0.5*Rn
     iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
-    rN = 200e-3
-    deltaR = 30e-3
+    rN = 220e-3
+    deltaR = 40e-3
     temperatures = np.empty(0)
     power = np.empty(0)
     power_rms = np.empty(0)

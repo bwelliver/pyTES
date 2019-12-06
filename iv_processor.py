@@ -27,7 +27,81 @@ def convert_dict_to_ndarray(data_dictionary):
     ndarray = np.empty((n_events, sz_array))
     for event, sample in data_dictionary.items():
         ndarray[event] = sample
-    return ndarray
+    return ndarray, sz_array
+
+
+def vout_ibias_plane_resistance(fit_parameters, squid, r_p, r_p_rms):
+    '''Function to convert fit parameters to resistance values
+    for data in the Vout - iBias plane
+    '''
+    squid_parameters = squid_info.SQUIDParameters(squid)
+    r_sh = squid_parameters.Rsh
+    m_ratio = squid_parameters.M
+    r_fb = squid_parameters.Rfb
+    # We fit something of the form vOut = a*iBias + b
+    r_sc = r_sh * ((m_ratio*r_fb)/fit_parameters.sc.result[0] - 1)
+    if r_p is None:
+        r_p = r_sc
+    else:
+        r_sc = r_sc - r_p
+    r_sc_rms = np.abs((-1*m_ratio*r_fb*r_sh)/pow2(fit_parameters.sc.result[0]) * fit_parameters.sc.error[0])
+    if r_p_rms is None:
+        r_p_rms = r_sc_rms
+    else:
+        r_sc_rms = npsqrt(pow2(r_sc_rms) + pow2(r_p_rms))
+    if fit_parameters.left.result is None:
+        r_left, r_left_rms = None, None
+    else:
+        r_left = (m_ratio*r_fb*r_sh)/fit_parameters.left.result[0] - r_sh - r_p
+        r_left_rms = npsqrt(pow2(fit_parameters.left.error[0] * (-1*m_ratio*r_fb*r_sh)/pow2(fit_parameters.left.result[0])) + pow2(-1*r_p_rms))
+    if fit_parameters.right.result is None:
+        r_right, r_right_rms = None, None
+    else:
+        r_right = (m_ratio*r_fb*r_sh)/fit_parameters.right.result[0] - r_sh - r_p
+        r_right_rms = npsqrt(pow2(fit_parameters.right.error[0] * (-1*m_ratio*r_fb*r_sh)/pow2(fit_parameters.right.result[0])) + pow2(-1*r_p_rms))
+    resistance = iv_resistance.TESResistance()
+    resistance.parasitic.set_values(r_p, r_p_rms)
+    resistance.left.set_values(r_left, r_left_rms)
+    resistance.right.set_values(r_right, r_right_rms)
+    resistance.sc.set_values(r_sc, r_sc_rms)
+    return resistance
+
+
+def ites_vtes_plane_resistance(fit_parameters, r_p, r_p_rms):
+    '''Function to convert fit parameters to resistance values
+    for data in the iTES - vTES plane
+    '''
+    # Here we fit something of the form iTES = a*vTES + b
+    # Fundamentally iTES = vTES/rTES ...
+    print('The type of fit_parameters is: {}'.format(type(fit_parameters)))
+    print('The fit parameters is: {}'.format(fit_parameters))
+    print('The dict object is: {}'.format(vars(fit_parameters)))
+    r_sc = 1/fit_parameters.sc.result[0]
+    if r_p is None:
+        r_p = r_sc
+    else:
+        r_sc = r_sc - r_p
+    r_sc_rms = np.abs((-1*fit_parameters.sc.error[0])/pow2(fit_parameters.sc.result[0]))
+    if r_p_rms is None:
+        r_p_rms = r_sc_rms
+    else:
+        r_sc_rms = npsqrt(pow2(r_sc_rms) + pow2(r_p_rms))
+    if fit_parameters.left.result is None:
+        r_left, r_left_rms = None, None
+    else:
+        r_left = 1/fit_parameters.left.result[0]
+        r_left_rms = np.abs((-1*fit_parameters.left.error[0])/pow2(fit_parameters.left.result[0]))
+    if fit_parameters.right.result is None:
+        r_right, r_right_rms = None, None
+    else:
+        r_right = 1/fit_parameters.right.result[0]
+        r_right_rms = np.abs((-1*fit_parameters.right.error[0])/pow2(fit_parameters.right.result[0]))
+    resistance = iv_resistance.TESResistance()
+    resistance.parasitic.set_values(r_p, r_p_rms)
+    resistance.left.set_values(r_left, r_left_rms)
+    resistance.right.set_values(r_right, r_right_rms)
+    resistance.sc.set_values(r_sc, r_sc_rms)
+    return resistance
 
 
 def convert_fit_to_resistance(fit_parameters, squid, fit_type='iv', r_p=None, r_p_rms=None):
@@ -40,65 +114,14 @@ def convert_fit_to_resistance(fit_parameters, squid, fit_type='iv', r_p=None, r_
     and assign the resulting value to both properties.
 
     '''
-    squid_parameters = squid_info.SQUIDParameters(squid)
-    r_sh = squid_parameters.Rsh
-    m_ratio = squid_parameters.M
-    r_fb = squid_parameters.Rfb
-
-    resistance = iv_resistance.TESResistance()
     # The interpretation of the fit parameters depends on what plane we are in
     if fit_type == 'iv':
         # We fit something of the form vOut = a*iBias + b
-        r_sc = r_sh * ((m_ratio*r_fb)/fit_parameters.sc.result[0] - 1)
-        if r_p is None:
-            r_p = r_sc
-        else:
-            r_sc = r_sc - r_p
-        r_sc_rms = np.abs((-1*m_ratio*r_fb*r_sh)/pow2(fit_parameters.sc.result[0]) * fit_parameters.sc.error[0])
-        if r_p_rms is None:
-            r_p_rms = r_sc_rms
-        else:
-            r_sc_rms = npsqrt(pow2(r_sc_rms) + pow2(r_p_rms))
-        if fit_parameters.left.result is None:
-            r_left, r_left_rms = None, None
-        else:
-            r_left = (m_ratio*r_fb*r_sh)/fit_parameters.left.result[0] - r_sh - r_p
-            r_left_rms = npsqrt(pow2(fit_parameters.left.error[0] * (-1*m_ratio*r_fb*r_sh)/pow2(fit_parameters.left.result[0])) + pow2(-1*r_p_rms))
-        if fit_parameters.right.result is None:
-            r_right, r_right_rms = None, None
-        else:
-            r_right = (m_ratio*r_fb*r_sh)/fit_parameters.right.result[0] - r_sh - r_p
-            r_right_rms = npsqrt(pow2(fit_parameters.right.error[0] * (-1*m_ratio*r_fb*r_sh)/pow2(fit_parameters.right.result[0])) + pow2(-1*r_p_rms))
+        resistance = vout_ibias_plane_resistance(fit_parameters, squid, r_p, r_p_rms)
     elif fit_type == 'tes':
         # Here we fit something of the form iTES = a*vTES + b
         # Fundamentally iTES = vTES/rTES ...
-        print('The type of fit_parameters is: {}'.format(type(fit_parameters)))
-        print('The fit parameters is: {}'.format(fit_parameters))
-        print('The dict object is: {}'.format(vars(fit_parameters)))
-        r_sc = 1/fit_parameters.sc.result[0]
-        if r_p is None:
-            r_p = r_sc
-        else:
-            r_sc = r_sc - r_p
-        r_sc_rms = np.abs((-1*fit_parameters.sc.error[0])/pow2(fit_parameters.sc.result[0]))
-        if r_p_rms is None:
-            r_p_rms = r_sc_rms
-        else:
-            r_sc_rms = npsqrt(pow2(r_sc_rms) + pow2(r_p_rms))
-        if fit_parameters.left.result is None:
-            r_left, r_left_rms = None, None
-        else:
-            r_left = 1/fit_parameters.left.result[0]
-            r_left_rms = np.abs((-1*fit_parameters.left.error[0])/pow2(fit_parameters.left.result[0]))
-        if fit_parameters.right.result is None:
-            r_right, r_right_rms = None, None
-        else:
-            r_right = 1/fit_parameters.right.result[0]
-            r_right_rms = np.abs((-1*fit_parameters.right.error[0])/pow2(fit_parameters.right.result[0]))
-    resistance.parasitic.set_values(r_p, r_p_rms)
-    resistance.left.set_values(r_left, r_left_rms)
-    resistance.right.set_values(r_right, r_right_rms)
-    resistance.sc.set_values(r_sc, r_sc_rms)
+        resistance = ites_vtes_plane_resistance(fit_parameters, r_p, r_p_rms)
     return resistance
 
 
@@ -177,13 +200,13 @@ def process_waveform(waveform, time_values, sample_length, number_of_windows=1, 
     # The return is a list of the sub-arrays.
     # process_type = 'median'
     print('Processing waveform with {} windows'.format(number_of_windows))
-    print('The len of the waveform is {} and the len of time is {}'.format(len(waveform), time_values.size))
+    print('The shape of the waveform is {} and the len of time is {}'.format(waveform.shape, time_values.size))
     # Step 1: How many actual entries will we wind up with?
     number_of_entries = len(waveform) * number_of_windows
     processed_waveform = {'mean_waveform': np.empty(number_of_entries), 'rms_waveform': np.empty(number_of_entries), 'new_time': np.empty(number_of_entries)}
-    #processed_waveform = {'mean_waveform': [], 'rms_waveform': [], 'new_time': []}
-    if process_type == 'mean' or process_type == 'serr_mean':
+    if process_type in ('mean', 'serr_mean'):
         if isinstance(waveform, dict):
+            processed_waveform = {'mean_waveform': [], 'rms_waveform': [], 'new_time': []}
             for event, samples in waveform.items():
                 event_metadata = {'base_index': samples.size//number_of_windows, 'event_time': time_values[event]}
                 sub_times = [event_metadata['event_time'] + sample_length/(2*number_of_windows) + idx/number_of_windows for idx in range(number_of_windows)]
@@ -254,8 +277,10 @@ def iv_windower(iv_dictionary, number_of_windows, mode='iv'):
             iv_curves[temperature] = {}
             for key in process_keys:
                 st = time.time()
+                print('Size check: The size of sampling width is: {}'.format(iv_data['sampling_width'].size))
                 processed_waveforms = process_waveform(iv_data[key], iv_data['timestamps'], iv_data['sampling_width'][0], number_of_windows=number_of_windows)
                 print('Process function took {} s to run'.format(time.time() - st))
+                print('The shape of the output processed waveform is: {}'.format(processed_waveforms['mean_waveform'].shape))
                 value, value_err, time_values = processed_waveforms.values()
                 iv_curves[temperature][key] = value
                 iv_curves[temperature][key + '_rms'] = value_err
@@ -289,14 +314,14 @@ def iv_windower(iv_dictionary, number_of_windows, mode='iv'):
     return iv_curves
 
 
-def fit_iv_regions(xdata, ydata, sigma_y, plane='iv'):
+def fit_iv_regions(xdata, ydata, sigma_y, number_samples, sampling_width, number_of_windows, slew_rate, plane='iv'):
     '''Fit the iv data regions and extract fit parameters'''
 
     fit_params = iv_results.FitParameters()
     # We need to walk and fit the superconducting region first since there RTES = 0
-    result, perr = fit_sc_branch(xdata, ydata, sigma_y, plane)
+    result, perr = fit_sc_branch(xdata, ydata, sigma_y, number_samples, sampling_width, number_of_windows, slew_rate, plane)
     # Now we can fit the rest
-    left_result, left_perr, right_result, right_perr = fit_normal_branches(xdata, ydata, sigma_y)
+    left_result, left_perr, right_result, right_perr = fit_normal_branches(xdata, ydata, sigma_y, number_samples, sampling_width, number_of_windows, slew_rate)
     fit_params.sc.set_values(result, perr)
     fit_params.left.set_values(left_result, left_perr)
     fit_params.right.set_values(right_result, right_perr)
@@ -304,35 +329,38 @@ def fit_iv_regions(xdata, ydata, sigma_y, plane='iv'):
     return fit_params
 
 
-def get_parasitic_resistances(iv_dictionary, squid):
+def get_parasitic_resistances(iv_dictionary, squid, number_samples, sampling_width, number_of_windows, slew_rate):
     '''Loop through IV data to obtain parasitic series resistance'''
     parasitic_dictionary = {}
     fit_params = iv_results.FitParameters()
     min_temperature = list(iv_dictionary.keys())[np.argmin([float(temperature) for temperature in iv_dictionary.keys()])]
     for temperature, iv_data in sorted(iv_dictionary.items()):
         print('Attempting to fit superconducting branch for temperature: {} mK'.format(temperature))
-        result, perr = fit_sc_branch(iv_data['iBias'], iv_data['vOut'], iv_data['vOut_rms'], plane='iv')
+        result, perr = fit_sc_branch(iv_data['iBias'], iv_data['vOut'], iv_data['vOut_rms'], number_samples, sampling_width, number_of_windows, slew_rate, plane='iv')
         fit_params.sc.set_values(result, perr)
         resistance = convert_fit_to_resistance(fit_params, squid, fit_type='iv')
         parasitic_dictionary[temperature] = resistance.parasitic
     return parasitic_dictionary, min_temperature
 
 
-def fit_sc_branch(xdata, ydata, sigma_y, plane):
+def fit_sc_branch(xdata, ydata, sigma_y, number_samples, sampling_width, number_of_windows, slew_rate, plane):
     '''Walk and fit the superconducting branch
     In the vOut vs iBias plane x = iBias, y = vOut --> dy/dx ~ resistance
     In the iTES vs vTES plane x = vTES, y = iTES --> dy/dx ~ 1/resistance
     '''
     # First generate a sort_key since dy/dx will require us to be sorted
     # Flatten if necessary:
+    print('The shape of xdata is {}'.format(xdata.shape))
     if len(xdata.shape) == 2:
+        print('Flattening is necessary')
+        number_samples = xdata.shape[1]
         xdata = xdata.flatten()
         ydata = ydata.flatten()
         sigma_y = sigma_y.flatten()
     if len(sigma_y.shape) == 1:
         sigma_y = np.zeros(xdata.size) + sigma_y
     sort_key = np.argsort(xdata)
-    (event_left, event_right) = walk_sc(xdata[sort_key], ydata[sort_key], plane=plane)
+    (event_left, event_right) = walk_sc(xdata[sort_key], ydata[sort_key], number_samples, sampling_width, number_of_windows, slew_rate, plane=plane)
     print('SC fit gives event_left={} and event_right={}'.format(event_left, event_right))
     print('Diagnostics: The input into curve_fit is as follows:')
     print('\txdata size: {}, ydata size: {}, xdata NaN: {}, ydata NaN: {}'.format(
@@ -344,7 +372,9 @@ def fit_sc_branch(xdata, ydata, sigma_y, plane):
     yvalues = ydata[sort_key][event_left:event_right]
     ysigma = sigma_y[sort_key][event_left:event_right]
     # print('The values of x, y, and sigmaY are: {} and {} and {}'.format(xvalues, yvalues, ysigma))
-    result, pcov = curve_fit(fitfuncs.lin_sq, xvalues, yvalues, sigma=ysigma, absolute_sigma=True, method='trf')
+    m0 = (yvalues[-1] - yvalues[0])/(xvalues[-1] - xvalues[0])
+    p0 = (m0, 0)
+    result, pcov = curve_fit(fitfuncs.lin_sq, xvalues, yvalues, sigma=ysigma, absolute_sigma=True, p0=p0, method='trf')
     # result, pcov = curve_fit(fitfuncs.lin_sq, xvalues, yvalues, p0=(38, 0), method='trf')
     perr = np.sqrt(np.diag(pcov))
     # In order to properly plot the superconducting branch fit try to find the boundaries of the SC region
@@ -355,33 +385,54 @@ def fit_sc_branch(xdata, ydata, sigma_y, plane):
     return result, perr  # index_y_max, index_y_min)
 
 
-def fit_normal_branches(xdata, ydata, sigma_y):
+def fit_normal_branches(xdata, ydata, sigma_y, number_samples, sampling_width, number_of_windows, slew_rate):
     '''Walk and fit the normal branches in the vOut vs iBias plane.'''
     # Flatten if necessary
     # Flatten if necessary:
     if len(xdata.shape) == 2:
+        print('Flattening is necessary')
+        number_samples = xdata.shape[1]
         xdata = xdata.flatten()
         ydata = ydata.flatten()
         sigma_y = sigma_y.flatten()
     if len(sigma_y.shape) == 1:
         sigma_y = np.zeros(xdata.size) + sigma_y
+    if np.any(sigma_y == 0):
+        print('zeros detected in sigma_y')
+        print('The result of all check is: {}'.format(np.all(sigma_y == 0)))
+        print('Sigma y is: {}'.format(sigma_y))
+        cut = sigma_y == 0
+        xdata = xdata[cut]
+        ydata = ydata[cut]
+        sigma_y = sigma_y[cut]
     # Generate a sort_key since dy/dx must be sorted
     sort_key = np.argsort(xdata)
     # Get the left side normal branch first
-    left_ev = walk_normal(xdata[sort_key], ydata[sort_key], 'left')
+    side = 'left'
+    left_ev = walk_normal(xdata[sort_key], ydata[sort_key], side, number_samples, sampling_width, number_of_windows, slew_rate)
     xvalues = xdata[sort_key][0:left_ev]
     yvalues = ydata[sort_key][0:left_ev]
     ysigmas = sigma_y[sort_key][0:left_ev]
     # cut = ysigmas > 0
-    left_result, pcov = curve_fit(fitfuncs.lin_sq, xvalues, yvalues, sigma=ysigmas, absolute_sigma=True, p0=(2, 0), method='trf')
+    # (m, b)
+    m0 = (yvalues[-1] - yvalues[0])/(xvalues[-1] - xvalues[0])
+    p0 = (m0, 0)
+    print('The left initial point is: {}'.format(p0))
+
+    left_result, pcov = curve_fit(fitfuncs.lin_sq, xvalues, yvalues, sigma=ysigmas, absolute_sigma=True, p0=p0, method='trf')
     left_perr = npsqrt(np.diag(pcov))
     # Now get the other branch
-    right_ev = walk_normal(xdata[sort_key], ydata[sort_key], 'right')
+    side = 'right'
+    right_ev = walk_normal(xdata[sort_key], ydata[sort_key], side, number_samples, sampling_width, number_of_windows, slew_rate)
     xvalues = xdata[sort_key][right_ev:]
     yvalues = ydata[sort_key][right_ev:]
     ysigmas = sigma_y[sort_key][right_ev:]
     # cut = ysigmas > 0
-    right_result, pcov = curve_fit(fitfuncs.lin_sq, xvalues, yvalues, sigma=ysigmas, absolute_sigma=True, p0=(2, 0), method='trf')
+    # (m, b)
+    m0 = (yvalues[-1] - yvalues[0])/(xvalues[-1] - xvalues[0])
+    p0 = (m0, 0)
+    print('The right initial point is: {}'.format(p0))
+    right_result, pcov = curve_fit(fitfuncs.lin_sq, xvalues, yvalues, sigma=ysigmas, absolute_sigma=True, p0=p0, method='trf')
     right_perr = np.sqrt(np.diag(pcov))
     return left_result, left_perr, right_result, right_perr
 
@@ -410,19 +461,21 @@ def get_normal_endpoints(buffer_size, dydx):
     return event
 
 
-def walk_normal(xdata, ydata, side, buffer_size=40):
+def walk_normal(xdata, ydata, side, number_samples, sampling_width, number_of_windows, slew_rate=8, delta_current=50):
     '''Function to walk the normal branches and find the line fit
     To do this we will start at the min or max input current and compute a walking derivative
     If the derivative starts to change then this indicates we entered the biased region and should stop
     NOTE: We assume data is sorted by voltage values
     '''
+
+    print('The shape of xdata in walk_normal is: {}'.format(xdata.shape))
     # Ensure we have the proper sorting of the data
     if not np.all(xdata[:-1] <= xdata[1:]):
         raise pyTESErrors.ArrayIsUnsortedException('Input argument x is unsorted')
-    # Check buffer is at least 5% of the data size
-    if buffer_size < 0.05*xdata.size:
-        buffer_size = int(0.05*xdata.size)
-    buffer_size = 200
+    # We should walk at least 100 uA
+    buffer_size = int((delta_current / slew_rate) / ((number_samples * sampling_width) / number_of_windows))
+    print('For a delta current of {} uA with a ramp slew rate of {} uA/s, the buffer requires {} windowed points'.format(delta_current, slew_rate, buffer_size))
+    print('For reference the shape of the data is: {}'.format(xdata.shape))
     # We should select only the physical data points for examination
     di_bias = np.gradient(xdata, edge_order=2)
     c_normal_to_sc_pos = np.logical_and(xdata > 0, di_bias < 0)
@@ -446,7 +499,7 @@ def walk_normal(xdata, ydata, side, buffer_size=40):
     return event
 
 
-def walk_sc(xdata, ydata, buffer_size=16, plane='iv'):
+def walk_sc(xdata, ydata, number_samples, sampling_width, number_of_windows, slew_rate, delta_current=None, plane='iv'):
     '''Function to walk the superconducting region of the IV curve and get the left and right edges
     Generally when ib = 0 we should be superconducting so we will start there and go up until the bias
     then return to 0 and go down until the bias
@@ -455,10 +508,17 @@ def walk_sc(xdata, ydata, buffer_size=16, plane='iv'):
     # Ensure we have the proper sorting of the data
     if np.all(xdata[:-1] <= xdata[1:]) is False:
         raise pyTESErrors.ArrayIsUnsortedException('Input argument x is unsorted')
+    # TODO: Adjust buffer size to reflect the amount of xData points (different based on the plane we live in)
     # Check buffer size
-    if buffer_size < 0.05*xdata.size:
-        buffer_size = int(0.05*xdata.size)
-    buffer_size = 200
+    if delta_current is None:
+        if plane == 'iv':
+            delta_current = 40
+        elif plane == 'tes':
+            delta_current = 15
+        else:
+            delta_current = 10
+    buffer_size = int((delta_current / slew_rate) / ((number_samples * sampling_width) / number_of_windows))
+    print('For a delta current of {} uA with a rampe slew rate of {} uA/s, the buffer requires {} windowed points'.format(delta_current, slew_rate, buffer_size))
     # We should select only the physical data points for examination
     di_bias = np.gradient(xdata, edge_order=2)
     print('The size of di_bias is: {}'.format(di_bias.size))

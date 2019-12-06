@@ -17,6 +17,7 @@ class InputArguments:
         self.newFormat = False
         self.pidLog = ''
         self.numberOfWindows = 1
+        self.slewRate = 1
         self.squid = ''
         self.tzOffset = 0
         self.thermometer = 'EP'

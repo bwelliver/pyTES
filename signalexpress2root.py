@@ -20,7 +20,7 @@ def mkdpaths(dirpath):
     return True
 
 
-def load_signal_express_file(fname, sample_duration, tz_offset):
+def load_signal_express_file(fname, sample_duration, tz_offset, add_header=False):
     '''
     Pandas allows us to open the file and correctly parse the file by padding with nan
     '''
@@ -29,7 +29,10 @@ def load_signal_express_file(fname, sample_duration, tz_offset):
     tz_correction = tz_offset * 3600  # The timezone correction to apply
     unix_offset = -2082844800  # Time from start of labview time relative to start of unix time (in seconds)
     time_correction = unix_offset + tz_correction
-    data = pan.read_csv(fname, delimiter='\t')
+    if add_header:
+        data = pan.read_csv(fname, delimiter=',', names=['Time', 'ai0', 'ai1'])
+    else:
+        data = pan.read_csv(fname, delimiter='\t')
     headers = data.columns
     #print('The headers are: {}'.format(headers))
     branches = []
@@ -104,11 +107,11 @@ def write_to_root(output_file, data_dictionary):
     return True
 
 
-def logfile_converter(output_directory, logfile, sample_duration, tz_offset):
+def logfile_converter(output_directory, logfile, sample_duration, tz_offset, add_header):
     '''The actual function that converts a particular logfile into a root file
     We should avoid putting all this into a for loop so we can parallelize it perhaps
     '''
-    data_dictionary = load_signal_express_file(logfile, sample_duration, tz_offset)
+    data_dictionary = load_signal_express_file(logfile, sample_duration, tz_offset, add_header)
     output_file = basename(logfile)
     output_file = output_file.split('.')[0]
     output_file = output_directory + '/' + output_file + '.root'
@@ -117,11 +120,13 @@ def logfile_converter(output_directory, logfile, sample_duration, tz_offset):
     return True
 
 
-def convert_logfile(input_directory, output_directory, run_number, sample_duration, tz_offset, use_parallel=False):
+def convert_logfile(input_directory, output_directory, run_number, sample_duration, tz_offset, add_header, use_parallel=False):
     '''Main function to convert a signal express logfile into a ROOT file of the format used in the PXIDAQ'''
     print('run number {}'.format(run_number))
     # list_of_files = glob.glob('{}/*{}*.txt'.format(inputDirectory, runNumber))
-    list_of_files = glob.glob('{}/*.txt'.format(input_directory))
+    list_of_text_files = glob.glob('{}/*.txt'.format(input_directory))
+    list_of_csv_files = glob.glob('{}/*.csv'.format(input_directory))
+    list_of_files = [*list_of_text_files, *list_of_csv_files]
     print('After gobbing, the number of files is {}'.format(len(list_of_files)))
     # NATURAL SORT
     dre = re.compile(r'(\d+)')
@@ -133,13 +138,13 @@ def convert_logfile(input_directory, output_directory, run_number, sample_durati
         results = []
         for logfile in list_of_files:
             print('Converting file {}'.format(logfile))
-            result = logfile_converter(output_directory, logfile, sample_duration, tz_offset)
+            result = logfile_converter(output_directory, logfile, sample_duration, tz_offset, add_header)
             results.append(result)
     else:
         # Attempt at using joblib
         print('Performing conversions in parallel')
         num_cores = multiprocessing.cpu_count()
-        results = Parallel(n_jobs=num_cores)(delayed(logfile_converter)(output_directory, logfile, sample_duration, tz_offset) for logfile in list_of_files)
+        results = Parallel(n_jobs=num_cores)(delayed(logfile_converter)(output_directory, logfile, sample_duration, tz_offset, add_header) for logfile in list_of_files)
     if np.all(results):
         if len(results) == len(list_of_files):
             print('All files converted')
@@ -164,6 +169,8 @@ def get_args():
                         help='Specify the duration (in seconds) that a file lasts')
     parser.add_argument('-r', '--runNumber',
                         help='Specify the run number in the log file to convert')
+    parser.add_argument('-H', '--addHeader', action='store_true',
+                        help='Specify whether to insert a header if the files have none')
     parser.add_argument('-z', '--tzOffset', default=0.0, type=float,
                         help='The number of hours of timezone offset to use.\
                         Default is 0 and assumes timestamps to convert are from the same timezone.\
@@ -180,5 +187,5 @@ def get_args():
 
 if __name__ == '__main__':
     ARGS = get_args()
-    convert_logfile(ARGS.inputDirectory, ARGS.outputDirectory, ARGS.runNumber, ARGS.sample_duration, ARGS.tzOffset, ARGS.useParallel)
+    convert_logfile(ARGS.inputDirectory, ARGS.outputDirectory, ARGS.runNumber, ARGS.sample_duration, ARGS.tzOffset, ARGS.addHeader, ARGS.useParallel)
     print('All done')
