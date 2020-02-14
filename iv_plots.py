@@ -709,9 +709,11 @@ def make_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, 
     for label in axes.get_xticklabels() + axes.get_yticklabels():
         label.set_fontsize(18)
     save_plot(fig, axes, file_name)
+    ######## ALPHA PLOTS
+    # TODO: MAKE THIS WORK
     # We can also make plots of alpha = (T0/R0)*dR/dT
     # use model values
-    #T = np.linspace(norm_to_sc['T'].min(), norm_to_sc['T'].max(), 10000)
+    #T = np.linspace(norm_to_sc['T'].min(), norm_to_sc['T'].max(), 1000)
     #R = model_func(T, *normal_to_sc_fit_result.right.result)
     R = norm_to_sc['R']
     T = norm_to_sc['T']
@@ -722,29 +724,31 @@ def make_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, 
     alpha = (T/R) * dR_dT
     #alpha[alpha < 0] = 0
     #alpha = np.gradient(np.log(R), np.log(T), edge_order=2)
-    cutR = R > 40e-3
+    cutR = R > 10e-3
     print('The largest alpha = {} at T = {} mK'.format(np.nanmax(alpha[cutR]), T[np.nanargmax(alpha[cutR])]))
     # Use a model function as well!
     model_T = np.linspace(norm_to_sc['T'].min(), norm_to_sc['T'].max(), 100000)
     model_R = model_func(model_T, *normal_to_sc_fit_result.right.result)
-    model_dR_dT = fitfuncs.dtanh_tc(model_T, *normal_to_sc_fit_result.right.result)
-    model_alpha = (model_T/model_R)*model_dR_dT
+    #model_dR_dT = fitfuncs.dtanh_tc(model_T, *normal_to_sc_fit_result.right.result)
+    model_dR_dT = np.gradient(model_R, model_T, edge_order=2)
+    model_alpha = (model_T/model_R) * model_dR_dT
     #model_alpha = (model_T/model_R)*np.gradient(model_R, model_T, edge_order=2)
-    model_cutR = model_R > 40e-3
+    model_cutR = model_R > 10e-3
     # Remove it
     #alpha[np.nanargmax(alpha)] = 0
     #print('The largest alpha is now = {} at T = {} mK'.format(np.nanmax(alpha), T[np.nanargmax(alpha)]))
     # make plot
+    ### alpha vs R
     fig = plt.figure(figsize=(16, 12))
     axes = fig.add_subplot(111)
     xscale = 1
     yscale = 1
-    axes_options = {'xlabel': 'Temperature [mK]',
+    axes_options = {'xlabel': r'Resistance [m$\Omega$]',
                     'ylabel': 'TES ' + r'$\alpha$',
                     'logy': 'linear',
                     'xlim': (0, 0.700*xscale),
                     'ylim': (0, model_alpha[model_cutR].max()),
-                    'title': 'Channel {}'.format(data_channel) + ' TES ' + r'$\alpha$' + ' vs Temperature for TES Current = {}'.format(np.round(fixed_value*1e6, 3)) + r'$\mu$' + 'A'
+                    'title': 'Channel {}'.format(data_channel) + ' TES ' + r'$\alpha$' + ' vs Resistance for TES Current = {}'.format(np.round(fixed_value*1e6, 3)) + r'$\mu$' + 'A'
                     }
     params = {'marker': 'o', 'markersize': 5, 'markeredgecolor': 'green',
               'markerfacecolor': 'green', 'markeredgewidth': 0, 'linestyle': 'None',
@@ -755,6 +759,38 @@ def make_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, 
               'markerfacecolor': 'red', 'markeredgewidth': 0, 'linestyle': '-',
               'xerr': None, 'yerr': None}
     generic_fitplot_with_errors(axes=axes, x=model_R[model_cutR], y=model_alpha[model_cutR], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
+    # Let us pad the T values so they are smoooooooth
+    # model_temperatures = np.linspace(norm_to_sc['T'].min(), 70e-3, 100000)
+    #axes = ivp.add_model_fits(axes=axes, x=model_temperatures, y=norm_to_sc['R'], model=normal_to_sc_fit_result, model_function=model_func, xscale=xscale, yscale=yscale)
+    #axes = ivp.rt_fit_textbox(axes=axes, model=normal_to_sc_fit_result)
+    # axes.legend(['SC to N', 'N to SC'])
+    file_name = output_path + '/' + 'alpha_vs_R_ch_' + str(data_channel) + '_fixed_' + fixed_name + '_' + str(np.round(fixed_value*1e6, 3)) + 'uA_normal_to_sc_only'
+    #axes.set_xlim((10, 70))
+    for label in axes.get_xticklabels() + axes.get_yticklabels():
+        label.set_fontsize(18)
+    save_plot(fig, axes, file_name)
+
+    ### alpha vs T
+    fig = plt.figure(figsize=(16, 12))
+    axes = fig.add_subplot(111)
+    xscale = 1e3
+    yscale = 1
+    axes_options = {'xlabel': 'Temperature [mK]',
+                    'ylabel': 'TES ' + r'$\alpha$',
+                    'logy': 'linear',
+                    'xlim': (0, model_T[-1]*xscale),
+                    'ylim': (0, model_alpha[model_cutR].max()),
+                    'title': 'Channel {}'.format(data_channel) + ' TES ' + r'$\alpha$' + ' vs Temperature for TES Current = {}'.format(np.round(fixed_value*1e6, 3)) + r'$\mu$' + 'A'
+                    }
+    params = {'marker': 'o', 'markersize': 5, 'markeredgecolor': 'green',
+              'markerfacecolor': 'green', 'markeredgewidth': 0, 'linestyle': 'None',
+              'xerr': None, 'yerr': None}
+    axes = generic_fitplot_with_errors(axes=axes, x=T[cutR], y=alpha[cutR], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
+    # axes2 = axes.twinx()
+    params = {'marker': 'None', 'markersize': 4, 'markeredgecolor': 'red',
+              'markerfacecolor': 'red', 'markeredgewidth': 0, 'linestyle': '-',
+              'xerr': None, 'yerr': None}
+    generic_fitplot_with_errors(axes=axes, x=model_T[model_cutR], y=model_alpha[model_cutR], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
     # Let us pad the T values so they are smoooooooth
     # model_temperatures = np.linspace(norm_to_sc['T'].min(), 70e-3, 100000)
     #axes = ivp.add_model_fits(axes=axes, x=model_temperatures, y=norm_to_sc['R'], model=normal_to_sc_fit_result, model_function=model_func, xscale=xscale, yscale=yscale)

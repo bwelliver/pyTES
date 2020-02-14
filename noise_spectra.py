@@ -65,7 +65,7 @@ def gen_plot_line2(x, y, xlab, ylab, title, fName, logx='log', logy='log'):
     return None
 
 
-def gen_plot_line(x, y, xlab, ylab, title, fName, peaks=None, ylim=(1e-15, 0), logx='log', logy='log'):
+def gen_plot_line(x, y, xlab, ylab, title, fName, peaks=None, ylim=(1e-15, 1), logx='log', logy='log'):
     """Create generic plots that may be semilogx (default)"""
     fig2 = plt.figure(figsize=(32, 8))
     ax = fig2.add_subplot(111)
@@ -156,7 +156,7 @@ def compute_welch(time, data, number_segments=10):
     nperseg = int(time.size//number_segments)
     print('Welch input using sampling frequency of {} Hz'.format(fs))
     print('Welch using nperseg={}'.format(nperseg))
-    f, Pxx_den = signal.welch(data, fs, window='hann', nperseg=nperseg)
+    f, Pxx_den = signal.welch(data, fs, window='hann', nperseg=nperseg, detrend=False)
     return f, Pxx_den
 
 
@@ -194,6 +194,11 @@ def compute_noise_spectra(input_directory, squid_run, mode='old', number_segment
             time_array[channel] = np.asarray([i*data['SamplingWidth_s'][0] for i in range(data_array[channel].size)])
             print('The second entry in this channels time array is: {}'.format(time_array[channel][1]))
             print('There are {} total data points'.format(data_array[channel].size))
+            # Cut data if need be
+            t0 = time_array[channel][0]
+            cut = np.logical_or(time_array[channel] - t0 < 15, time_array[channel] - t0 > 45)
+            data_array[channel] = data_array[channel][~cut]
+            time_array[channel] = time_array[channel][~cut]
     else:
         # Now we need to unfold the data into an array
         # Note Units: waveform data are in Volts
@@ -233,16 +238,23 @@ def compute_noise_spectra(input_directory, squid_run, mode='old', number_segment
         title = 'Digitizer Channel ' + str(channel) + ' FFT Signal vs Frequency for SR ' + str(squid_run)
         fName = outdir + '/ch_' + str(channel) + '_fft_log.png'
         fcut = freq >= 0
-        gen_plot_line(freq, np.abs(fdata), xlab, ylab, title, fName, logx='log', logy='log')
+        gen_plot_line(freq[fcut], np.abs(fdata)[fcut], xlab, ylab, title, fName, logx='log', logy='log')
         # Try to compute a psd directly
-        psd = ((np.abs(fdata)/fdata.size)**2)/(2*(freq[1]-freq[0]))
+        # not 2*df, just df it seems.
+        psd = ((np.abs(fdata)/fdata.size)**2)/(1*(freq[1]-freq[0]))
+        variance = np.var(data_array[channel])
+        mean = np.mean(data_array[channel])
+        rms2 = mean*mean + variance
+        T = time_array[channel][-1] - time_array[channel][0]
+        # FIXME: integral(psd) currently is 1/2 the rms2
+        print('The variance of the data on channel {} acquired for total time T {} s is: {} and the integral of the psd is: {}'.format(channel, T, rms2, np.sum(psd)*1/T))
         xlab = 'Frequency (Hz)'
         ylab = 'PSD V^2 / Hz'
         title = 'Digitizer Channel ' + str(channel) + ' PSD vs Frequency for SR ' + str(squid_run)
         fName = outdir + '/ch_' + str(channel) + '_psd_log.png'
-        gen_plot_line(freq, psd, xlab, ylab, title, fName, ylim=(1e-15, 0), logx='log', logy='log')
+        gen_plot_line(freq[fcut], psd[fcut], xlab, ylab, title, fName, ylim=(1e-15, 1), logx='log', logy='log')
         #gen_plot_bar(freq, np.abs(fdata), xlab, ylab, title, fName, dx=1000, logx='log', logy='log')
-        ax = gen_plot_line_both(ax, freq, psd, channel)
+        ax = gen_plot_line_both(ax, freq[fcut], psd[fcut], channel)
     xlab = 'Frequency (Hz)'
     ylab = 'PSD V^2/Hz'
     title = 'Digitizer Channels ' + ' FFT Signal vs Frequency for SR ' + str(squid_run)
@@ -251,7 +263,7 @@ def compute_noise_spectra(input_directory, squid_run, mode='old', number_segment
     ax.set_xlabel(xlab)
     ax.set_ylabel(ylab)
     ax.set_yscale('log')
-    ax.set_ylim((1e-15, 0))
+    ax.set_ylim((1e-15, 1))
     ax.set_title(title)
     ax.grid(True)
     ax.legend()
@@ -264,16 +276,24 @@ def compute_noise_spectra(input_directory, squid_run, mode='old', number_segment
     for channel in data_array.keys():
         print('Computing using welch with {} segments'.format(number_segments))
         freq, fdata = compute_welch(time_array[channel], data_array[channel], number_segments=number_segments)
+        variance = np.var(data_array[channel])
+        mean = np.mean(data_array[channel])
+        rms2 = mean*mean + variance
+        # Note 1/T is effectively df
+        df = freq[1]-freq[0]
+        # FIXME: integral(psd) currently is 1/2 the rms2
+        print('The variance of the data on channel {} acquired for total time T {} s is: {} and the integral of the welch psd is: {}'.format(channel, T, rms2, np.sum(fdata)*df))
         # Find peaks toooooooo
         #peaks = find_peaks_cwt(fdata, np.asarray([i+0.1 for i in range(10)]), noise_perc=10, min_snr=20)
+        fcut = freq >= 0
         peaks = None
         print('Making plot')
         xlab = 'Frequency (Hz)'
         ylab = 'PSD V^2/Hz'
         title = 'Digitizer Channel ' + str(channel) + ' FFT Signal vs Frequency for SR ' + str(squid_run)
         fName = outdir + '/ch_' + str(channel) + '_welch_psd_log.png'
-        gen_plot_line(freq, fdata, xlab, ylab, title, fName, peaks=peaks, logx='log', logy='log')
-        ax = gen_plot_line_both(ax, freq, fdata, channel)
+        gen_plot_line(freq[fcut], fdata[fcut], xlab, ylab, title, fName, peaks=peaks, logx='log', logy='log')
+        ax = gen_plot_line_both(ax, freq[fcut], fdata[fcut], channel)
     xlab = 'Frequency (Hz)'
     ylab = 'PSD V^2/Hz'
     title = 'Digitizer Channels ' + ' FFT Signal vs Frequency for SR ' + str(squid_run)
@@ -330,7 +350,6 @@ def compute_noise_spectra(input_directory, squid_run, mode='old', number_segment
 #    plt.savefig(outdir + '/spectrogram_channel_5_log.png', dpi=200)
 #    plt.close('all')
     return None
-
 
 
 if __name__ == '__main__':

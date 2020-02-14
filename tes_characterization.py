@@ -90,9 +90,9 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
     # Rtes = R(i,T) so we are really asking for R(i=constant, T).
     iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
     fixed_name = 'iTES'
-    fixed_value = 0.2e-6
-    delta_value = 0.07e-6
-    r_normal = 0.800
+    fixed_value = 0.1e-6
+    delta_values = [0.05e-6, 0.1e-6]
+    r_normal = 0.700
 
     norm_to_sc = {'T': np.empty(0), 'R': np.empty(0), 'rmsR': np.empty(0)}
     sc_to_norm = {'T': np.empty(0), 'R': np.empty(0), 'rmsR': np.empty(0)}
@@ -109,7 +109,7 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
         cut_norm_to_sc = iv_data['cut_norm_to_sc']
         cut_sc_to_norm = ~iv_data['cut_norm_to_sc']
         # Cuts get complicated. We will need to make a cut on a cut.
-        fixed_cut = np.logical_and(iv_data[fixed_name] > fixed_value - delta_value, iv_data[fixed_name] < fixed_value + delta_value)
+        fixed_cut = np.logical_and(iv_data[fixed_name] > fixed_value - delta_values[0], iv_data[fixed_name] < fixed_value + delta_values[1])
         # fixed cut is (nEvents, nSamples)
         # cut_norm_to_sc is (nEvents, )
         # ultimately we will need to do data[cut_norm_to_sc][fixed_cut[cut_norm_to_sc]]
@@ -162,7 +162,7 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
 #            file_name = output_path + '/' + 'vOut_vs_t_ch_' + str(data_channel) + '_' + temperature + 'mK'
 #            ivplt.save_plot(fig, axes, file_name)
 #            raise Exception('Debug halt')
-        cut_fixed_norm_to_sc = np.logical_and(iv_data[fixed_name][cut_norm_to_sc] > fixed_value - delta_value, iv_data[fixed_name][cut_norm_to_sc] < fixed_value + delta_value)
+        cut_fixed_norm_to_sc = np.logical_and(iv_data[fixed_name][cut_norm_to_sc] > fixed_value - delta_values[0], iv_data[fixed_name][cut_norm_to_sc] < fixed_value + delta_values[1])
         cut_fixed_norm_to_sc = np.logical_and(cut_fixed_norm_to_sc, iv_data['rTES'][cut_norm_to_sc] > -50e-3)
         cut_fixed_norm_to_sc = cut_fixed_norm_to_sc.flatten()
         if cut_fixed_norm_to_sc.sum() > 0:
@@ -175,7 +175,7 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
             rTES = iv_data['rTES'][cut_norm_to_sc].flatten()
             norm_to_sc['R'] = np.append(norm_to_sc['R'], np.mean(rTES[cut_fixed_norm_to_sc]))
             norm_to_sc['rmsR'] = np.append(norm_to_sc['rmsR'], np.std(rTES[cut_fixed_norm_to_sc])/np.sqrt(cut_fixed_norm_to_sc.sum()))
-        cut_fixed_sc_to_norm = np.logical_and(iv_data[fixed_name][cut_sc_to_norm] > fixed_value - delta_value, iv_data[fixed_name][cut_sc_to_norm] < fixed_value + delta_value)
+        cut_fixed_sc_to_norm = np.logical_and(iv_data[fixed_name][cut_sc_to_norm] > fixed_value - delta_values[0], iv_data[fixed_name][cut_sc_to_norm] < fixed_value + delta_values[1])
         cut_fixed_sc_to_norm = np.logical_and(cut_fixed_sc_to_norm, iv_data['rTES'][cut_sc_to_norm] > -50e-3)
         cut_fixed_sc_to_norm = cut_fixed_sc_to_norm.flatten()
         if cut_fixed_sc_to_norm.sum() > 0:
@@ -198,6 +198,8 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
 
     print('For SC to N fit initial guess is {}, and the number of data points are: {}'.format(x_0, sc_to_norm['T'].size))
     fitargs = {'p0': x_0, 'bounds': (lbounds, ubounds), 'absolute_sigma': True, 'sigma': sc_to_norm['rmsR'], 'method': 'trf', 'jac': '3-point', 'xtol': 1e-15, 'ftol': 1e-8, 'loss': 'linear', 'tr_solver': 'exact', 'x_scale': 'jac', 'max_nfev': 10000, 'verbose': 2}
+    print(sc_to_norm['T'])
+    print(sc_to_norm['R'])
     result, pcov = curve_fit(model_func, sc_to_norm['T'], sc_to_norm['R'], **fitargs)
     print('The cov matrix is: {}'.format(pcov))
     perr = np.sqrt(np.diag(pcov))
@@ -252,17 +254,18 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     # print('The main T vector is: {}'.format(temperatures))
     # print('The iTES vector is: {}'.format(iTES))
     # TODO: Make these input values?
+    #tc = None
     max_temp = tc or 60e-3
-    cut_temperature = np.logical_and(temperatures > 35e-3, temperatures < max_temp)  # This should be the expected Tc
+    cut_temperature = np.logical_and(temperatures > 10e-3, temperatures < max_temp)  # This should be the expected Tc
     cut_power = power < 1e-6
     cut_temperature = np.logical_and(cut_temperature, cut_power)
     # [k, n, Ttes, Pp]
     if tc is None:
         print('No Tc was passed, floating Tc')
-        lbounds = [1e-9, 0, 1e-3]
-        ubounds = [1, 10, 250e-3]
+        lbounds = [1e-9, 0, 42e-3]
+        ubounds = [1, 10, 47e-3]
         fixedArgs = {'Pp': 0}
-        x0 = [100e-9, 5, 50e-3]
+        x0 = [20e-9, 4, 45e-3]
     else:
         print('Tc = {} mK was passed. Fixing to this value'.format(tc))
         lbounds = [1e-9, 0]
@@ -278,6 +281,7 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     else:
         # This fitarg below will not use the errors on y
         fitargs = {'p0': x0, 'bounds': (lbounds, ubounds), 'method': 'trf', 'jac': '3-point', 'tr_solver': 'exact', 'x_scale': 'jac', 'xtol': 1e-15, 'ftol': 1e-15, 'gtol': None, 'loss': 'linear', 'max_nfev': 10000, 'verbose': 2}
+    print('The fitargs are: {}'.format(fitargs))
     results, pcov = curve_fit(fitfuncs.tes_power_polynomial_fixed(fixedArgs), temperatures[cut_temperature], power[cut_temperature], **fitargs)
     print('The covariance matrix is: {}'.format(pcov))
     perr = np.sqrt(np.diag(pcov))
@@ -292,7 +296,7 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     print('x0={}, results={}'.format(x0, results))
     fit_result = iv_results.FitParameters()
     fit_result.left.set_values(results, perr)
-    # fit_result.right.set_values(x0, x0)
+    fit_result.right.set_values(x0, x0)
     # Next make a P-T plot
     fig = plt.figure(figsize=(16, 12))
     axes = fig.add_subplot(111)
@@ -306,7 +310,7 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     axes_options = {'xlabel': 'Temperature [mK]',
                     'ylabel': 'TES Power [fW]',
                     'title': None, # 'Channel {} TES Power vs Temperature'.format(data_channel),
-                    'xlim': (25, 60),
+                    'xlim': (10, 60),
                     'ylim': (0, ymax)
                     }
     axes = ivplt.generic_fitplot_with_errors(axes=axes, x=temperatures, y=power, axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)

@@ -195,8 +195,8 @@ def parse_temperature_steps(output_path, time_values, temperatures, pid_log, tz_
     # Include an appropriate offset for mean computation BUT only a softer one for time boundaries
     # time_list is a list of tuples.
     time_list = []
-    start_offset = 1*60
-    end_offset = 1
+    start_offset = 90
+    end_offset = 10
     if times.size > 1:
         for index in range(times.size - 1):
             cut = np.logical_and(time_values > times[index]+start_offset, time_values < times[index+1] - end_offset)
@@ -249,9 +249,9 @@ def chop_data_by_temperature_steps(iv_data, timelist, thermometer_name, bias_cha
     # reject = cut_temperature_min < T < cut_temperature_max
     #FIXME:
     # Put these in units of mK for now...this is a hack!
-    cut_temperature_max = 30  # Should be the max rejected temperature
+    cut_temperature_max = 0  # Should be the max rejected temperature
     cut_temperature_min = 0  # Should be the minimum rejected temperature
-    expected_duration = 4800  # TODO: make this an input argument or auto-determined somehow
+    expected_duration = 7200  # TODO: make this an input argument or auto-determined somehow
     # Now chop up the IV data into steps keyed by the mean temperature
     for values in timelist:
         start_time, stop_time, mean_temperature, serr_temperature = values
@@ -309,6 +309,7 @@ def chop_data_by_temperature_steps(iv_data, timelist, thermometer_name, bias_cha
 def get_iv_temperature_data(argin):
     '''Based on requested input data, load the IV data into memory and split by temperatures'''
     # Step 1: Load IV data into memory
+
     iv_data = get_iv_data_from_file(input_path=argin.inputPath, new_format=argin.newFormat, thermometer=argin.thermometer)
     # Step 2: Get temperature steps
     time_values = iv_data['Timestamp_s'] + iv_data['Timestamp_mus']/1e6
