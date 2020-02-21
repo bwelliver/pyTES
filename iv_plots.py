@@ -99,19 +99,32 @@ def fancy_fitplot_with_errors(axes, x, y, params, axes_options, xscale=1, yscale
 
 
 def add_model_fits(axes, x, y, model, model_function, xscale=1, yscale=1):
-    '''Add model fits to plots'''
+    """Add model fits to plots."""
     xModel = np.linspace(x.min(), x.max(), 10000)
+    chisqL = 0
+    chisqR = 0
+    chisqS = 0
     if model.left.result is not None:
+        ymodel = model_function(x, *model.left.result)
+        chisqL = ((y-ymodel))**2
+        chisqL = np.sum(chisqL)
         yFit = model_function(xModel, *model.left.result)
         axes.plot(xModel*xscale, yFit*yscale, 'r-', marker='None', linewidth=5)
     if model.right.result is not None:
+        ymodel = model_function(x, *model.right.result)
+        chisqR = ((y-ymodel))**2
+        chisqR = np.sum(chisqR)
         yFit = model_function(xModel, *model.right.result)
         axes.plot(xModel*xscale, yFit*yscale, 'g-', marker='None', linewidth=5)
     if model.sc.result is not None:
+        ymodel = model_function(x, *model.sc.result)
+        chisqS = ((y-ymodel))**2
+        chisqS = np.sum(chisqS)
         yFit = model_function(x, *model.sc.result)
         cut = np.logical_and(yFit < y.max(), yFit > y.min())
         axes.plot(x[cut]*xscale, yFit[cut]*yscale, 'b-', marker='None', linewidth=5)
-    return axes
+    chisq = [chisqL, chisqS, chisqR]
+    return axes, chisq
 
 
 def iv_fit_textbox(axes, R, model):
@@ -175,8 +188,9 @@ def rt_fit_textbox(axes, model):
     return axes
 
 
-def pt_fit_textbox(axes, model):
+def pt_fit_textbox(axes, model, chisq=None, ndf=0):
     '''Add decoration textbox for a power vs temperature fit'''
+    xsq = chisq
     k = model.left.result[0]
     dk = model.left.error[0]
     n = model.left.result[1]
@@ -187,6 +201,7 @@ def pt_fit_textbox(axes, model):
     # dPp = model.left.error[3]
     # Pn = model.left.result[4]
     # dPn = model.left.error[4]
+    tChi = '$\chi^2/\mathrm{ndf} = %.5f / %.d$'%(xsq, ndf)
     lk = r'$k = %.2f \pm %.2f \mathrm{ nW/K^{%.2f}}$' % (k*1e9, dk*1e9, n)
     ln = r'$n = %.2f \pm %.2f$' % (n, dn)
     lTt = r'$T_{TES} = %.2f \pm %.2f \mathrm{ mK}$' % (Ttes*1e3, dTtes*1e3)
@@ -200,7 +215,7 @@ def pt_fit_textbox(axes, model):
     dG_n = dn*(k*power(Ttes, n-1)*(n*np.log(Ttes) + 1))
     dG = sqrt(pow2(dG_k) + pow2(dG_T) + pow2(dG_n))
     lG = r'$G(T_{TES}) = %.2f \pm %.2f \mathrm{ pW/K}$' % (G*1e12, dG*1e12)
-    textStr = lk + '\n' + ln + '\n' + lTt + '\n' + lG
+    textStr = tChi + '\n' + lk + '\n' + ln + '\n' + lTt + '\n' + lG
     props = dict(boxstyle='round', facecolor='whitesmoke', alpha=0.7)
     axes.text(0.05, 0.3, textStr, transform=axes.transAxes, fontsize=26, verticalalignment='top', bbox=props)
     return axes
@@ -435,7 +450,7 @@ def plot_current_vs_voltage(output_path, data_channel, squid, temperature, data)
                     'title': 'Channel {} TES Current vs TES Voltage for temperatures = {} mK'.format(data_channel, temperature)}
 
     axes = generic_fitplot_with_errors(axes=axes, x=data['vTES'], y=data['iTES'], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
-    axes = add_model_fits(axes=axes, x=data['vTES'], y=data['iTES'], model=fit_parameters, model_function=fitfuncs.lin_sq, xscale=xscale, yscale=yscale)
+    axes, chisq = add_model_fits(axes=axes, x=data['vTES'], y=data['iTES'], model=fit_parameters, model_function=fitfuncs.lin_sq, xscale=xscale, yscale=yscale)
     axes = iv_fit_textbox(axes=axes, R=resistance, model=fit_parameters)
 
     file_name = output_path + '/' + 'iTES_vs_vTES_ch_' + str(data_channel) + '_' + temperature + 'mK'
@@ -552,7 +567,7 @@ def plot_power_vs_voltage(output_path, data_channel, temperature, data):
                     'title': 'Channel {} TES Power vs TES Resistance for temperatures = {} mK'.format(data_channel, temperature)
                     }
     axes = generic_fitplot_with_errors(axes=axes, x=data['vTES'], y=data['pTES'], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
-    axes = add_model_fits(axes=axes, x=data['vTES'], y=data['pTES'], model=fit_result, model_function=fitfuncs.quad_sq, xscale=xscale, yscale=yscale)
+    axes, chisq = add_model_fits(axes=axes, x=data['vTES'], y=data['pTES'], model=fit_result, model_function=fitfuncs.quad_sq, xscale=xscale, yscale=yscale)
     axes = pr_fit_textbox(axes=axes, model=fit_result)
 
     file_name = output_path + '/' + 'pTES_vs_vTES_ch_' + str(data_channel) + '_' + temperature + 'mK'
@@ -586,7 +601,7 @@ def make_tes_multiplot(output_path, data_channel, squid, iv_dictionary):
                         'title': 'Channel {} TES Resistance vs Bias Current'.format(data_channel)
                         }
         axes = generic_fitplot_with_errors(axes=axes, x=data['iBias'], y=data['rTES'], params=params, axes_options=axes_options, xscale=xscale, yscale=yscale)
-        axes = add_model_fits(axes=axes, x=data['vTES'], y=data['iTES'], model=data['tes_fit_parameters'], model_function=fitfuncs.lin_sq, xscale=xscale, yscale=yscale)
+        axes, chisq = add_model_fits(axes=axes, x=data['vTES'], y=data['iTES'], model=data['tes_fit_parameters'], model_function=fitfuncs.lin_sq, xscale=xscale, yscale=yscale)
         axes = iv_fit_textbox(axes=axes, R=resistance, model=data['tes_fit_parameters'])
         idx += 1
     axes.set_ylim((0*yscale, 1*yscale))
@@ -675,7 +690,7 @@ def make_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, 
               'markerfacecolor': 'green', 'markeredgewidth': 0, 'linestyle': 'None',
               'xerr': None, 'yerr': norm_to_sc['rmsR'][sort_key]*yscale}
     axes = generic_fitplot_with_errors(axes=axes, x=norm_to_sc['T'][sort_key], y=norm_to_sc['R'][sort_key], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
-    axes = add_model_fits(axes=axes, x=norm_to_sc['T'], y=norm_to_sc['R'], model=fit_result, model_function=model_func, xscale=xscale, yscale=yscale)
+    axes, chisq = add_model_fits(axes=axes, x=norm_to_sc['T'], y=norm_to_sc['R'], model=fit_result, model_function=model_func, xscale=xscale, yscale=yscale)
     axes = rt_fit_textbox(axes=axes, model=fit_result)
     axes.legend(['SC to N', 'N to SC'], markerscale=6, fontsize=26)
     file_name = output_path + '/' + 'rTES_vs_T_ch_' + str(data_channel) + '_fixed_' + fixed_name + '_' + str(np.round(fixed_value*1e6, 3)) + 'uA'
@@ -700,8 +715,8 @@ def make_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, 
                     }
     axes = generic_fitplot_with_errors(axes=axes, x=norm_to_sc['T'][sort_key], y=norm_to_sc['R'][sort_key], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
     # Let us pad the T values so they are smoooooooth
-    model_temperatures = np.linspace(norm_to_sc['T'].min(), 70e-3, 100000)
-    axes = add_model_fits(axes=axes, x=model_temperatures, y=norm_to_sc['R'], model=normal_to_sc_fit_result, model_function=model_func, xscale=xscale, yscale=yscale)
+    model_temperatures = np.linspace(norm_to_sc['T'].min(), 40e-3, 100000)
+    axes, chisq = add_model_fits(axes=axes, x=norm_to_sc['T'], y=norm_to_sc['R'], model=normal_to_sc_fit_result, model_function=model_func, xscale=xscale, yscale=yscale)
     axes = rt_fit_textbox(axes=axes, model=normal_to_sc_fit_result)
     # axes.legend(['SC to N', 'N to SC'])
     file_name = output_path + '/' + 'rTES_vs_T_ch_' + str(data_channel) + '_fixed_' + fixed_name + '_' + str(np.round(fixed_value*1e6, 3)) + 'uA_normal_to_sc_only'
@@ -709,6 +724,7 @@ def make_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, 
     for label in axes.get_xticklabels() + axes.get_yticklabels():
         label.set_fontsize(18)
     save_plot(fig, axes, file_name)
+
     ######## ALPHA PLOTS
     # TODO: MAKE THIS WORK
     # We can also make plots of alpha = (T0/R0)*dR/dT
@@ -734,6 +750,12 @@ def make_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, 
     model_alpha = (model_T/model_R) * model_dR_dT
     #model_alpha = (model_T/model_R)*np.gradient(model_R, model_T, edge_order=2)
     model_cutR = model_R > 10e-3
+    model_cutT = model_T > 20e-3
+    model_cut = np.logical_and(model_cutR, model_cutT)
+    subR = model_R[model_cut]
+    subT = model_T[model_cut]
+    subAlpha = model_alpha[model_cut]
+    print('The largest alpha from model with cut = {} at T = {} mK'.format(np.nanmax(subAlpha), subT[np.nanargmax(subAlpha)]))
     # Remove it
     #alpha[np.nanargmax(alpha)] = 0
     #print('The largest alpha is now = {} at T = {} mK'.format(np.nanmax(alpha), T[np.nanargmax(alpha)]))
@@ -761,7 +783,7 @@ def make_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, 
     generic_fitplot_with_errors(axes=axes, x=model_R[model_cutR], y=model_alpha[model_cutR], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
     # Let us pad the T values so they are smoooooooth
     # model_temperatures = np.linspace(norm_to_sc['T'].min(), 70e-3, 100000)
-    #axes = ivp.add_model_fits(axes=axes, x=model_temperatures, y=norm_to_sc['R'], model=normal_to_sc_fit_result, model_function=model_func, xscale=xscale, yscale=yscale)
+    #axes, chisq = ivp.add_model_fits(axes=axes, x=model_temperatures, y=norm_to_sc['R'], model=normal_to_sc_fit_result, model_function=model_func, xscale=xscale, yscale=yscale)
     #axes = ivp.rt_fit_textbox(axes=axes, model=normal_to_sc_fit_result)
     # axes.legend(['SC to N', 'N to SC'])
     file_name = output_path + '/' + 'alpha_vs_R_ch_' + str(data_channel) + '_fixed_' + fixed_name + '_' + str(np.round(fixed_value*1e6, 3)) + 'uA_normal_to_sc_only'
@@ -793,7 +815,7 @@ def make_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, 
     generic_fitplot_with_errors(axes=axes, x=model_T[model_cutR], y=model_alpha[model_cutR], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
     # Let us pad the T values so they are smoooooooth
     # model_temperatures = np.linspace(norm_to_sc['T'].min(), 70e-3, 100000)
-    #axes = ivp.add_model_fits(axes=axes, x=model_temperatures, y=norm_to_sc['R'], model=normal_to_sc_fit_result, model_function=model_func, xscale=xscale, yscale=yscale)
+    #axes, chisq = ivp.add_model_fits(axes=axes, x=model_temperatures, y=norm_to_sc['R'], model=normal_to_sc_fit_result, model_function=model_func, xscale=xscale, yscale=yscale)
     #axes = ivp.rt_fit_textbox(axes=axes, model=normal_to_sc_fit_result)
     # axes.legend(['SC to N', 'N to SC'])
     file_name = output_path + '/' + 'alpha_vs_T_ch_' + str(data_channel) + '_fixed_' + fixed_name + '_' + str(np.round(fixed_value*1e6, 3)) + 'uA_normal_to_sc_only'

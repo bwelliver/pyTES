@@ -33,7 +33,7 @@ def write_to_root(outFile, trees, branches, byteFile, offset, dataType, dataSize
         trees = [trees]
     if isinstance(branches,str):
         branches = [branches]
-
+    branches = branches + ['Time_since_start_secs']
     # First create and open the root file
     tFile = rt.TFile(outFile, "RECREATE")
 
@@ -66,8 +66,14 @@ def write_to_root(outFile, trees, branches, byteFile, offset, dataType, dataSize
         for event in range(nRow):
             for branch in branches:
                 #print('Branch is {0}'.format(branch))
-                dloc[branch][0] = struct.unpack(endian + dataType, byteFile[offset:offset+dataSize])[0]
-                offset = offset + dataSize
+                if branch != 'Time_since_start_secs':
+                    dloc[branch][0] = struct.unpack(endian + dataType, byteFile[offset:offset+dataSize])[0]
+                    offset = offset + dataSize
+                if event == 0 and branch == 'Time_secs':
+                    t0 = dloc[branch][0]
+                if branch == 'Time_secs':
+                    dt = dloc[branch][0] - t0
+                    dloc['Time_since_start_secs'][0] = dt
             tTree.Fill()
         tTree.Write()
         del tTree

@@ -195,7 +195,7 @@ def parse_temperature_steps(output_path, time_values, temperatures, pid_log, tz_
     # Include an appropriate offset for mean computation BUT only a softer one for time boundaries
     # time_list is a list of tuples.
     time_list = []
-    start_offset = 90
+    start_offset = 300
     end_offset = 10
     if times.size > 1:
         for index in range(times.size - 1):
@@ -357,7 +357,7 @@ def process_tes_curves(iv_dictionary, number_of_windows=0, slew_rate=1, number_s
         fit_params = iv_processor.fit_iv_regions(xdata=iv_data['vTES'], ydata=iv_data['iTES'], sigma_y=iv_data['vTES_rms'], number_samples=number_samples, sampling_width=iv_dictionary[temperature]['sampling_width'][0], number_of_windows=number_of_windows, slew_rate=slew_rate, plane='tes')
         print('It took the fit protocol {} s to complete.'.format(time.time() - st))
         iv_dictionary[temperature]['tes_fit_parameters'] = fit_params
-    return iv_dictionary
+    return iv_dictionary, iv_curves
 
 
 def process_iv_curves(squid, iv_dictionary, number_of_windows=0, slew_rate=1, number_samples=None):
@@ -506,7 +506,8 @@ def iv_main(argin):
         # It will be a dictionary whose keys are temperatures (in mK). The sub-dictionary has keys that are iBias, vOut, timestamps, temperatures, sampling_width
         iv_dictionary, number_samples = get_iv_temperature_data(argin)
         # Step 2: Save these chopped up IV data
-        # save_iv_to_root(argin.outputPath, iv_dictionary)
+        output_file = argin.outputPath + '/root/iv_data.root'
+        save_iv_to_root(output_file, iv_dictionary)
     if argin.readROOT is True and argin.readTESROOT is False:
         # This loads saved data from steps 1 and 2 if it has been performed already and will put us in a state to proceed with TES quantity computations
         iv_dictionary = read_from_ivroot(argin.outputPath + '/root/iv_data.root', branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width'])
@@ -526,24 +527,30 @@ def iv_main(argin):
         iv_dictionary = get_tes_values(iv_dictionary, argin.squid)
         # Save actual data
         print('Saving ROOT file with TES quantities computed')
-        output_file = argin.outputPath + '/root/iv_data.root'
-        #save_iv_to_root(output_file, iv_dictionary, branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'iTES', 'rTES', 'vTES', 'pTES'])
+        output_file = argin.outputPath + '/root/iv_data_processed.root'
+        save_iv_to_root(output_file, iv_dictionary, branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'iTES', 'rTES', 'vTES', 'pTES'])
     if argin.readTESROOT is True:
-        iv_dictionary = read_from_ivroot(argin.outputPath + '/root/iv_data.root', branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'iTES', 'rTES', 'vTES', 'pTES'])
+        # NOTE! IV data loaded is is already processed so the 0-offset correction is applied.
+        iv_dictionary = read_from_ivroot(argin.outputPath + '/root/iv_data_processed.root', branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'iTES', 'rTES', 'vTES', 'pTES'])
         # Things will be dicts here so we should convert to arrays
         for temperature, iv_data in iv_dictionary.items():
+            print('Converting data to ndarray for temperature: {}'.format(temperature))
             for key, value in iv_data.items():
                 if isinstance(value, dict):
                     iv_data[key], number_samples = iv_processor.convert_dict_to_ndarray(value)
                     # iv_dictionary[temperature][key] = new_value
     # Step 5: Process the TES values
     print('The number_samples argument is: {}'.format(number_samples))
-    iv_dictionary = process_tes_curves(iv_dictionary, number_of_windows=argin.numberOfWindows, slew_rate=argin.slewRate, number_samples=number_samples)
+    iv_dictionary, iv_curves = process_tes_curves(iv_dictionary, number_of_windows=argin.numberOfWindows, slew_rate=argin.slewRate, number_samples=number_samples)
     if argin.plotTES is True:
         make_tes_plots(output_path=argin.outputPath, data_channel=argin.dataChannel, squid=argin.squid, number_of_windows=argin.numberOfWindows, iv_dictionary=iv_dictionary, individual=True)
     # Step 6: Compute interesting curves
-    tc = tes_char.get_resistance_temperature_curves_new(argin.outputPath, argin.dataChannel, argin.numberOfWindows, iv_dictionary)
-    tes_char.get_power_temperature_curves(argin.outputPath, argin.dataChannel, argin.numberOfWindows, iv_dictionary, tc=tc)
+    iv_dictionary = tes_char.find_normal_to_sc_data(iv_dictionary, argin.numberOfWindows, iv_curves=iv_curves)
+    tc, rN = tes_char.get_resistance_temperature_curves_new(argin.outputPath, argin.dataChannel, argin.numberOfWindows, iv_dictionary)
+    temp, power, power_sigma = tes_char.get_power_temperature_curves(argin.outputPath, argin.dataChannel, argin.numberOfWindows, iv_dictionary, tc=tc, rN=rN)
+    output_file = argin.outputPath + '/root/pt_data.root'
+    pt_data = {'ptdata': {'temperature': temp, 'pTES': power, 'pTES_sigma': power_sigma}}
+    save_iv_to_root(argin.outputPath + '/root/pt_data.root', pt_data, branches=['pTES', 'pTES_sigma', 'temperature'])
     return True
 
 

@@ -119,6 +119,13 @@ def nll_error(params, P, P_rms, T, func):
         lnl = nsum(((P - model)/P_rms)**2)
         return lnl
 
+def tes_power_polynomial_args(T, k, n, Ttes, Pp):
+    '''General TES power equation
+    P = k*(T^n - Tb^n) - Pp
+    '''
+    # k, n, Ttes, Pp = args
+    P = k*(np.power(Ttes, n) - np.power(T, n)) - Pp
+    return P
 
 def tes_power_polynomial(T, *args):
     '''General TES power equation
