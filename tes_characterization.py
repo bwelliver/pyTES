@@ -91,9 +91,9 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
     # Rtes = R(i,T) so we are really asking for R(i=constant, T).
     # iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
     fixed_name = 'iTES'
-    fixed_value = 0.1e-6
-    delta_values = [0.05e-6, 0.1e-6]
-    r_normal = 0.700
+    fixed_value = 0.05e-6
+    delta_values = [0.005e-6, 0.005e-6]
+    r_normal = 0.400
 
     norm_to_sc = {'T': np.empty(0), 'R': np.empty(0), 'rmsR': np.empty(0)}
     sc_to_norm = {'T': np.empty(0), 'R': np.empty(0), 'rmsR': np.empty(0)}
@@ -166,7 +166,7 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
         cut_fixed_norm_to_sc = np.logical_and(iv_data[fixed_name][cut_norm_to_sc] > fixed_value - delta_values[0], iv_data[fixed_name][cut_norm_to_sc] < fixed_value + delta_values[1])
         cut_fixed_norm_to_sc = np.logical_and(cut_fixed_norm_to_sc, iv_data['rTES'][cut_norm_to_sc] > -50e-3)
         cut_fixed_norm_to_sc = cut_fixed_norm_to_sc.flatten()
-        if cut_fixed_norm_to_sc.sum() > 0:
+        if cut_fixed_norm_to_sc.sum() > 1:
             # Try raw T and R
             # norm_to_sc['T'] = np.append(norm_to_sc['T'], iv_data['temperatures'].flatten()[cut_fixed_norm_to_sc])
             # rTES = iv_data['rTES'][cut_norm_to_sc].flatten()
@@ -179,7 +179,7 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
         cut_fixed_sc_to_norm = np.logical_and(iv_data[fixed_name][cut_sc_to_norm] > fixed_value - delta_values[0], iv_data[fixed_name][cut_sc_to_norm] < fixed_value + delta_values[1])
         cut_fixed_sc_to_norm = np.logical_and(cut_fixed_sc_to_norm, iv_data['rTES'][cut_sc_to_norm] > -50e-3)
         cut_fixed_sc_to_norm = cut_fixed_sc_to_norm.flatten()
-        if cut_fixed_sc_to_norm.sum() > 0:
+        if cut_fixed_sc_to_norm.sum() > 1:
             sc_to_norm['T'] = np.append(norm_to_sc['T'], float(temperature)*1e-3)
             rTES = iv_data['rTES'][cut_sc_to_norm].flatten()
             sc_to_norm['R'] = np.append(norm_to_sc['R'], np.mean(rTES[cut_fixed_sc_to_norm]))
@@ -193,14 +193,14 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
     sort_key = np.argsort(norm_to_sc['T'])
     print('The size of norm_to_sc[R] is: {}, and norm_to_sc[T] is: {} and sort_key is {}'.format(norm_to_sc['R'].size, norm_to_sc['T'].size, sort_key.size))
     T0 = norm_to_sc['T'][sort_key][np.gradient(norm_to_sc['R'][sort_key], norm_to_sc['T'][sort_key], edge_order=2).argmax()]*1.01
-    x_0 = [0.7, 0, T0, 1e-3]
+    x_0 = [0.4, 0, T0, 1e-3]
     lbounds = (0, 0, 0, 0)
     ubounds = (np.inf, np.inf, norm_to_sc['T'].max(), norm_to_sc['T'].max())
 
     print('For SC to N fit initial guess is {}, and the number of data points are: {}'.format(x_0, sc_to_norm['T'].size))
     fitargs = {'p0': x_0, 'bounds': (lbounds, ubounds), 'absolute_sigma': True, 'sigma': sc_to_norm['rmsR'], 'method': 'trf', 'jac': '3-point', 'xtol': 1e-15, 'ftol': 1e-8, 'loss': 'linear', 'tr_solver': 'exact', 'x_scale': 'jac', 'max_nfev': 10000, 'verbose': 2}
-    print(sc_to_norm['T'])
-    print(sc_to_norm['R'])
+    #print(sc_to_norm['T'])
+    #print(sc_to_norm['R'])
     result, pcov = curve_fit(model_func, sc_to_norm['T'], sc_to_norm['R'], **fitargs)
     print('The cov matrix is: {}'.format(pcov))
     perr = np.sqrt(np.diag(pcov))
