@@ -383,9 +383,10 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     pars['Pp'].min = lbounds[2]
     pars['Pp'].max = ubounds[2]
     pars.pretty_print()
-    result = ptModel.fit(power[cut_temperature], params=pars, T=temperatures[cut_temperature], weights=1.0/power_rms[cut_temperature], method='dual_annealing')
+    result = ptModel.fit(power[cut_temperature], params=pars, T=temperatures[cut_temperature], weights=1.0/power_rms[cut_temperature], method='least_squares')
     print(result.fit_report())
     print('Chisq: {}'.format(result.chisqr))
+    print('The covar matrix: {}'.format(result.covar))
     results = [result.params['k'].value, result.params['n'].value, result.params['Ttes'].value, result.params['Pp'].value]
     perr = [result.params['k'].stderr, result.params['n'].stderr, result.params['Ttes'].stderr, result.params['Pp'].stderr]
     perr = [0 if err is None else err for err in perr]
