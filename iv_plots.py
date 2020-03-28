@@ -104,6 +104,7 @@ def add_model_fits(axes, x, y, model, model_function, xscale=1, yscale=1):
     chisqL = 0
     chisqR = 0
     chisqS = 0
+    chisqN = 0
     if model.left.result is not None:
         ymodel = model_function(x, *model.left.result)
         chisqL = ((y-ymodel))**2
