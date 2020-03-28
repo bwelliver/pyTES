@@ -155,14 +155,14 @@ def get_RT_values(iv_dictionary, fixed_name, fixed_value, delta_values, cut_name
         cut_fixed = cut_fixed.flatten()
         if cut_fixed.sum() > 0:
             data['T'] = np.append(data['T'], float(temperature)*1e-3)
-            rTES = iv_data['rTES'][cut_fixed].flatten()
+            rTES = iv_data['rTES'][direction_cut].flatten()
             data['R'] = np.append(data['R'], np.mean(rTES[cut_fixed]))
             data['rmsR'] = np.append(data['rmsR'], np.std(rTES[cut_fixed])/np.sqrt(cut_fixed.sum()))
     return data
 
+
 def compute_alpha(temperatures, fit_result, model_function, dmodel_function):
     """Compute the value of alpha at various temperatures and resistances."""
-
     # The computation of alpha = dlog(R)/dlog(T) = T/R * dR/dT can be done
     # either through an empirical derivative if the model function allows it
     # or numerically.
