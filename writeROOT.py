@@ -101,10 +101,10 @@ def writeTBranch(tree, branch_data):
     # In the event the thing we are trying to fill is a vector nentries is supposed to be the number of things in vector, aka vector::size
     # In the event the thing we are trying to fill is not a vector it is the number of entries in the array...should this be so?
     # Ultimately nentries should be the number of distinct 'events' that there are
-    print('There are {} entries to write.'.format(nentries))
+    #print('There are {} entries to write.'.format(nentries))
     for event in range(nentries):
-        if event % 1000 == 0:
-            print('Event {} out of {}'.format(event, nentries))
+        #if event % 1000 == 0:
+        #    print('Event {} out of {}'.format(event, nentries))
         for branchkey in branch_data.keys():
             if isinstance(branch_data[branchkey], dict) or (isinstance(branch_data[branchkey], np.ndarray) and len(branch_data[branchkey].shape) == 2):
                 # keys of branch_data[branchkey] are event

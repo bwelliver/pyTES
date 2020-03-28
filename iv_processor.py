@@ -514,7 +514,7 @@ def walk_sc(xdata, ydata, number_samples, sampling_width, number_of_windows, sle
     # Check buffer size
     if delta_current is None:
         if plane == 'iv':
-            delta_current = 40
+            delta_current = 15
         elif plane == 'tes':
             delta_current = 15
         else:

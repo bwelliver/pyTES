@@ -15,8 +15,8 @@ class SQUIDParameters:
             self.serial = 'S0121'
             self.Li = 6e-9
             self.Mi = 1/26.062
-            self.Mfb = 1/33.27168 #1/33.96774594  # 1/33.5132196
-            self.Rfb = 10e3
+            self.Mfb = 1/33.6 #1/33.96774594  # 1/33.5132196
+            self.Rfb = 3e3
             self.Rsh = 21.0e-3
             self.Rbias = 10000.0
             self.Cbias = 100e-12
@@ -42,7 +42,7 @@ class SQUIDParameters:
             self.serial = 'S0204'
             self.Li = 6e-9
             self.Mi = 1/25.135
-            self.Mfb = 1/33.85942246764
+            self.Mfb = 1/33.5028
             self.Rfb = 10e3
             self.Rsh = 20.2e-3
             self.Rbias = 10000.0

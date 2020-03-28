@@ -115,7 +115,7 @@ def add_model_fits(axes, x, y, model, model_function, xscale=1, yscale=1):
         chisqR = ((y-ymodel))**2
         chisqR = np.sum(chisqR)
         yFit = model_function(xModel, *model.right.result)
-        axes.plot(xModel*xscale, yFit*yscale, 'g-', marker='None', linewidth=5)
+        axes.plot(xModel*xscale, yFit*yscale, 'g-', marker='None', linewidth=2)
     if model.sc.result is not None:
         ymodel = model_function(x, *model.sc.result)
         chisqS = ((y-ymodel))**2
@@ -725,7 +725,7 @@ def make_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, 
     axes = rt_fit_textbox(axes=axes, model=normal_to_sc_fit_result)
     # axes.legend(['SC to N', 'N to SC'])
     file_name = output_path + '/' + 'rTES_vs_T_ch_' + str(data_channel) + '_fixed_' + fixed_name + '_' + str(np.round(fixed_value*1e6, 3)) + 'uA_normal_to_sc_only'
-    axes.set_xlim((10, 70))
+    axes.set_xlim((34, 40))
     for label in axes.get_xticklabels() + axes.get_yticklabels():
         label.set_fontsize(18)
     save_plot(fig, axes, file_name)

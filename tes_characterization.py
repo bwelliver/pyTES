@@ -201,7 +201,7 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
     # Try to do a smart Tc0 estimate:
     sort_key = np.argsort(norm_to_sc['T'])
     T0 = norm_to_sc['T'][sort_key][np.gradient(norm_to_sc['R'][sort_key], norm_to_sc['T'][sort_key], edge_order=2).argmax()]*1.01
-    x_0 = [0.7, 0, T0, 1e-3]
+    x_0 = [0.4, 0, T0, 1e-3]
     lbounds = (0, 0, 0, 0)
     ubounds = (2, 2, norm_to_sc['T'].max(), norm_to_sc['T'].max())
 
