@@ -12,7 +12,9 @@ class FitParameters:
             self.left = FitResult()
             self.right = FitResult()
             self.sc = FitResult()
-        self.normal = FitResult()
+        if fit_type == 'rt':
+            self.sc = FitResult()
+            self.normal = FitResult()
 
     def __repr__(self):
         '''return string representation.'''
