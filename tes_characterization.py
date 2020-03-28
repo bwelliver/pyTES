@@ -241,7 +241,7 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     # Try something at 0.5*Rn
     # iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
     R = rN or 500e-3
-    R = 0.9*rN
+    R = 0.85*rN
     deltaR = 20e-3
     temperatures = np.empty(0)
     power = np.empty(0)
@@ -296,7 +296,7 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     cut_temperature = np.logical_and(cut_temperature, cut_power)
 
     # [k, n, Ttes, Pp]
-    pP = 0
+    pP = None
     if tc is None:
         print('No Tc was passed, floating Tc')
         lbounds = [1e-9, 0, 42e-3]
