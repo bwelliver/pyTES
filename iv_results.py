@@ -8,13 +8,11 @@ class FitParameters:
     and SC branch fit results.
     '''
     def __init__(self, fit_type=None):
-        if fit_type is None or fit_type == 'iv':
-            self.left = FitResult()
-            self.right = FitResult()
-            self.sc = FitResult()
-        if fit_type == 'rt':
-            self.sc = FitResult()
-            self.normal = FitResult()
+
+        self.left = FitResult()
+        self.right = FitResult()
+        self.sc = FitResult()
+        self.normal = FitResult()
 
     def __repr__(self):
         '''return string representation.'''
