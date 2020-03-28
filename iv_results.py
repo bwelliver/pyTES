@@ -7,10 +7,12 @@ class FitParameters:
     '''FitParameters is a general class for storing left, right normal branch fit results
     and SC branch fit results.
     '''
-    def __init__(self):
-        self.left = FitResult()
-        self.right = FitResult()
-        self.sc = FitResult()
+    def __init__(self, fit_type=None):
+        if fit_type is None or fit_type == 'iv':
+            self.left = FitResult()
+            self.right = FitResult()
+            self.sc = FitResult()
+        self.normal = FitResult()
 
     def __repr__(self):
         '''return string representation.'''

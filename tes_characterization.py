@@ -83,6 +83,99 @@ def find_normal_to_sc_data(iv_dictionary, number_of_windows, iv_curves=None):
     return iv_dictionary
 
 
+def debugger_RT(iv_data, fixed_name, fixed_value, delta_values, output_path, data_channel, temperature):
+    """Debug the RT curves if something is weird."""
+    timestamps0 = iv_data['timestamps'][0]
+    timestamps = iv_data['timestamps'] - timestamps0
+    sample_width = iv_data['sampling_width'][0]
+    cut_norm_to_sc = iv_data['cut_norm_to_sc']
+    cut_sc_to_norm = ~iv_data['cut_norm_to_sc']
+    iBias = iv_data['iBias']
+    iTES = iv_data['iTES']
+    rTES = iv_data['rTES']
+    vOut = iv_data['vOut']
+    sample_times = np.tile([i*sample_width for i in range(iBias.shape[1])], [timestamps.size, 1])
+    full_timestamps = sample_times + timestamps[:, None]
+    ts = full_timestamps[cut_norm_to_sc].flatten()
+    iBias = iBias[cut_norm_to_sc].flatten()
+    rTES = rTES[cut_norm_to_sc].flatten()
+    iTES = iTES[cut_norm_to_sc].flatten()
+    fixed_cut = np.logical_and(iv_data[fixed_name][cut_norm_to_sc] > fixed_value - delta_values[0], iv_data[fixed_name][cut_norm_to_sc] < fixed_value + delta_values[1])
+    fixed_cut = fixed_cut.flatten()
+    fixed_cut = np.logical_and(fixed_cut, ts < 2e2)
+    print('The shape of timestamps is: {} and the shape of iBias is: {}'.format(ts.shape, iBias.shape))
+    fig = plt.figure(figsize=(16, 12))
+    axes = fig.add_subplot(111)
+    xscale = 1e6
+    yscale = 1e3
+    params = {'marker': 'o', 'markersize': 2, 'markeredgecolor': 'black', 'markerfacecolor': 'black',
+              'markeredgewidth': 0, 'linestyle': 'None',
+              'xerr': None, 'yerr': None
+              }
+    axes_options = {'xlabel': 'Time', 'ylabel': 'Bias Current [uA]',
+                    'title': 'Channel {} Output Voltage vs t for temperatures = {} mK'.format(data_channel, temperature)}
+
+    axes = ivplt.generic_fitplot_with_errors(axes=axes, x=ts[fixed_cut], y=rTES[fixed_cut], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
+
+    fixed_cut = np.logical_and(iv_data[fixed_name][cut_sc_to_norm] > fixed_value - delta_values[0], iv_data[fixed_name][cut_sc_to_norm] < fixed_value + delta_values[1])
+    fixed_cut = fixed_cut.flatten()
+    ts = full_timestamps[cut_sc_to_norm].flatten()
+    iBias = iv_data['iBias'][cut_sc_to_norm].flatten()
+    rTES = iv_data['rTES'][cut_sc_to_norm].flatten()
+    iTES = iv_data['iTES'][cut_sc_to_norm].flatten()
+    fixed_cut = np.logical_and(fixed_cut, ts < 2e2)
+    params = {'marker': 'o', 'markersize': 2, 'markeredgecolor': 'red', 'markerfacecolor': 'red',
+              'markeredgewidth': 0, 'linestyle': 'None',
+              'xerr': None, 'yerr': None
+              }
+    ivplt.generic_fitplot_with_errors(axes=axes, x=ts[fixed_cut], y=rTES[fixed_cut], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
+    file_name = output_path + '/' + 'vOut_vs_t_ch_' + str(data_channel) + '_' + temperature + 'mK'
+    ivplt.save_plot(fig, axes, file_name)
+    raise Exception('Debug halt')
+
+
+def get_RT_values(iv_dictionary, fixed_name, fixed_value, delta_values, cut_name, data):
+    """Loop over iv data and return R and T values for use in fitting."""
+    for temperature, iv_data in iv_dictionary.items():
+        # This is not good with the un-windowed data because of noise fluctuations
+        # It is probably necessary to window the data and extract time boundaries for each case
+        if cut_name == 'normal_to_sc':
+            direction_cut = iv_data['cut_norm_to_sc']
+        else:
+            direction_cut = ~iv_data['cut_norm_to_sc']
+        # Cuts get complicated. We will need to make a cut on a cut.
+        # fixed_cut = np.logical_and(iv_data[fixed_name] > fixed_value - delta_values[0], iv_data[fixed_name] < fixed_value + delta_values[1])
+        # fixed cut is (nEvents, nSamples)
+        # cut_norm_to_sc is (nEvents, )
+        # ultimately we will need to do data[cut_norm_to_sc][fixed_cut[cut_norm_to_sc]]
+        # This means fixed_cut[cut_norm_to_sc] is cut_fixed_norm_to_sc now
+        # Test plot for iBias vs time
+        cut_fixed = np.logical_and(iv_data[fixed_name][direction_cut] > fixed_value - delta_values[0], iv_data[fixed_name][direction_cut] < fixed_value + delta_values[1])
+        cut_fixed = np.logical_and(cut_fixed, iv_data['rTES'][direction_cut] > -100e-3)
+        cut_fixed = cut_fixed.flatten()
+        if cut_fixed.sum() > 0:
+            data['T'] = np.append(data['T'], float(temperature)*1e-3)
+            rTES = iv_data['rTES'][cut_fixed].flatten()
+            data['R'] = np.append(data['R'], np.mean(rTES[cut_fixed]))
+            data['rmsR'] = np.append(data['rmsR'], np.std(rTES[cut_fixed])/np.sqrt(cut_fixed.sum()))
+    return data
+
+def compute_alpha(temperatures, fit_result, model_function, dmodel_function):
+    """Compute the value of alpha at various temperatures and resistances."""
+
+    # The computation of alpha = dlog(R)/dlog(T) = T/R * dR/dT can be done
+    # either through an empirical derivative if the model function allows it
+    # or numerically.
+
+    # Compute alpha purely from fit functions
+    T = np.linspace(temperatures.min(), temperatures.max(), 1000)
+
+    R = model_function(T, *fit_result.normal.result)
+    alpha = (T/R) * dmodel_function(T, *fit_result.normal.result)
+
+    return alpha
+
+
 def get_resistance_temperature_curves_new(output_path, data_channel, number_of_windows, iv_dictionary):
     '''Generate resistance vs temperature curves for a TES'''
 
@@ -93,132 +186,52 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
     fixed_name = 'iTES'
     fixed_value = 0.1e-6
     delta_values = [0.05e-6, 0.1e-6]
-    r_normal = 0.700
+    r_normal = 0.500
 
     norm_to_sc = {'T': np.empty(0), 'R': np.empty(0), 'rmsR': np.empty(0)}
     sc_to_norm = {'T': np.empty(0), 'R': np.empty(0), 'rmsR': np.empty(0)}
-    for temperature, iv_data in iv_dictionary.items():
-        # This is not good with the un-windowed data because of noise fluctuations
-        # It is probably necessary to window the data and extract time boundaries for each case
-        # But that will be a bit tricky.
-        # dbias = np.gradient(iv_data['iBias'].flatten(), edge_order=2)
-        # cut1 = np.logical_and(iv_data['iBias'].flatten() > 0, dbias < 0)   # Positive iBias -slope (High to Low, N-->Sc)
-        # cut2 = np.logical_and(iv_data['iBias'].flatten() <= 0, dbias > 0)  # Negative iBias +slope (-High to -Low, N-->Sc)
-        # cut_norm_to_sc = np.logical_or(cut1, cut2)
-        # cut_fixed_norm_to_sc = np.logical_and(fixed_cut, cut_norm_to_sc)
-        # cut_fixed_sc_to_norm = np.logical_and(fixed_cut, ~cut_norm_to_sc)
-        cut_norm_to_sc = iv_data['cut_norm_to_sc']
-        cut_sc_to_norm = ~iv_data['cut_norm_to_sc']
-        # Cuts get complicated. We will need to make a cut on a cut.
-        fixed_cut = np.logical_and(iv_data[fixed_name] > fixed_value - delta_values[0], iv_data[fixed_name] < fixed_value + delta_values[1])
-        # fixed cut is (nEvents, nSamples)
-        # cut_norm_to_sc is (nEvents, )
-        # ultimately we will need to do data[cut_norm_to_sc][fixed_cut[cut_norm_to_sc]]
-        # This means fixed_cut[cut_norm_to_sc] is cut_fixed_norm_to_sc now
-        ### Test plot for iBias vs time
-#        debug = False
-#        if debug and float(temperature) < 31:
-#            timestamps0 = iv_data['timestamps'][0]
-#            timestamps = iv_data['timestamps'] - timestamps0
-#            sample_width = iv_data['sampling_width'][0]
-#            iBias = iv_data['iBias']
-#            iTES = iv_data['iTES']
-#            rTES = iv_data['rTES']
-#            vOut = iv_data['vOut']
-#            sample_times = np.tile([i*sample_width for i in range(iBias.shape[1])], [timestamps.size, 1])
-#            full_timestamps = sample_times + timestamps[:, None]
-#            ts = full_timestamps[cut_norm_to_sc].flatten()
-#            iBias = iBias[cut_norm_to_sc].flatten()
-#            rTES = rTES[cut_norm_to_sc].flatten()
-#            iTES = iTES[cut_norm_to_sc].flatten()
-#            fixed_cut = np.logical_and(iv_data[fixed_name][cut_norm_to_sc] > fixed_value - delta_value, iv_data[fixed_name][cut_norm_to_sc] < fixed_value + delta_value)
-#            fixed_cut = fixed_cut.flatten()
-#            fixed_cut = np.logical_and(fixed_cut, ts < 2e2)
-#            print('The shape of timestamps is: {} and the shape of iBias is: {}'.format(ts.shape, iBias.shape))
-#            fig = plt.figure(figsize=(16, 12))
-#            axes = fig.add_subplot(111)
-#            xscale = 1e6
-#            yscale = 1e3
-#            params = {'marker': 'o', 'markersize': 2, 'markeredgecolor': 'black', 'markerfacecolor': 'black',
-#                      'markeredgewidth': 0, 'linestyle': 'None',
-#                      'xerr': None, 'yerr': None
-#                      }
-#            axes_options = {'xlabel': 'Time', 'ylabel': 'Bias Current [uA]',
-#                            'title': 'Channel {} Output Voltage vs t for temperatures = {} mK'.format(data_channel, temperature)}
-#
-#            axes = ivplt.generic_fitplot_with_errors(axes=axes, x=ts[fixed_cut], y=rTES[fixed_cut], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
-#
-#            fixed_cut = np.logical_and(iv_data[fixed_name][cut_sc_to_norm] > fixed_value - delta_value, iv_data[fixed_name][cut_sc_to_norm] < fixed_value + delta_value)
-#            fixed_cut = fixed_cut.flatten()
-#            ts = full_timestamps[cut_sc_to_norm].flatten()
-#            iBias = iv_data['iBias'][cut_sc_to_norm].flatten()
-#            rTES = iv_data['rTES'][cut_sc_to_norm].flatten()
-#            iTES = iv_data['iTES'][cut_sc_to_norm].flatten()
-#            fixed_cut = np.logical_and(fixed_cut, ts < 2e2)
-#            params = {'marker': 'o', 'markersize': 2, 'markeredgecolor': 'red', 'markerfacecolor': 'red',
-#                      'markeredgewidth': 0, 'linestyle': 'None',
-#                      'xerr': None, 'yerr': None
-#                      }
-#            ivplt.generic_fitplot_with_errors(axes=axes, x=ts[fixed_cut], y=rTES[fixed_cut], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
-#            file_name = output_path + '/' + 'vOut_vs_t_ch_' + str(data_channel) + '_' + temperature + 'mK'
-#            ivplt.save_plot(fig, axes, file_name)
-#            raise Exception('Debug halt')
-        cut_fixed_norm_to_sc = np.logical_and(iv_data[fixed_name][cut_norm_to_sc] > fixed_value - delta_values[0], iv_data[fixed_name][cut_norm_to_sc] < fixed_value + delta_values[1])
-        cut_fixed_norm_to_sc = np.logical_and(cut_fixed_norm_to_sc, iv_data['rTES'][cut_norm_to_sc] > -50e-3)
-        cut_fixed_norm_to_sc = cut_fixed_norm_to_sc.flatten()
-        if cut_fixed_norm_to_sc.sum() > 0:
-            # Try raw T and R
-            # norm_to_sc['T'] = np.append(norm_to_sc['T'], iv_data['temperatures'].flatten()[cut_fixed_norm_to_sc])
-            # rTES = iv_data['rTES'][cut_norm_to_sc].flatten()
-            # norm_to_sc['R'] = np.append(norm_to_sc['R'], rTES[cut_fixed_norm_to_sc])
-            # norm_to_sc['rmsR'] = np.append(norm_to_sc['rmsR'], np.ones(cut_fixed_norm_to_sc.sum())*np.std(rTES[cut_fixed_norm_to_sc])/np.sqrt(cut_fixed_norm_to_sc.sum()))
-            norm_to_sc['T'] = np.append(norm_to_sc['T'], float(temperature)*1e-3)
-            rTES = iv_data['rTES'][cut_norm_to_sc].flatten()
-            norm_to_sc['R'] = np.append(norm_to_sc['R'], np.mean(rTES[cut_fixed_norm_to_sc]))
-            norm_to_sc['rmsR'] = np.append(norm_to_sc['rmsR'], np.std(rTES[cut_fixed_norm_to_sc])/np.sqrt(cut_fixed_norm_to_sc.sum()))
-        cut_fixed_sc_to_norm = np.logical_and(iv_data[fixed_name][cut_sc_to_norm] > fixed_value - delta_values[0], iv_data[fixed_name][cut_sc_to_norm] < fixed_value + delta_values[1])
-        cut_fixed_sc_to_norm = np.logical_and(cut_fixed_sc_to_norm, iv_data['rTES'][cut_sc_to_norm] > -50e-3)
-        cut_fixed_sc_to_norm = cut_fixed_sc_to_norm.flatten()
-        if cut_fixed_sc_to_norm.sum() > 0:
-            sc_to_norm['T'] = np.append(norm_to_sc['T'], float(temperature)*1e-3)
-            rTES = iv_data['rTES'][cut_sc_to_norm].flatten()
-            sc_to_norm['R'] = np.append(norm_to_sc['R'], np.mean(rTES[cut_fixed_sc_to_norm]))
-            sc_to_norm['rmsR'] = np.append(norm_to_sc['rmsR'], np.std(rTES[cut_fixed_sc_to_norm])/np.sqrt(cut_fixed_sc_to_norm.sum()))
+    norm_to_sc = get_RT_values(iv_dictionary, fixed_name, fixed_value, delta_values, 'normal_to_sc', norm_to_sc)
+    sc_to_norm = get_RT_values(iv_dictionary, fixed_name, fixed_value, delta_values, 'sc_to_normal', sc_to_norm)
     # Now we have arrays of R and T for a fixed iTES so try to fit each domain
     # SC --> N first
     # Model function is a modified tanh(Rn, Rp, Tc, Tw)
     model_func = fitfuncs.tanh_tc
-    fit_result = iv_results.FitParameters()
+    dmodel_func = fitfuncs.dtanh_tc
+    fit_result = iv_results.FitParameters('rt')
     # Try to do a smart Tc0 estimate:
     sort_key = np.argsort(norm_to_sc['T'])
-    print('The size of norm_to_sc[R] is: {}, and norm_to_sc[T] is: {} and sort_key is {}'.format(norm_to_sc['R'].size, norm_to_sc['T'].size, sort_key.size))
     T0 = norm_to_sc['T'][sort_key][np.gradient(norm_to_sc['R'][sort_key], norm_to_sc['T'][sort_key], edge_order=2).argmax()]*1.01
     x_0 = [0.7, 0, T0, 1e-3]
     lbounds = (0, 0, 0, 0)
-    ubounds = (np.inf, np.inf, norm_to_sc['T'].max(), norm_to_sc['T'].max())
+    ubounds = (2, 2, norm_to_sc['T'].max(), norm_to_sc['T'].max())
 
     print('For SC to N fit initial guess is {}, and the number of data points are: {}'.format(x_0, sc_to_norm['T'].size))
-    fitargs = {'p0': x_0, 'bounds': (lbounds, ubounds), 'absolute_sigma': True, 'sigma': sc_to_norm['rmsR'], 'method': 'trf', 'jac': '3-point', 'xtol': 1e-15, 'ftol': 1e-8, 'loss': 'linear', 'tr_solver': 'exact', 'x_scale': 'jac', 'max_nfev': 10000, 'verbose': 2}
-    print(sc_to_norm['T'])
-    print(sc_to_norm['R'])
+    fitargs = {'p0': x_0, 'bounds': (lbounds, ubounds), 'absolute_sigma': True,
+               'sigma': sc_to_norm['rmsR'], 'method': 'trf', 'jac': '3-point',
+               'xtol': 1e-15, 'ftol': 1e-8, 'loss': 'linear', 'tr_solver': 'exact',
+               'x_scale': 'jac', 'max_nfev': 10000, 'verbose': 2}
     result, pcov = curve_fit(model_func, sc_to_norm['T'], sc_to_norm['R'], **fitargs)
-    print('The cov matrix is: {}'.format(pcov))
     perr = np.sqrt(np.diag(pcov))
     print('Ascending (SC -> N): Rn = {} mOhm, r_p = {} mOhm, Tc = {} mK, Tw = {} mK'.format(*[i*1e3 for i in result]))
-    fit_result.left.set_values(result, perr)
+    fit_result.sc.set_values(result, perr)
 
     # Attempt to fit the N-->Sc region now
     print('For N to SC fit initial guess is {}, and the number of data points are: {}'.format(x_0, norm_to_sc['T'].size))
-    fitargs = {'p0': x_0, 'bounds': (lbounds, ubounds), 'absolute_sigma': True, 'sigma': norm_to_sc['rmsR'], 'method': 'trf', 'jac': '3-point', 'xtol': 1e-14, 'ftol': 1e-14, 'loss': 'soft_l1', 'tr_solver': 'exact', 'x_scale': 'jac', 'max_nfev': 10000, 'verbose': 2}
+    fitargs = {'p0': x_0, 'bounds': (lbounds, ubounds), 'absolute_sigma': True,
+               'sigma': norm_to_sc['rmsR'], 'method': 'trf', 'jac': '3-point',
+               'xtol': 1e-14, 'ftol': 1e-14, 'loss': 'soft_l1', 'tr_solver': 'exact',
+               'x_scale': 'jac', 'max_nfev': 10000, 'verbose': 2}
     #fitargs = {'p0': x_0, 'bounds': (lbounds, ubounds), 'method': 'trf', 'jac': '3-point', 'xtol': 1e-14, 'ftol': 1e-14, 'loss': 'linear', 'tr_solver': 'exact', 'x_scale': 'jac', 'max_nfev': 10000, 'verbose': 2}
     result, pcov = curve_fit(model_func, norm_to_sc['T'], norm_to_sc['R'], **fitargs)
     perr = np.sqrt(np.diag(pcov))
     print('Descending (N -> SC): Rn = {} mOhm, r_p = {} mOhm, Tc = {} mK, Tw = {} mK'.format(*[i*1e3 for i in result]))
-    fit_result.right.set_values(result, perr)
+    fit_result.normal.set_values(result, perr)
     rN = result[0]
     tc = result[2]
+    # Get alpha values
+    alpha = compute_alpha(norm_to_sc['T'], fit_result, model_func, dmodel_func)
     # Make output plot
-    ivplt.make_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, fixed_value, norm_to_sc, sc_to_norm, model_func, fit_result)
+    ivplt.make_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, fixed_value, norm_to_sc, sc_to_norm, alpha, model_func, fit_result)
     return tc, rN
 
 
