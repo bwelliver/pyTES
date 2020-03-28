@@ -178,7 +178,7 @@ def rt_fit_textbox(axes, model):
     if model.sc.result is not None:
         lR = r'SC $\rightarrow$ N: $\mathrm{R_{n}} = %.2f \pm %.2f \mathrm{m \Omega}$' % (model.sc.result[0]*1e3, model.sc.error[0]*1e3)
         lRp = r'SC $\rightarrow$ N: $\mathrm{R_{p}} = %.2f \pm %.2f \mathrm{m \Omega}$' % (model.sc.result[1]*1e3, model.sc.error[1]*1e3)
-        lTc = r'SC $\rightarrow$ N: $\mathrm{T_{c}} = %.2f \pm %.2f \mathrm{mK}$' % (model.left.sc[2]*1e3, model.sc.error[2]*1e3)
+        lTc = r'SC $\rightarrow$ N: $\mathrm{T_{c}} = %.2f \pm %.2f \mathrm{mK}$' % (model.sc.result[2]*1e3, model.sc.error[2]*1e3)
         lTw = r'SC $\rightarrow$ N: $\mathrm{\Delta T_{c}} = %.2f \pm %.2f \mathrm{mK}$' % (model.sc.result[3]*1e3, model.sc.error[3]*1e3)
         textStr += lR + '\n' + lRp + '\n' + lTc + '\n' + lTw
     # Next the descending (N to SC) parameters...these are the main physical ones
