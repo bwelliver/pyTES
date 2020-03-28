@@ -380,68 +380,69 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     print('G(10 mK) = {} pW/K'.format(results[0]*results[1]*np.power(10e-3, results[1]-1)*1e12))
 
     # Test lmfit #####
-    print('Trying lmfit')
-    from lmfit import Model
-    # tes_power_polynomial_args(T, k, n, Ttes, Pp)
-    fixedArgs = {'Ttes': tc}
-    x0 = [100e-9, 5, pP]
-    ptModel = Model(fitfuncs.tes_power_polynomial_args)
-    pars = ptModel.make_params(k=x0[0], n=x0[1], Ttes=fixedArgs['Ttes'], Pp=x0[2])
-    pars['Ttes'].vary = False
-    #pars['Pp'].vary = False
-    pars['k'].min = lbounds[0]
-    pars['k'].max = ubounds[0]
-    pars['n'].min = lbounds[1]
-    pars['n'].max = ubounds[1]
-    pars['Pp'].min = lbounds[2]
-    pars['Pp'].max = ubounds[2]
-    pars.pretty_print()
-    result = ptModel.fit(power[cut_temperature], params=pars, T=temperatures[cut_temperature], weights=1.0/power_rms[cut_temperature], method='least_squares')
-    print(result.fit_report())
-    print('Chisq: {}'.format(result.chisqr))
-    print('The covar matrix: {}'.format(result.covar))
-    results = [result.params['k'].value, result.params['n'].value, result.params['Ttes'].value, result.params['Pp'].value]
-    perr = [result.params['k'].stderr, result.params['n'].stderr, result.params['Ttes'].stderr, result.params['Pp'].stderr]
-    perr = [0 if err is None else err for err in perr]
-    print('After lmfit the results are: {} and the err are: {}'.format(results, perr))
-    x0 = [x0[0], x0[1], fixedArgs['Ttes'], x0[2]]
-    fit_result = iv_results.FitParameters()
-    fit_result.left.set_values(results, perr)
-    fit_result.right.set_values(x0, x0)
-    # Next make a P-T plot
-    fig = plt.figure(figsize=(16, 12))
-    axes = fig.add_subplot(111)
-    xscale = 1e3
-    yscale = 1e15
-    ymax = power.max()*1.05*yscale
-    params = {'marker': 'o', 'markersize': 7, 'markeredgecolor': 'black',
-              'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None',
-              'xerr': None, 'yerr': power_rms*yscale
-              }
-    axes_options = {'xlabel': 'Temperature [mK]',
-                    'ylabel': 'TES Power [fW]',
-                    'title': None, # 'Channel {} TES Power vs Temperature'.format(data_channel),
-                    'xlim': (10, 60),
-                    'ylim': (0, ymax)
-                    }
-    axes = ivplt.generic_fitplot_with_errors(axes=axes, x=temperatures, y=power, axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
-    axes, chisq = ivplt.add_model_fits(axes=axes, x=temperatures, y=power, model=fit_result, model_function=fitfuncs.tes_power_polynomial, xscale=xscale, yscale=yscale)
-    # compute chisq
-    ymodel = fitfuncs.tes_power_polynomial(temperatures[cut_temperature], *fit_result.left.result)
-    r = power[cut_temperature] - ymodel
-    sigma = power_rms[cut_temperature]
-    chisq = np.sum((r / sigma) ** 2)
-    axes = ivplt.pt_fit_textbox(axes=axes, model=fit_result, chisq=chisq, ndf=ndf)
-    file_name = output_path + '/' + 'pTES_vs_T_ch_' + str(data_channel) + '_lmfit'
-    #for label in axes.get_xticklabels() + axes.get_yticklabels():
-    #    label.set_fontsize(32)
-    ivplt.save_plot(fig, axes, file_name, dpi=150)
-    print('Results: k = {}, n = {}, Tb = {}, Pp = {}'.format(*results))
-    print('Error Results: k = {}, n = {}, Tb = {}, Pp = {}'.format(*perr))
-    # Compute G
-    # P = k*(Ts^n - T^n)
-    # G = n*k*T^(n-1)
-    print('G(Ttes) = {} pW/K'.format(results[0]*results[1]*np.power(results[2], results[1]-1)*1e12))
-    print('G(10 mK) = {} pW/K'.format(results[0]*results[1]*np.power(10e-3, results[1]-1)*1e12))
+
+    # print('Trying lmfit')
+    # from lmfit import Model
+    # # tes_power_polynomial_args(T, k, n, Ttes, Pp)
+    # fixedArgs = {'Ttes': tc}
+    # x0 = [100e-9, 5, pP]
+    # ptModel = Model(fitfuncs.tes_power_polynomial_args)
+    # pars = ptModel.make_params(k=x0[0], n=x0[1], Ttes=fixedArgs['Ttes'], Pp=x0[2])
+    # pars['Ttes'].vary = False
+    # #pars['Pp'].vary = False
+    # pars['k'].min = lbounds[0]
+    # pars['k'].max = ubounds[0]
+    # pars['n'].min = lbounds[1]
+    # pars['n'].max = ubounds[1]
+    # pars['Pp'].min = lbounds[2]
+    # pars['Pp'].max = ubounds[2]
+    # pars.pretty_print()
+    # result = ptModel.fit(power[cut_temperature], params=pars, T=temperatures[cut_temperature], weights=1.0/power_rms[cut_temperature], method='least_squares')
+    # print(result.fit_report())
+    # print('Chisq: {}'.format(result.chisqr))
+    # print('The covar matrix: {}'.format(result.covar))
+    # results = [result.params['k'].value, result.params['n'].value, result.params['Ttes'].value, result.params['Pp'].value]
+    # perr = [result.params['k'].stderr, result.params['n'].stderr, result.params['Ttes'].stderr, result.params['Pp'].stderr]
+    # perr = [0 if err is None else err for err in perr]
+    # print('After lmfit the results are: {} and the err are: {}'.format(results, perr))
+    # x0 = [x0[0], x0[1], fixedArgs['Ttes'], x0[2]]
+    # fit_result = iv_results.FitParameters()
+    # fit_result.left.set_values(results, perr)
+    # fit_result.right.set_values(x0, x0)
+    # # Next make a P-T plot
+    # fig = plt.figure(figsize=(16, 12))
+    # axes = fig.add_subplot(111)
+    # xscale = 1e3
+    # yscale = 1e15
+    # ymax = power.max()*1.05*yscale
+    # params = {'marker': 'o', 'markersize': 7, 'markeredgecolor': 'black',
+    #           'markerfacecolor': 'black', 'markeredgewidth': 0, 'linestyle': 'None',
+    #           'xerr': None, 'yerr': power_rms*yscale
+    #           }
+    # axes_options = {'xlabel': 'Temperature [mK]',
+    #                 'ylabel': 'TES Power [fW]',
+    #                 'title': None, # 'Channel {} TES Power vs Temperature'.format(data_channel),
+    #                 'xlim': (10, 60),
+    #                 'ylim': (0, ymax)
+    #                 }
+    # axes = ivplt.generic_fitplot_with_errors(axes=axes, x=temperatures, y=power, axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
+    # axes, chisq = ivplt.add_model_fits(axes=axes, x=temperatures, y=power, model=fit_result, model_function=fitfuncs.tes_power_polynomial, xscale=xscale, yscale=yscale)
+    # # compute chisq
+    # ymodel = fitfuncs.tes_power_polynomial(temperatures[cut_temperature], *fit_result.left.result)
+    # r = power[cut_temperature] - ymodel
+    # sigma = power_rms[cut_temperature]
+    # chisq = np.sum((r / sigma) ** 2)
+    # axes = ivplt.pt_fit_textbox(axes=axes, model=fit_result, chisq=chisq, ndf=ndf)
+    # file_name = output_path + '/' + 'pTES_vs_T_ch_' + str(data_channel) + '_lmfit'
+    # #for label in axes.get_xticklabels() + axes.get_yticklabels():
+    # #    label.set_fontsize(32)
+    # ivplt.save_plot(fig, axes, file_name, dpi=150)
+    # print('Results: k = {}, n = {}, Tb = {}, Pp = {}'.format(*results))
+    # print('Error Results: k = {}, n = {}, Tb = {}, Pp = {}'.format(*perr))
+    # # Compute G
+    # # P = k*(Ts^n - T^n)
+    # # G = n*k*T^(n-1)
+    # print('G(Ttes) = {} pW/K'.format(results[0]*results[1]*np.power(results[2], results[1]-1)*1e12))
+    # print('G(10 mK) = {} pW/K'.format(results[0]*results[1]*np.power(10e-3, results[1]-1)*1e12))
 
     return temperatures, power, power_rms
