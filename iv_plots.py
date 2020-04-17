@@ -121,16 +121,16 @@ def add_model_fits(axes, x, y, model, model_function, xscale=1, yscale=1):
         ymodel = model_function(x, *model.sc.result)
         chisqS = ((y-ymodel))**2
         chisqS = np.sum(chisqS)
-        yFit = model_function(x, *model.sc.result)
+        yFit = model_function(xModel, *model.sc.result)
         cut = np.logical_and(yFit < y.max(), yFit > y.min())
-        axes.plot(x[cut]*xscale, yFit[cut]*yscale, 'b-', marker='None', linewidth=5)
+        axes.plot(xModel[cut]*xscale, yFit[cut]*yscale, 'b-', marker='None', linewidth=5)
     if model.normal.result is not None:
         ymodel = model_function(x, *model.normal.result)
         chisqN = ((y-ymodel))**2
         chisqN = np.sum(chisqN)
-        yFit = model_function(x, *model.normal.result)
+        yFit = model_function(xModel, *model.normal.result)
         cut = np.logical_and(yFit < y.max(), yFit > y.min())
-        axes.plot(x[cut]*xscale, yFit[cut]*yscale, 'b-', marker='None', linewidth=5)
+        axes.plot(xModel[cut]*xscale, yFit[cut]*yscale, 'b-', marker='None', linewidth=5)
     chisq = [chisqL, chisqS, chisqR, chisqN]
     return axes, chisq
 
