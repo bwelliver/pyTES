@@ -726,7 +726,7 @@ def make_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, 
     axes = rt_fit_textbox(axes=axes, model=normal_to_sc_fit_result)
     # axes.legend(['SC to N', 'N to SC'])
     file_name = output_path + '/' + 'rTES_vs_T_ch_' + str(data_channel) + '_fixed_' + fixed_name + '_' + str(np.round(fixed_value*1e6, 3)) + 'uA_normal_to_sc_only'
-    axes.set_xlim((34, 40))
+    axes.set_xlim((34, 60))
     for label in axes.get_xticklabels() + axes.get_yticklabels():
         label.set_fontsize(18)
     save_plot(fig, axes, file_name)

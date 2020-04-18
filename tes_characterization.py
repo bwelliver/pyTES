@@ -172,7 +172,9 @@ def compute_alpha(temperatures, fit_result, model_function, dmodel_function):
 
     R = model_function(T, *fit_result.normal.result)
     alpha = (T/R) * dmodel_function(T, *fit_result.normal.result)
-
+    print('The input temperature ranges were: {}'.format([temperatures.min(), temperatures.max()]))
+    print('The input parameters are: {}'.format(fit_result.normal.result))
+    print('The max value for alpha is: {}'.format(alpha.max()))
     return alpha
 
 
@@ -184,8 +186,8 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
     # Rtes = R(i,T) so we are really asking for R(i=constant, T).
     # iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
     fixed_name = 'iTES'
-    fixed_value = 0.1e-6
-    delta_values = [0.05e-6, 0.1e-6]
+    fixed_value = 0.2e-6
+    delta_values = [0.1e-6, 0.3e-6]
     r_normal = 0.500
 
     norm_to_sc = {'T': np.empty(0), 'R': np.empty(0), 'rmsR': np.empty(0)}
@@ -195,13 +197,13 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
     # Now we have arrays of R and T for a fixed iTES so try to fit each domain
     # SC --> N first
     # Model function is a modified tanh(Rn, Rp, Tc, Tw)
-    model_func = fitfuncs.tanh_tc
-    dmodel_func = fitfuncs.dtanh_tc
+    model_func = fitfuncs.exp_tc #fitfuncs.tanh_tc
+    dmodel_func = fitfuncs.dexp_tc #fitfuncs.dtanh_tc
     fit_result = iv_results.FitParameters('rt')
     # Try to do a smart Tc0 estimate:
     sort_key = np.argsort(norm_to_sc['T'])
     T0 = norm_to_sc['T'][sort_key][np.gradient(norm_to_sc['R'][sort_key], norm_to_sc['T'][sort_key], edge_order=2).argmax()]*1.01
-    x_0 = [0.4, 0, T0, 1e-3]
+    x_0 = [0.6, 1e-3, T0, 1e-3]
     lbounds = (0, 0, 0, 0)
     ubounds = (2, 2, norm_to_sc['T'].max(), norm_to_sc['T'].max())
 
@@ -241,8 +243,8 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     # Try something at 0.5*Rn
     # iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
     R = rN or 500e-3
-    R = 0.85*rN
-    deltaR = 20e-3
+    R = 0.6*rN
+    deltaR = 120e-3
     temperatures = np.empty(0)
     power = np.empty(0)
     power_rms = np.empty(0)
@@ -291,7 +293,7 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     # TODO: Make these input values?
     #tc = None
     max_temp = tc or 60e-3
-    cut_temperature = np.logical_and(temperatures > 10e-3, temperatures < max_temp)  # This should be the expected Tc
+    cut_temperature = np.logical_and(temperatures > 34e-3, temperatures < max_temp)  # This should be the expected Tc
     cut_power = power < 1e-6
     cut_temperature = np.logical_and(cut_temperature, cut_power)
 
@@ -307,9 +309,9 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
         if pP is None:
             print('Tc = {} mK was passed. Fixing to this value'.format(tc))
             lbounds = [1e-9, 0]
-            ubounds = [1, 10]
+            ubounds = [1, 5]
             fixedArgs = {'Pp': 0, 'Ttes': tc}
-            x0 = [100e-9, 5]
+            x0 = [1000e-9, 5]
         else:
             print('Tc = {} mK was passed. Fixing to this value'.format(tc))
             lbounds = [1e-9, 0, -3e-5]
@@ -342,7 +344,7 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     print('x0={}, results={}'.format(x0, results))
     fit_result = iv_results.FitParameters()
     fit_result.left.set_values(results, perr)
-    fit_result.right.set_values(x0, x0)
+    #fit_result.right.set_values(x0, x0)
     # Next make a P-T plot
     fig = plt.figure(figsize=(16, 12))
     axes = fig.add_subplot(111)
