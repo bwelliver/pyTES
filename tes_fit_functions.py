@@ -118,7 +118,7 @@ def nll_error(params, P, P_rms, T, func):
         return np.inf
     else:
         model = func(T, k, n, Ttes)
-        lnl = nsum(((P - model)/P_rms)**2)
+        lnl = np.sum(((P - model)/P_rms)**2)
         return lnl
 
 def tes_power_polynomial_args(T, k, n, Ttes, Pp):

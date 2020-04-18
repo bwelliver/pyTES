@@ -546,11 +546,14 @@ def iv_main(argin):
         make_tes_plots(output_path=argin.outputPath, data_channel=argin.dataChannel, squid=argin.squid, number_of_windows=argin.numberOfWindows, iv_dictionary=iv_dictionary, individual=True)
     # Step 6: Compute interesting curves
     iv_dictionary = tes_char.find_normal_to_sc_data(iv_dictionary, argin.numberOfWindows, iv_curves=iv_curves)
-    tc, rN = tes_char.get_resistance_temperature_curves_new(argin.outputPath, argin.dataChannel, argin.numberOfWindows, iv_dictionary)
+    tc, rN, temp, R, R_sigma = tes_char.get_resistance_temperature_curves_new(argin.outputPath, argin.dataChannel, argin.numberOfWindows, iv_dictionary)
+    output_file = argin.outputPath + '/root/rt_data.root'
+    rt_data = {'rtdata': {'temperature': temp, 'rTES': R, 'rTES_sigma': R_sigma}}
+    save_iv_to_root(output_file, rt_data, branches=['rTES', 'rTES_sigma', 'temperature'])
     temp, power, power_sigma = tes_char.get_power_temperature_curves(argin.outputPath, argin.dataChannel, argin.numberOfWindows, iv_dictionary, tc=tc, rN=rN)
     output_file = argin.outputPath + '/root/pt_data.root'
     pt_data = {'ptdata': {'temperature': temp, 'pTES': power, 'pTES_sigma': power_sigma}}
-    save_iv_to_root(argin.outputPath + '/root/pt_data.root', pt_data, branches=['pTES', 'pTES_sigma', 'temperature'])
+    save_iv_to_root(output_file, pt_data, branches=['pTES', 'pTES_sigma', 'temperature'])
     return True
 
 

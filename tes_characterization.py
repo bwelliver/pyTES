@@ -232,7 +232,7 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
     alpha = compute_alpha(norm_to_sc['T'], fit_result, model_func, dmodel_func)
     # Make output plot
     ivplt.make_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, fixed_value, norm_to_sc, sc_to_norm, alpha, model_func, fit_result)
-    return tc, rN
+    return tc, rN, norm_to_sc['T'], norm_to_sc['R'], norm_to_sc['rmsR']
 
 
 def get_power_temperature_curves(output_path, data_channel, number_of_windows, iv_dictionary, tc=None, rN=None):
