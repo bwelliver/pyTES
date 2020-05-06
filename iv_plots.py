@@ -799,3 +799,129 @@ def make_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, 
         label.set_fontsize(18)
     save_plot(fig, axes, file_name)
     return True
+
+
+def make_corrected_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, fixed_value, norm_to_sc, sc_to_norm, alpha, model_func, fit_result):
+    '''Function to make R vs corrected T plots for a given set of values'''
+
+    fig = plt.figure(figsize=(16, 12))
+    axes = fig.add_subplot(111)
+    xscale = 1e3
+    yscale = 1e3
+    sort_key = np.argsort(sc_to_norm['T'])
+    nice_current = np.round(fixed_value*1e6, 3)
+    axes_options = {'xlabel': 'TES Temperature [mK]',
+                    'ylabel': 'TES Resistance [m' + r'$\Omega$' + ']',
+                    'title': None  #'Channel {}'.format(data_channel) + ' TES Resistance vs Temperature for TES Current = {}'.format(nice_current) + r'$\mu$' + 'A'
+                    }
+    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'red',
+              'markerfacecolor': 'red', 'markeredgewidth': 0, 'linestyle': 'None',
+              'xerr': None, 'yerr': sc_to_norm['rmsR'][sort_key]*yscale}
+    axes = generic_fitplot_with_errors(axes=axes, x=sc_to_norm['T'][sort_key], y=sc_to_norm['R'][sort_key], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
+
+    sort_key = np.argsort(norm_to_sc['T'])
+    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'green',
+              'markerfacecolor': 'green', 'markeredgewidth': 0, 'linestyle': 'None',
+              'xerr': None, 'yerr': norm_to_sc['rmsR'][sort_key]*yscale}
+    axes = generic_fitplot_with_errors(axes=axes, x=norm_to_sc['T'][sort_key], y=norm_to_sc['R'][sort_key], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
+    axes, chisq = add_model_fits(axes=axes, x=norm_to_sc['T'], y=norm_to_sc['R'], model=fit_result, model_function=model_func, xscale=xscale, yscale=yscale)
+    axes = rt_fit_textbox(axes=axes, model=fit_result)
+    axes.legend(['SC to N', 'N to SC'], markerscale=6, fontsize=26)
+    file_name = output_path + '/' + 'corrected_rTES_vs_T_ch_' + str(data_channel) + '_fixed_' + fixed_name + '_' + str(np.round(fixed_value*1e6, 3)) + 'uA'
+    #for label in axes.get_xticklabels() + axes.get_yticklabels():
+    #    label.set_fontsize(26)
+    save_plot(fig, axes, file_name)
+
+    # Make a plot of N --> SC only
+    fig = plt.figure(figsize=(16, 12))
+    axes = fig.add_subplot(111)
+    xscale = 1e3
+    yscale = 1e3
+    sort_key = np.argsort(norm_to_sc['T'])
+    normal_to_sc_fit_result = iv_results.FitParameters('rt')
+    normal_to_sc_fit_result.normal.set_values(fit_result.normal.result, fit_result.normal.error)
+    params = {'marker': 'o', 'markersize': 4, 'markeredgecolor': 'green',
+              'markerfacecolor': 'green', 'markeredgewidth': 0, 'linestyle': 'None',
+              'xerr': None, 'yerr': norm_to_sc['rmsR'][sort_key]*yscale}
+    axes_options = {'xlabel': 'TES Temperature [mK]',
+                    'ylabel': 'TES Resistance [m' + r'$\Omega$' + ']',
+                    'title': 'Channel {}'.format(data_channel) + ' TES Resistance vs Temperature for TES Current = {}'.format(np.round(fixed_value*1e6, 3)) + r'$\mu$' + 'A'
+                    }
+    axes = generic_fitplot_with_errors(axes=axes, x=norm_to_sc['T'][sort_key], y=norm_to_sc['R'][sort_key], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
+    axes, chisq = add_model_fits(axes=axes, x=norm_to_sc['T'], y=norm_to_sc['R'], model=normal_to_sc_fit_result, model_function=model_func, xscale=xscale, yscale=yscale)
+    axes = rt_fit_textbox(axes=axes, model=normal_to_sc_fit_result)
+    # axes.legend(['SC to N', 'N to SC'])
+    file_name = output_path + '/' + 'corrected_rTES_vs_T_ch_' + str(data_channel) + '_fixed_' + fixed_name + '_' + str(np.round(fixed_value*1e6, 3)) + 'uA_normal_to_sc_only'
+    axes.set_xlim((34, 60))
+    for label in axes.get_xticklabels() + axes.get_yticklabels():
+        label.set_fontsize(18)
+    save_plot(fig, axes, file_name)
+
+
+    # Alpha plots
+    T = np.linspace(norm_to_sc['T'].min(), norm_to_sc['T'].max(), alpha.size)
+    R = model_func(T, *fit_result.normal.result)
+    ### alpha vs R
+    fig = plt.figure(figsize=(16, 12))
+    axes = fig.add_subplot(111)
+    xscale = 1e3
+    yscale = 1
+    axes_options = {'xlabel': r'Resistance [m$\Omega$]',
+                    'ylabel': 'TES ' + r'$\alpha$',
+                    'logy': 'linear',
+                    'xlim': (0, 0.500*xscale),
+                    'ylim': (0, alpha.max()),
+                    'title': 'Channel {}'.format(data_channel) + ' TES ' + r'$\alpha$' + ' vs Resistance for TES Current = {}'.format(np.round(fixed_value*1e6, 3)) + r'$\mu$' + 'A'
+                    }
+    params = {'marker': 'o', 'markersize': 5, 'markeredgecolor': 'green',
+              'markerfacecolor': 'green', 'markeredgewidth': 0, 'linestyle': 'None',
+              'xerr': None, 'yerr': None}
+    axes = generic_fitplot_with_errors(axes=axes, x=R, y=alpha, axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
+    # axes2 = axes.twinx()
+    # params = {'marker': 'None', 'markersize': 4, 'markeredgecolor': 'red',
+    #          'markerfacecolor': 'red', 'markeredgewidth': 0, 'linestyle': '-',
+    #          'xerr': None, 'yerr': None}
+    # generic_fitplot_with_errors(axes=axes, x=model_R[model_cutR], y=model_alpha[model_cutR], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
+    # Let us pad the T values so they are smoooooooth
+    # model_temperatures = np.linspace(norm_to_sc['T'].min(), 70e-3, 100000)
+    #axes, chisq = ivp.add_model_fits(axes=axes, x=model_temperatures, y=norm_to_sc['R'], model=normal_to_sc_fit_result, model_function=model_func, xscale=xscale, yscale=yscale)
+    #axes = ivp.rt_fit_textbox(axes=axes, model=normal_to_sc_fit_result)
+    # axes.legend(['SC to N', 'N to SC'])
+    file_name = output_path + '/' + 'corrected_alpha_vs_R_ch_' + str(data_channel) + '_fixed_' + fixed_name + '_' + str(np.round(fixed_value*1e6, 3)) + 'uA_normal_to_sc_only'
+    #axes.set_xlim((10, 70))
+    for label in axes.get_xticklabels() + axes.get_yticklabels():
+        label.set_fontsize(18)
+    save_plot(fig, axes, file_name)
+
+    ### alpha vs T
+    fig = plt.figure(figsize=(16, 12))
+    axes = fig.add_subplot(111)
+    xscale = 1e3
+    yscale = 1
+    axes_options = {'xlabel': 'Temperature [mK]',
+                    'ylabel': 'TES ' + r'$\alpha$',
+                    'logy': 'linear',
+                    'xlim': (0, T.max()*xscale),
+                    'ylim': (0, alpha.max()),
+                    'title': 'Channel {}'.format(data_channel) + ' TES ' + r'$\alpha$' + ' vs Temperature for TES Current = {}'.format(np.round(fixed_value*1e6, 3)) + r'$\mu$' + 'A'
+                    }
+    params = {'marker': 'o', 'markersize': 5, 'markeredgecolor': 'green',
+              'markerfacecolor': 'green', 'markeredgewidth': 0, 'linestyle': 'None',
+              'xerr': None, 'yerr': None}
+    axes = generic_fitplot_with_errors(axes=axes, x=T, y=alpha, axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
+    # # axes2 = axes.twinx()
+    # params = {'marker': 'None', 'markersize': 4, 'markeredgecolor': 'red',
+    #           'markerfacecolor': 'red', 'markeredgewidth': 0, 'linestyle': '-',
+    #           'xerr': None, 'yerr': None}
+    # generic_fitplot_with_errors(axes=axes, x=model_T[model_cutR], y=model_alpha[model_cutR], axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
+    # # Let us pad the T values so they are smoooooooth
+    # model_temperatures = np.linspace(norm_to_sc['T'].min(), 70e-3, 100000)
+    # axes, ßchisq = ivp.add_model_fits(axes=axes, x=model_temperatures, y=norm_to_sc['R'], model=normal_to_sc_fit_result, model_function=model_func, xscale=xscale, yscale=yscale)
+    # axes = ivp.rt_fit_textbox(axes=axes, model=normal_to_sc_fit_result)
+    # axes.legend(['SC to N', 'N to SC'])
+    file_name = output_path + '/' + 'corrected_alpha_vs_T_ch_' + str(data_channel) + '_fixed_' + fixed_name + '_' + str(np.round(fixed_value*1e6, 3)) + 'uA_normal_to_sc_only'
+    #axes.set_xlim((10, 70))
+    for label in axes.get_xticklabels() + axes.get_yticklabels():
+        label.set_fontsize(18)
+    save_plot(fig, axes, file_name)
+    return True

@@ -161,6 +161,39 @@ def get_RT_values(iv_dictionary, fixed_name, fixed_value, delta_values, cut_name
     return data
 
 
+def get_corrected_RT_values(iv_dictionary, fixed_name, fixed_value, delta_values, cut_name, data, ptdata):
+    """Loop over iv data and return R and T values for use in fitting."""
+    for temperature, iv_data in iv_dictionary.items():
+        # This is not good with the un-windowed data because of noise fluctuations
+        # It is probably necessary to window the data and extract time boundaries for each case
+        # Generate an estimate of Ttes from pTES and Tbath
+        if cut_name == 'normal_to_sc':
+            direction_cut = iv_data['cut_norm_to_sc']
+        else:
+            direction_cut = ~iv_data['cut_norm_to_sc']
+        # Cuts get complicated. We will need to make a cut on a cut.
+        # fixed_cut = np.logical_and(iv_data[fixed_name] > fixed_value - delta_values[0], iv_data[fixed_name] < fixed_value + delta_values[1])
+        # fixed cut is (nEvents, nSamples)
+        # cut_norm_to_sc is (nEvents, )
+        # ultimately we will need to do data[cut_norm_to_sc][fixed_cut[cut_norm_to_sc]]
+        # This means fixed_cut[cut_norm_to_sc] is cut_fixed_norm_to_sc now
+        # Test plot for iBias vs time
+        cut_fixed = np.logical_and(iv_data[fixed_name][direction_cut] > fixed_value - delta_values[0], iv_data[fixed_name][direction_cut] < fixed_value + delta_values[1])
+        cut_fixed = np.logical_and(cut_fixed, iv_data['rTES'][direction_cut] > -100e-3)
+        cut_fixed = cut_fixed.flatten()
+        if cut_fixed.sum() > 0:
+            k = ptdata['fit']['k']
+            n = ptdata['fit']['n']
+            params = [k, n, float(temperature)*1e-3]
+            pTES = iv_data['pTES'][direction_cut].flatten()
+            Ttes = fitfuncs.tes_temperature_polynomial(pTES, params)
+            data['T'] = np.append(data['T'], np.mean(Ttes[cut_fixed]))
+            rTES = iv_data['rTES'][direction_cut].flatten()
+            data['R'] = np.append(data['R'], np.mean(rTES[cut_fixed]))
+            data['rmsR'] = np.append(data['rmsR'], np.std(rTES[cut_fixed])/np.sqrt(cut_fixed.sum()))
+    return data
+
+
 def compute_alpha(temperatures, fit_result, model_function, dmodel_function):
     """Compute the value of alpha at various temperatures and resistances."""
     # The computation of alpha = dlog(R)/dlog(T) = T/R * dR/dT can be done
@@ -176,6 +209,66 @@ def compute_alpha(temperatures, fit_result, model_function, dmodel_function):
     print('The input parameters are: {}'.format(fit_result.normal.result))
     print('The max value for alpha is: {}'.format(alpha.max()))
     return alpha
+
+
+def get_corrected_resistance_temperature_curves_new(output_path, data_channel, number_of_windows, iv_dictionary, pt_data):
+    '''Generate resistance vs temperature curves for a TES'''
+
+    # First window the IV data as need be
+    # iv_curves = iv_windower(iv_dictionary, number_of_windows, mode='tes')
+    # Rtes = R(i,T) so we are really asking for R(i=constant, T).
+    # iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
+    fixed_name = 'iTES'
+    fixed_value = 0.2e-6
+    delta_values = [0.1e-6, 0.3e-6]
+    r_normal = 0.500
+
+    norm_to_sc = {'T': np.empty(0), 'R': np.empty(0), 'rmsR': np.empty(0)}
+    sc_to_norm = {'T': np.empty(0), 'R': np.empty(0), 'rmsR': np.empty(0)}
+    norm_to_sc = get_corrected_RT_values(iv_dictionary, fixed_name, fixed_value, delta_values, 'normal_to_sc', norm_to_sc, pt_data)
+    sc_to_norm = get_corrected_RT_values(iv_dictionary, fixed_name, fixed_value, delta_values, 'sc_to_normal', sc_to_norm, pt_data)
+    # Now we have arrays of R and T for a fixed iTES so try to fit each domain
+    # SC --> N first
+    # Model function is a modified tanh(Rn, Rp, Tc, Tw)
+    model_func = fitfuncs.exp_tc #fitfuncs.tanh_tc
+    dmodel_func = fitfuncs.dexp_tc #fitfuncs.dtanh_tc
+    fit_result = iv_results.FitParameters('rt')
+    # Try to do a smart Tc0 estimate:
+    # Note that Ttes may  not be Tbath -- use P-T curve to extract Ttes given Ptes and Tbath.
+    sort_key = np.argsort(norm_to_sc['T'])
+    T0 = norm_to_sc['T'][sort_key][np.gradient(norm_to_sc['R'][sort_key], norm_to_sc['T'][sort_key], edge_order=2).argmax()]*1.01
+    x_0 = [0.6, 1e-3, T0, 1e-3]
+    lbounds = (0, 0, 0, 0)
+    ubounds = (2, 2, norm_to_sc['T'].max(), norm_to_sc['T'].max())
+
+    print('For SC to N fit initial guess is {}, and the number of data points are: {}'.format(x_0, sc_to_norm['T'].size))
+    fitargs = {'p0': x_0, 'bounds': (lbounds, ubounds), 'absolute_sigma': True,
+               'sigma': sc_to_norm['rmsR'], 'method': 'trf', 'jac': '3-point',
+               'xtol': 1e-15, 'ftol': 1e-8, 'loss': 'linear', 'tr_solver': 'exact',
+               'x_scale': 'jac', 'max_nfev': 10000, 'verbose': 2}
+    result, pcov = curve_fit(model_func, sc_to_norm['T'], sc_to_norm['R'], **fitargs)
+    perr = np.sqrt(np.diag(pcov))
+    print('Ascending (SC -> N): Rn = {} mOhm, r_p = {} mOhm, Tc = {} mK, Tw = {} mK'.format(*[i*1e3 for i in result]))
+    fit_result.sc.set_values(result, perr)
+
+    # Attempt to fit the N-->Sc region now
+    print('For N to SC fit initial guess is {}, and the number of data points are: {}'.format(x_0, norm_to_sc['T'].size))
+    fitargs = {'p0': x_0, 'bounds': (lbounds, ubounds), 'absolute_sigma': True,
+               'sigma': norm_to_sc['rmsR'], 'method': 'trf', 'jac': '3-point',
+               'xtol': 1e-14, 'ftol': 1e-14, 'loss': 'soft_l1', 'tr_solver': 'exact',
+               'x_scale': 'jac', 'max_nfev': 10000, 'verbose': 2}
+    #fitargs = {'p0': x_0, 'bounds': (lbounds, ubounds), 'method': 'trf', 'jac': '3-point', 'xtol': 1e-14, 'ftol': 1e-14, 'loss': 'linear', 'tr_solver': 'exact', 'x_scale': 'jac', 'max_nfev': 10000, 'verbose': 2}
+    result, pcov = curve_fit(model_func, norm_to_sc['T'], norm_to_sc['R'], **fitargs)
+    perr = np.sqrt(np.diag(pcov))
+    print('Descending (N -> SC): Rn = {} mOhm, r_p = {} mOhm, Tc = {} mK, Tw = {} mK'.format(*[i*1e3 for i in result]))
+    fit_result.normal.set_values(result, perr)
+    rN = result[0]
+    tc = result[2]
+    # Get alpha values
+    alpha = compute_alpha(norm_to_sc['T'], fit_result, model_func, dmodel_func)
+    # Make output plot
+    ivplt.make_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, fixed_value, norm_to_sc, sc_to_norm, alpha, model_func, fit_result)
+    return tc, rN, norm_to_sc['T'], norm_to_sc['R'], norm_to_sc['rmsR']
 
 
 def get_resistance_temperature_curves_new(output_path, data_channel, number_of_windows, iv_dictionary):
@@ -381,7 +474,7 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     # G = n*k*T^(n-1)
     print('G(Ttes) = {} pW/K'.format(results[0]*results[1]*np.power(results[2], results[1]-1)*1e12))
     print('G(10 mK) = {} pW/K'.format(results[0]*results[1]*np.power(10e-3, results[1]-1)*1e12))
-
+    fitResults = {'k': results[0], 'n': results[1]}
     # Test lmfit #####
 
     # print('Trying lmfit')

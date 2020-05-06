@@ -550,10 +550,13 @@ def iv_main(argin):
     output_file = argin.outputPath + '/root/rt_data.root'
     rt_data = {'rtdata': {'temperature': temp, 'rTES': R, 'rTES_sigma': R_sigma}}
     save_iv_to_root(output_file, rt_data, branches=['rTES', 'rTES_sigma', 'temperature'])
-    temp, power, power_sigma = tes_char.get_power_temperature_curves(argin.outputPath, argin.dataChannel, argin.numberOfWindows, iv_dictionary, tc=tc, rN=rN)
+    temp, power, power_sigma, pfitResults = tes_char.get_power_temperature_curves(argin.outputPath, argin.dataChannel, argin.numberOfWindows, iv_dictionary, tc=tc, rN=rN)
     output_file = argin.outputPath + '/root/pt_data.root'
     pt_data = {'ptdata': {'temperature': temp, 'pTES': power, 'pTES_sigma': power_sigma}}
     save_iv_to_root(output_file, pt_data, branches=['pTES', 'pTES_sigma', 'temperature'])
+    # Let's generate corrected RT curves now using PT data to get Ttes.
+    pt_data['fit'] = pfitResults
+    tes_char.get_corrected_resistance_temperature_curves(argin.outputPath, argin.dataChannel, argin.numberOfWindows, iv_dictionary, pt_data)
     return True
 
 
