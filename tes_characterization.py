@@ -267,7 +267,7 @@ def get_corrected_resistance_temperature_curves(output_path, data_channel, numbe
     # Get alpha values
     alpha = compute_alpha(norm_to_sc['T'], fit_result, model_func, dmodel_func)
     # Make output plot
-    ivplt.make_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, fixed_value, norm_to_sc, sc_to_norm, alpha, model_func, fit_result)
+    ivplt.make_corrected_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, fixed_value, norm_to_sc, sc_to_norm, alpha, model_func, fit_result)
     return tc, rN, norm_to_sc['T'], norm_to_sc['R'], norm_to_sc['rmsR']
 
 
