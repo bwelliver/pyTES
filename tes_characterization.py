@@ -336,8 +336,8 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     # Try something at 0.5*Rn
     # iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
     R = rN or 500e-3
-    R = 0.85*rN
-    deltaR = 40e-3
+    R = 0.6*rN
+    deltaR = 120e-3
     temperatures = np.empty(0)
     power = np.empty(0)
     power_rms = np.empty(0)
@@ -365,7 +365,6 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
             pTES_value_rms = np.std(pTES_mean)
             pTES_value = np.sqrt(np.mean(pTES*pTES)) # RMS^2 = mean(p^2) == mean(p)^2 + sigma(p)^2
             pTES_value_rms = np.std(pTES)
-            #pTES_value_rms = np.mean(pTES_rms)
             #pTES_value_rms = np.sqrt(np.sum(pTES_rms*pTES_rms))
             power = np.append(power, pTES_value)
             power_rms = np.append(power_rms, pTES_value_rms)
@@ -387,7 +386,7 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     # TODO: Make these input values?
     #tc = None
     max_temp = tc or 60e-3
-    cut_temperature = np.logical_and(temperatures > 10e-3, temperatures < max_temp)  # This should be the expected Tc
+    cut_temperature = np.logical_and(temperatures > 34e-3, temperatures < max_temp)  # This should be the expected Tc
     cut_power = power < 1e-6
     cut_temperature = np.logical_and(cut_temperature, cut_power)
 
@@ -402,10 +401,10 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     else:
         if pP is None:
             print('Tc = {} mK was passed. Fixing to this value'.format(tc))
-            lbounds = [1e-9, 3]
-            ubounds = [3, 6]
+            lbounds = [1e-9, 0]
+            ubounds = [1, 5]
             fixedArgs = {'Pp': 0, 'Ttes': tc}
-            x0 = [2000e-9, 5]
+            x0 = [1000e-9, 5]
         else:
             print('Tc = {} mK was passed. Fixing to this value'.format(tc))
             lbounds = [1e-9, 0, -3e-5]
@@ -452,7 +451,7 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     axes_options = {'xlabel': 'Temperature [mK]',
                     'ylabel': 'TES Power [fW]',
                     'title': None, # 'Channel {} TES Power vs Temperature'.format(data_channel),
-                    'xlim': (10, 45),
+                    'xlim': (10, 60),
                     'ylim': (0, ymax)
                     }
     axes = ivplt.generic_fitplot_with_errors(axes=axes, x=temperatures, y=power, axes_options=axes_options, params=params, xscale=xscale, yscale=yscale)
@@ -541,4 +540,4 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     # print('G(Ttes) = {} pW/K'.format(results[0]*results[1]*np.power(results[2], results[1]-1)*1e12))
     # print('G(10 mK) = {} pW/K'.format(results[0]*results[1]*np.power(10e-3, results[1]-1)*1e12))
 
-    return temperatures, power, power_rms
+    return temperatures, power, power_rms, fitResults
