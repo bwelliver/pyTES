@@ -211,7 +211,7 @@ def compute_alpha(temperatures, fit_result, model_function, dmodel_function):
     return alpha
 
 
-def get_corrected_resistance_temperature_curves_new(output_path, data_channel, number_of_windows, iv_dictionary, pt_data):
+def get_corrected_resistance_temperature_curves(output_path, data_channel, number_of_windows, iv_dictionary, pt_data):
     '''Generate resistance vs temperature curves for a TES'''
 
     # First window the IV data as need be
