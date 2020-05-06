@@ -186,7 +186,7 @@ def get_corrected_RT_values(iv_dictionary, fixed_name, fixed_value, delta_values
             n = ptdata['fit']['n']
             params = [k, n, float(temperature)*1e-3]
             pTES = iv_data['pTES'][direction_cut].flatten()
-            Ttes = fitfuncs.tes_temperature_polynomial(pTES, params)
+            Ttes = fitfuncs.tes_temperature_polynomial(pTES, *params)
             data['T'] = np.append(data['T'], np.mean(Ttes[cut_fixed]))
             rTES = iv_data['rTES'][direction_cut].flatten()
             data['R'] = np.append(data['R'], np.mean(rTES[cut_fixed]))
