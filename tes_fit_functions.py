@@ -121,6 +121,17 @@ def nll_error(params, P, P_rms, T, func):
         lnl = np.sum(((P - model)/P_rms)**2)
         return lnl
 
+def tes_temperature_polynomial(p, *args):
+    """ Obtain Ttes from Ptes and Tbath"""
+
+    #Ptes = k(Ttes^n - Tb^n)
+    # so inverting it we have
+    # Ttes^n = Ptes/k + Tb^n
+    # Ttes = (Ptes/k + Tb^n)^(1/n)
+    k, n, Tb = args
+    Ttes = np.power(p/k + np.power(Tb, n), 1/n)
+    return Ttes
+
 def tes_power_polynomial_args(T, k, n, Ttes, Pp):
     '''General TES power equation
     P = k*(T^n - Tb^n) - Pp
