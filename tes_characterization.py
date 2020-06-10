@@ -219,7 +219,7 @@ def get_corrected_resistance_temperature_curves(output_path, data_channel, numbe
     # Rtes = R(i,T) so we are really asking for R(i=constant, T).
     # iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
     fixed_name = 'iTES'
-    fixed_value = 0.2e-6
+    fixed_value = 4.8e-6
     delta_values = [0.1e-6, 0.3e-6]
     r_normal = 0.500
 
@@ -336,8 +336,8 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     # Try something at 0.5*Rn
     # iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
     R = rN or 500e-3
-    R = 0.6*rN
-    deltaR = 120e-3
+    R = 0.85*rN
+    deltaR = 0.1*rN
     temperatures = np.empty(0)
     power = np.empty(0)
     power_rms = np.empty(0)
@@ -386,7 +386,7 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     # TODO: Make these input values?
     #tc = None
     max_temp = tc or 60e-3
-    cut_temperature = np.logical_and(temperatures > 34e-3, temperatures < max_temp)  # This should be the expected Tc
+    cut_temperature = np.logical_and(temperatures > 10e-3, temperatures < max_temp)  # This should be the expected Tc
     cut_power = power < 1e-6
     cut_temperature = np.logical_and(cut_temperature, cut_power)
 

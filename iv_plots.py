@@ -594,7 +594,7 @@ def make_tes_multiplot(output_path, data_channel, squid, iv_dictionary):
     xscale = 1e6
     yscale = 1e3
     idx = 0
-    tmax = 57
+    tmax = 46
     # Make R vs i plot
     for temperature, data in iv_dictionary.items():
         if idx % 4 != 0 or float(temperature) > tmax:
@@ -640,7 +640,7 @@ def make_tes_multiplot(output_path, data_channel, squid, iv_dictionary):
         idx += 1
     # Add legend?
     axes.legend(['T = {} mK'.format(temperature) for temperature in temperature_names], markerscale=5, fontsize=24)
-    axes.set_ylim((0, 2))
+    axes.set_ylim((0, 12))
     axes.set_xlim((-0.5, 2))
     file_name = output_path + '/' + 'iTES_vs_vTES_ch_' + str(data_channel)
     save_plot(fig, axes, file_name, dpi=200)
@@ -726,7 +726,7 @@ def make_resistance_vs_temperature_plots(output_path, data_channel, fixed_name, 
     axes = rt_fit_textbox(axes=axes, model=normal_to_sc_fit_result)
     # axes.legend(['SC to N', 'N to SC'])
     file_name = output_path + '/' + 'rTES_vs_T_ch_' + str(data_channel) + '_fixed_' + fixed_name + '_' + str(np.round(fixed_value*1e6, 3)) + 'uA_normal_to_sc_only'
-    axes.set_xlim((34, 60))
+    axes.set_xlim((10, 60))
     for label in axes.get_xticklabels() + axes.get_yticklabels():
         label.set_fontsize(18)
     save_plot(fig, axes, file_name)
@@ -852,7 +852,7 @@ def make_corrected_resistance_vs_temperature_plots(output_path, data_channel, fi
     axes = rt_fit_textbox(axes=axes, model=normal_to_sc_fit_result)
     # axes.legend(['SC to N', 'N to SC'])
     file_name = output_path + '/' + 'corrected_rTES_vs_T_ch_' + str(data_channel) + '_fixed_' + fixed_name + '_' + str(np.round(fixed_value*1e6, 3)) + 'uA_normal_to_sc_only'
-    axes.set_xlim((34, 60))
+    axes.set_xlim((10, 60))
     for label in axes.get_xticklabels() + axes.get_yticklabels():
         label.set_fontsize(18)
     save_plot(fig, axes, file_name)

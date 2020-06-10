@@ -543,7 +543,7 @@ def iv_main(argin):
     print('The number_samples argument is: {}'.format(number_samples))
     iv_dictionary, iv_curves = process_tes_curves(iv_dictionary, number_of_windows=argin.numberOfWindows, slew_rate=argin.slewRate, number_samples=number_samples)
     if argin.plotTES is True:
-        make_tes_plots(output_path=argin.outputPath, data_channel=argin.dataChannel, squid=argin.squid, number_of_windows=argin.numberOfWindows, iv_dictionary=iv_dictionary, individual=True)
+        make_tes_plots(output_path=argin.outputPath, data_channel=argin.dataChannel, squid=argin.squid, number_of_windows=argin.numberOfWindows, iv_dictionary=iv_dictionary, individual=False)
     # Step 6: Compute interesting curves
     iv_dictionary = tes_char.find_normal_to_sc_data(iv_dictionary, argin.numberOfWindows, iv_curves=iv_curves)
     tc, rN, temp, R, R_sigma = tes_char.get_resistance_temperature_curves_new(argin.outputPath, argin.dataChannel, argin.numberOfWindows, iv_dictionary)
