@@ -159,8 +159,10 @@ def get_iv_data_from_file(input_path, new_format=False, thermometer='EP'):
     '''Load IV data from specified directory'''
     if thermometer == 'EP':
         thermometer_name = 'EPCal_K'
-    else:
+    elif thermometer == 'NT':
         thermometer_name = 'NT'
+    elif thermometer == 'ExpRuOx':
+        thermometer_name = 'ExpRuOx_K'
     if new_format is False:
         tree = 'data_tree'
         branches = ['Channel', 'NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s', 'Waveform', thermometer_name]
@@ -315,8 +317,10 @@ def get_iv_temperature_data(argin):
     time_values = iv_data['Timestamp_s'] + iv_data['Timestamp_mus']/1e6
     if argin.thermometer == 'EP':
         thermometer_name = 'EPCal_K'
-    else:
+    elif argin.thermometer == 'NT':
         thermometer_name = 'NT'
+    elif argin.thermometer == 'ExpRuOx':
+        thermometer_name = 'ExpRuOx_K'
     timelist = get_temperature_steps(argin.outputPath, time_values=time_values, temperatures=iv_data[thermometer_name], pid_log=argin.pidLog, thermometer=argin.thermometer, tz_correction=argin.tzOffset)
     iv_dictionary, number_samples = chop_data_by_temperature_steps(iv_data, timelist, thermometer_name, argin.biasChannel, argin.dataChannel, argin.squid)
     return iv_dictionary, number_samples
@@ -589,7 +593,7 @@ def input_parser():
     parser.add_argument('-R', '--slewRate', type=float,
                         help='Specify the slew rate of the underlying ramp function used to generate the IV curve in units of uA/s.')
     parser.add_argument('-T', '--thermometer', default='EP',
-                        help='Specify the name of the thermometer to use. Can be either EP for EPCal (default) or NT for the noise thermometer')
+                        help='Specify the name of the thermometer to use. Can be either EP for EPCal (default) or NT for the noise thermometer, or ExpRuOx for experimental RuOx')
     parser.add_argument('-S', '--squid', help='Specify the serial number of the SQUID being used.')
     parser.add_argument('-z', '--tzOffset', default=0.0, type=float,
                         help='The number of hours of timezone offset to use.\

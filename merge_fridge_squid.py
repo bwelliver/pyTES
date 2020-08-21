@@ -142,10 +142,13 @@ def timeSpline(nTime, nTemp, rootTime, interpDegree):
     return new_T
 
 
-def get_fridge_data(inFridgeFile):
+def get_fridge_data(inFridgeFile, thermometer='EP'):
     '''Function to load fridge root data'''
     fTree = 'FridgeLogs'
-    fBranches = ['Time_secs', 'EPCal_t_s', 'EPCal_T_K']
+    if thermometer == 'EP':
+        fBranches = ['Time_secs', 'EPCal_t_s', 'EPCal_T_K']
+    elif thermometer == 'ExpRuOx':
+        fBranches = ['Time_secs', 'ExpRuOx_Jig_t_s', 'ExpRuOx_Jig_T_K']
     fData = readROOT(inFridgeFile, fTree, fBranches, 'single')
     return fData
 
@@ -194,16 +197,18 @@ def get_squid_data(inSQUIDFile, newFormat):
     return sData
 
 
-def get_interpolated_temperature(fData, sTunix, interpType, interpDegree):
+def get_interpolated_temperature(fData, sTunix, interpType, interpDegree, sensor_keys):
     '''Interpolate the fridge temperature'''
     # Now interpolate fridge data to align with these start times...generally we will not worry about
     # inter-waveform alignment
     # These are EPCal data that are above 0K, not missing Temp data, and that occur within the SQUID timestamps.
     # Warning! timestamps are duplicated N(unique channels) times because of the way entries vs events are recorded
     uTunix, rdx = np.unique(sTunix, return_index=False, return_inverse=True)
-    fBranch = 'EPCal_T_K'
+    #fBranch = 'EPCal_T_K'
+    fBranch = sensor_keys['temp']
     # During times the sensor is off the time is duplicated
-    fBranch_t = 'EPCal_t_s'
+    #fBranch_t = 'EPCal_t_s'
+    fBranch_t = sensor_keys['time']
     print('Original sizes: {}, {}'.format(sTunix.size, fData[fBranch].size))
     # get unique fridge times and keys to get same events
     uTemp_t, idxT = np.unique(fData[fBranch_t], return_index=True, return_inverse=False)
@@ -220,7 +225,7 @@ def get_interpolated_temperature(fData, sTunix, interpType, interpDegree):
     # Fill everything else with Nan?
     new_T = np.zeros(uTunix.size) - 1
 
-    gen_plot(uTemp_t[cUseT], uTemp[cUseT], 'Unix Time', 'EPCal Temp', 'EPCal Temp vs Time', 'epc_vs_time', 'linear')
+    gen_plot(uTemp_t[cUseT], uTemp[cUseT], 'Unix Time', 'Temp', 'Temp vs Time', 'temp_vs_time', 'linear')
     # Interpolate power over the uniqued timestamps
     if interpType == 'interp':
         new_T[cNF] = timeInterp(uTemp_t[cUseT], uTemp[cUseT], uTunix[cNF], interpDegree)
@@ -228,7 +233,7 @@ def get_interpolated_temperature(fData, sTunix, interpType, interpDegree):
         new_T[cNF] = timeSpline(uTemp_t[cUseT], uTemp[cUseT], uTunix[cNF], interpDegree)
     print('New size is {0} and root size is {1}'.format(new_T.size, sTunix.size))
     # gen_plot(nTunix[branch][cNF], new_spline_Terr[cNF], 'Unix Time', 'Spline Temp', 'Spline Temp vs Time', 'splineT_vs_time', 'linear')
-    gen_plot(uTunix[cNF], new_T[cNF], 'Unix Time', 'Interp EPCal Temp', 'Interp Temp vs Time', 'interpT_vs_time', 'linear')
+    gen_plot(uTunix[cNF], new_T[cNF], 'Unix Time', 'Interp Temp', 'Interp Temp vs Time', 'interpT_vs_time', 'linear')
     # Now re-expand to full size to make duplicates based on unfolding the unique time grid
     new_T = new_T[rdx]
     return new_T
@@ -273,7 +278,7 @@ def get_interpolated_noise_thermometer(nt_data, sTunix, interpType, interpDegree
     return new_NT
 
 
-def write_new_merged_file(outFile, sData, new_T, new_NT=None, newFormat=False):
+def write_new_merged_file(outFile, sData, new_T, sensor_keys, new_NT=None, newFormat=False):
     # Now comes the "fun" part...write a new ROOT file that contains everything
     # Create dictionary with correct format
     rootDict = {'TTree': {'data_tree': {'TBranch': {}}}}
@@ -287,7 +292,7 @@ def write_new_merged_file(outFile, sData, new_T, new_NT=None, newFormat=False):
         # make a diagnostic output plot
         for branch in squidNames:
             rootDict['TTree']['data_tree']['TBranch'][branch] = sData[branch]
-        rootDict['TTree']['data_tree']['TBranch']['EPCal_K'] = new_T
+        rootDict['TTree']['data_tree']['TBranch'][sensor_keys['branch']] = new_T
         if new_NT is not None:
             rootDict['TTree']['data_tree']['TBranch']['NT'] = new_NT
     else:
@@ -305,7 +310,7 @@ def write_new_merged_file(outFile, sData, new_T, new_NT=None, newFormat=False):
         squidNames = ['NumberOfSamples', 'Timestamp_s', 'Timestamp_mus', 'SamplingWidth_s'] + ['Waveform' + '{:03d}'.format(int(i)) for i in sData['Channels']]
         for branch in squidNames:
             rootDict['TTree']['data_tree']['TBranch'][branch] = sData[branch]
-        rootDict['TTree']['data_tree']['TBranch']['EPCal_K'] = new_T
+        rootDict['TTree']['data_tree']['TBranch'][sensor_keys['branch']] = new_T
         if new_NT is not None:
             rootDict['TTree']['data_tree']['TBranch']['NT'] = new_NT
         # How do we write the single ChList TVectorT<double> ?
@@ -314,10 +319,19 @@ def write_new_merged_file(outFile, sData, new_T, new_NT=None, newFormat=False):
     return result
 
 
-def merge_fridge_squid_data(inputSQUIDFile, outputFile, inputFridgeFile, squidrun, interpType='spline', interpDegree=3, inputNTFile='', newFormat=True):
+def merge_fridge_squid_data(inputSQUIDFile, outputFile, inputFridgeFile, squidrun, interpType='spline', interpDegree=3, inputNTFile='', newFormat=True, thermometer='EP'):
     '''Main function to merge data from fridge and squid files, along with possibly NT data'''
     # Load desired Fridge data
-    fData = get_fridge_data(inputFridgeFile)
+    if thermometer == 'EP':
+        time_key = 'EPCal_t_s'
+        temp_key = 'EPCal_T_K'
+        branch = 'EPCal_K'
+    elif thermometer == 'ExpRuOx':
+        time_key = 'ExpRuOx_Jig_t_s'
+        temp_key = 'ExpRuOx_Jig_T_K'
+        branch = 'ExpRuOx_K'
+    sensor_keys = {'time': time_key, 'temp': temp_key, 'branch': branch}
+    fData = get_fridge_data(inputFridgeFile, thermometer)
 
     # Load SQUID Data
     # We also need to obtain the UnixTimestamps from the SQUID ROOT files.
@@ -336,9 +350,9 @@ def merge_fridge_squid_data(inputSQUIDFile, outputFile, inputFridgeFile, squidru
     # will have actual timestamps of 'Timestamp_s + Timestamp_mus/1e6 + SamplingWidth_s'
     sTunix = sData['Timestamp_s'] + sData['Timestamp_mus']/1e6
     print('First sTunix is {}'.format(sTunix[0]))
-    print('First fTunix is {}'.format(fData['EPCal_t_s'][0]))
+    print('First fTunix is {}'.format(fData[sensor_keys['time']][0]))
 
-    new_T = get_interpolated_temperature(fData, sTunix, interpType, interpDegree)
+    new_T = get_interpolated_temperature(fData, sTunix, interpType, interpDegree, sensor_keys)
 
     # Now we can also try to add in NT data if so desired
     # nt_data contains 3 keys: time, T, dT
@@ -349,7 +363,7 @@ def merge_fridge_squid_data(inputSQUIDFile, outputFile, inputFridgeFile, squidru
         print('First NT Unix Time is {}'.format(nt_data['time'][0]))
         new_NT = get_interpolated_noise_thermometer(nt_data, sTunix, interpType, interpDegree)
 
-    result = write_new_merged_file(outputFile, sData, new_T, new_NT, newFormat)
+    result = write_new_merged_file(outputFile, sData, new_T, sensor_keys, new_NT, newFormat)
     return result
 
 
@@ -373,6 +387,8 @@ def get_args():
                         help='Specify the interpolation degree (default 3 for cubic)')
     parser.add_argument('-c', '--newFormat', action='store_true',
                         help='Specify whether or not to process with new file format')
+    parser.add_argument('-T', '--thermometer', default='EP',
+                        help='Specify whether to interpolate the EPCal sensor or the ExpRuOx')
     args = parser.parse_args()
     if not isabs(args.outputFile):
         args.outputFile = dirname(args.inputSQUIDFile) + '/' + args.outputFile
@@ -382,9 +398,9 @@ def get_args():
 if __name__ == '__main__':
     ARGS = get_args()
     RESULT = merge_fridge_squid_data(ARGS.inputSQUIDFile, ARGS.outputFile, ARGS.inputFridgeFile,
-                                     ARGS.squidrun, ARGS.interpType, ARGS.interpDegree, ARGS.inputNTFile, ARGS.newFormat)
+                                     ARGS.squidrun, ARGS.interpType, ARGS.interpDegree, ARGS.inputNTFile, ARGS.newFormat, ARGS.thermometer)
     if RESULT:
         if ARGS.inputNTFile != '':
-            print("Noise thermometer and EPCal data have been interpolated and added to SQUID data")
+            print("Noise thermometer and RuOx data have been interpolated and added to SQUID data")
         else:
-            print('EPCal data has been interpolated and added to SQUID data.')
+            print('RuOx data has been interpolated and added to SQUID data.')
