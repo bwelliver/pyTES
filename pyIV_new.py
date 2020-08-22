@@ -251,8 +251,8 @@ def chop_data_by_temperature_steps(iv_data, timelist, thermometer_name, bias_cha
     # reject = cut_temperature_min < T < cut_temperature_max
     #FIXME:
     # Put these in units of mK for now...this is a hack!
-    cut_temperature_max = 0  # Should be the max rejected temperature
-    cut_temperature_min = 0  # Should be the minimum rejected temperature
+    cut_temperature_max = 1  # Should be the max rejected temperature
+    cut_temperature_min = -1000  # Should be the minimum rejected temperature
     expected_duration = 2600  # TODO: make this an input argument or auto-determined somehow
     # Now chop up the IV data into steps keyed by the mean temperature
     for values in timelist:

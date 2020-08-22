@@ -18,9 +18,9 @@ from scipy.interpolate import InterpolatedUnivariateSpline
 
 from readROOT import readROOT
 from writeROOT import writeROOT as wR
-
+import matplotlib
 from matplotlib import pyplot as plt
-
+matplotlib.use('Agg')
 
 def gen_plot(xval, yval, xlab, ylab, title, fname, log='log'):
     """Create generic plots that may be semilogx (default)"""
