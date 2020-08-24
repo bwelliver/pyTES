@@ -81,13 +81,15 @@ def all_bytes_from_file(filename):
         return f.read()
     
 
-def parse_header_time(header_info, tz_offset, manual_start=None):
+def parse_header_time(header_info, tz_offset, manual_tstart=None):
     """Convert header time into unix time."""
     tz_correction = tz_offset * 3600
     unix_offset = -2082844800
     time_correction = unix_offset + tz_correction
-    if manual_start is None:
+    if manual_tstart is None:
         header_info['timestamp'] = header_info['timestamp'] + time_correction
+    else:
+        header_info['timestamp'] = manual_tstart + time_correction
     return header_info
 
 
@@ -101,7 +103,7 @@ def parse_binary_data(byteFile, header_info, ch_info, endian='<'):
     # (int16) values for waveform array (2 bytes each)
     offset = 0
     predata_size = 24 #8 + 8 + 4 + 4 = 24 bytes
-    array_size = header_info['Nsamples'] * 2
+    array_size = int(header_info['Nsamples'] * 2)
     file_size = len(byteFile)
     end_idx = offset + predata_size
     parsed_data = {}
@@ -110,19 +112,21 @@ def parse_binary_data(byteFile, header_info, ch_info, endian='<'):
     subentry = 0
     while end_idx < file_size:
         # Read predata (time, gain, channel, nsamples)
+        print('offset:end_idx is {}:{}'.format(offset, end_idx))
         predata = list(struct.unpack(endian + 'ddii', byteFile[offset:end_idx]))
         predata[0] = predata[0] + header_info['timestamp']
         offset = end_idx
         end_idx += array_size
-        data = struct.unpack(endian + '{}h'.format(predata[3]), byteFile[offset:end_idx])
-        data = np.array(data) * predata[1]
+        data = struct.unpack(endian + '{}h'.format(int(predata[3])), byteFile[offset:end_idx])
+        data = np.array(data)
+        data = data*predata[1]
         parsed_data[entry] = {predata[2]: {'header': predata, 'data': data}}
         subentry += 1
         if subentry == header_info['Nch']:
             subentry = 0
             entry += 1
         offset = end_idx
-        end_idx = predata_size
+        end_idx += predata_size
     return parsed_data
 
 
@@ -225,7 +229,7 @@ def process_digifile(input_directory, output_directory, run_number, tz_offset=0,
     print('The list of files after sorting is: {}'.format(list_of_files))
     print('The size of the file list is: {}'.format(len(list_of_files)))
     header_info, ch_info = read_header_file(list_of_header_files[0])
-    header_info = parse_header_time(header_info, tz_offset, manual_tstart=None)
+    header_info = parse_header_time(header_info, tz_offset, manual_tstart=3681068622.954427)
     if use_parallel is False:
         print('Performing conversions serially')
         results = []

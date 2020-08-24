@@ -245,15 +245,15 @@ def chop_data_by_temperature_steps(iv_data, timelist, thermometer_name, bias_cha
     '''Chop up waveform data based on temperature steps'''
     squid_parameters = squid_info.SQUIDParameters(squid)
     r_bias = squid_parameters.Rbias
-    time_buffer = 0
+    time_buffer = 60
     iv_dictionary = {}
     # The following defines a range of temperatures to reject. That is:
     # reject = cut_temperature_min < T < cut_temperature_max
     #FIXME:
     # Put these in units of mK for now...this is a hack!
-    cut_temperature_max = 1  # Should be the max rejected temperature
-    cut_temperature_min = -1000  # Should be the minimum rejected temperature
-    expected_duration = 2600  # TODO: make this an input argument or auto-determined somehow
+    cut_temperature_max = 20.8  # Should be the max rejected temperature
+    cut_temperature_min = 0  # Should be the minimum rejected temperature
+    expected_duration = 2100  # TODO: make this an input argument or auto-determined somehow
     # Now chop up the IV data into steps keyed by the mean temperature
     for values in timelist:
         start_time, stop_time, mean_temperature, serr_temperature = values
