@@ -40,6 +40,7 @@ def read_header_file(hfile):
     # - wavform offset
     # - signal frequency
     # - signal phase
+    # - start timestamp
     # - start date (mm/dd/yyyy)
     # - start time (hh:mm PM/AM)
     # - last partial saved
@@ -74,6 +75,10 @@ def read_header_file(hfile):
             ch_info[channel]['inputZ'] = float(lines[idx+offset])
         if idx % 4 == 3:
             ch_info[channel]['attenuation'] = float(lines[idx+offset])
+    # Next we need to get the timestamp.
+    offset = len(header_keys) + total_lines  # This should be BK output channel
+    ntime = 6 # 6 lines down
+    header_info['timestamp'] = float(lines[offset+6])
     # At this point that is all we need
     return header_info, ch_info
 
