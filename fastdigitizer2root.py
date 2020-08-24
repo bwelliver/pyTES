@@ -106,9 +106,12 @@ def parse_binary_data(byteFile, header_info, ch_info, endian='<'):
     array_size = int(header_info['Nsamples'] * 2)
     file_size = len(byteFile)
     end_idx = offset + predata_size
-    parsed_data = {}
     # We need to define an 'entry' as each cycle containing all Nch's.
     entry = 0
+    channels = list(ch_info.keys())
+    parsed_data = {entry: {}}
+    for channel in channels:
+        parsed_data[entry][channel] = {'header': None, 'data': None}
     subentry = 0
     while end_idx < file_size:
         # Read predata (time, gain, channel, nsamples)
@@ -120,11 +123,12 @@ def parse_binary_data(byteFile, header_info, ch_info, endian='<'):
         data = struct.unpack(endian + '{}h'.format(int(predata[3])), byteFile[offset:end_idx])
         data = np.array(data)
         data = data*predata[1]
-        parsed_data[entry] = {predata[2]: {'header': predata, 'data': data}}
+        parsed_data[entry][predata[2]] = {'header': predata, 'data': data}}
         subentry += 1
         if subentry == header_info['Nch']:
             subentry = 0
             entry += 1
+            parsed_data[entry] = {}
         offset = end_idx
         end_idx += predata_size
     return parsed_data
@@ -136,12 +140,12 @@ def unroll_binary_event(ch_data, num_root_per_bin, sample_rate):
     # For all channels everything except the Waveforms should be the same for a given ROOT event
     # ch_data[channel]['header'] = [time, gain, channel, nsamples]
     root_event = {}
+    for idx in range(num_root_per_bin):
+            root_event[idx] = {}
     for channel, values in ch_data.items():
         wf_size = values['data'].size
         subsize = int(wf_size/num_root_per_bin)
         t0 = values['header'][0]
-        for idx in range(num_root_per_bin):
-            root_event[idx] = {}
         for idx in range(num_root_per_bin):
             wf_name = 'Waveform{:03d}'.format(channel)
             root_event[idx][wf_name] = values['data'][idx*subsize:(idx+1)*subsize]
