@@ -115,6 +115,10 @@ def parse_binary_data(byteFile, header_info, ch_info, endian='<'):
     subentry = 0
     while end_idx < file_size:
         # Read predata (time, gain, channel, nsamples)
+        if subentry == header_info['Nch']:
+            subentry = 0
+            entry += 1
+            parsed_data[entry] = {}
         print('offset:end_idx is {}:{}'.format(offset, end_idx))
         predata = list(struct.unpack(endian + 'ddii', byteFile[offset:end_idx]))
         predata[0] = predata[0] + header_info['timestamp']
@@ -127,10 +131,6 @@ def parse_binary_data(byteFile, header_info, ch_info, endian='<'):
         subentry += 1
         offset = end_idx
         end_idx += predata_size
-        if subentry == header_info['Nch']:
-            subentry = 0
-            entry += 1
-            parsed_data[entry] = {}
     return parsed_data
 
 
