@@ -6,19 +6,21 @@ from os import makedirs
 import re
 import argparse
 import glob
+import multiprocessing
 import numpy as np
+from joblib import Parallel, delayed
 from writeROOT import writeROOT as write_root
 
 
 def mkdpaths(dirpath):
-    '''Function to make a directory path if it is not present'''
+    """Make a directory path if it is not present."""
     makedirs(dirpath, exist_ok=True)
     return True
 
 
 def read_header_file(hfile):
     """Parse the header file supplied into a reference dictionary."""
-    #header structure
+    # header structure
     # - number of planned partials
     # - time in each partial (s)
     # - sampling freq (Hz)
@@ -77,9 +79,11 @@ def read_header_file(hfile):
 
 
 def all_bytes_from_file(filename):
+    """Open and store entire binary file into memory."""
     with open(filename, mode='rb') as f:
-        return f.read()
-    
+        byteFile = f.read()
+    return byteFile
+
 
 def parse_header_time(header_info, tz_offset, manual_tstart=None):
     """Convert header time into unix time."""
@@ -102,7 +106,7 @@ def parse_binary_data(byteFile, header_info, ch_info, endian='<'):
     # (int32)nsamples (4 bytes)
     # (int16) values for waveform array (2 bytes each)
     offset = 0
-    predata_size = 24 #8 + 8 + 4 + 4 = 24 bytes
+    predata_size = 24  # 8 + 8 + 4 + 4 = 24 bytes
     array_size = int(header_info['Nsamples'] * 2)
     file_size = len(byteFile)
     end_idx = offset + predata_size
@@ -119,7 +123,6 @@ def parse_binary_data(byteFile, header_info, ch_info, endian='<'):
             subentry = 0
             entry += 1
             parsed_data[entry] = {}
-        print('offset:end_idx is {}:{}'.format(offset, end_idx))
         predata = list(struct.unpack(endian + 'ddii', byteFile[offset:end_idx]))
         predata[0] = predata[0] + header_info['timestamp']
         offset = end_idx
@@ -136,12 +139,11 @@ def parse_binary_data(byteFile, header_info, ch_info, endian='<'):
 
 def unroll_binary_event(ch_data, num_root_per_bin, sample_rate):
     """Unroll a single binary event into the appropriate number of ROOT events."""
-    
     # For all channels everything except the Waveforms should be the same for a given ROOT event
     # ch_data[channel]['header'] = [time, gain, channel, nsamples]
     root_event = {}
     for idx in range(num_root_per_bin):
-            root_event[idx] = {}
+        root_event[idx] = {}
     for channel, values in ch_data.items():
         wf_size = values['data'].size
         subsize = int(wf_size/num_root_per_bin)
@@ -164,11 +166,10 @@ def convert_to_root(header_info, ch_info, parsed_data):
     # For each parsed_data[key] we have a dictionary for each channel.
     # parsed_data[key][channel][data] will contain the actual data we want.
     # The goal here will be to get a dictionary whose key is a ROOT entry and whose values will be the branches
-    
     # Each root entry must contain: Timestamp_s, Timestamp_mus, NumberOfSamples, SamplingWidth_s, and Waveform%03d(vector)
     # The data dictionary format is keys: Branch, values: nEntries arrays of what we want
     # The waveform one is itself a dictionary whose keys are the actual root entry
-    
+
     nSamples = header_info['Nsamples']
     sample_freq = header_info['sample_freq']
     sample_duration = nSamples/sample_freq  # This indicates how many seconds our data is and hence how many divisions to make
@@ -180,7 +181,6 @@ def convert_to_root(header_info, ch_info, parsed_data):
     data_dictionary = {'Timestamp_s': np.zeros(num_entries), 'Timestamp_mus': np.zeros(num_entries)}
     for channel in ch_info.keys():
         data_dictionary['Waveform{:03d}'.format(channel)] = {}
-    root_entry = 0
     for bin_entry, ch_dict in parsed_data.items():
         root_events = unroll_binary_event(ch_dict, num_root_per_bin, sample_freq)
         for entry, value in root_events.items():
@@ -197,7 +197,7 @@ def convert_to_root(header_info, ch_info, parsed_data):
 
 
 def write_to_root(output_file, data_dictionary):
-    '''Format and write the data dictionary into a root file'''
+    """Format and write the data dictionary into a root file."""
     root_dict = {'TTree': {'data_tree': {'TBranch': {}}}}
     # The keys of the data_dictionary are the branch names
     for key, value in data_dictionary.items():
@@ -220,8 +220,8 @@ def datfile_converter(output_directory, logfile, header_info, ch_info):
     print('Passing data to root file {} for writing...'.format(output_file))
     result = write_to_root(output_file, data_dictionary)
     return result
-    
-    
+
+
 def process_digifile(input_directory, output_directory, run_number, tz_offset=0, use_parallel=False):
     """Actually parse log files."""
     list_of_header_files = glob.glob('{}/*.hdr'.format(input_directory))  # should be just one
@@ -234,7 +234,7 @@ def process_digifile(input_directory, output_directory, run_number, tz_offset=0,
     print('The list of files after sorting is: {}'.format(list_of_files))
     print('The size of the file list is: {}'.format(len(list_of_files)))
     header_info, ch_info = read_header_file(list_of_header_files[0])
-    header_info = parse_header_time(header_info, tz_offset, manual_tstart=3681068622.954427)
+    header_info = parse_header_time(header_info, tz_offset, manual_tstart=None)
     if use_parallel is False:
         print('Performing conversions serially')
         results = []
@@ -242,6 +242,11 @@ def process_digifile(input_directory, output_directory, run_number, tz_offset=0,
             print('Converting file {}'.format(logfile))
             result = datfile_converter(output_directory, logfile, header_info, ch_info)
             results.append(result)
+    else:
+        # Attempt at using joblib
+        print('Performing conversions in parallel')
+        num_cores = multiprocessing.cpu_count()
+        results = Parallel(n_jobs=num_cores)(delayed(datfile_converter)(output_directory, logfile, header_info, ch_info) for logfile in list_of_files)
     if np.all(results):
         if len(results) == len(list_of_files):
             print('All files converted')
@@ -253,10 +258,10 @@ def process_digifile(input_directory, output_directory, run_number, tz_offset=0,
         else:
             print('Not all files have a record and of those that were, not all were converted')
     return True
-    
+
 
 def get_args():
-    '''Function to get and parse input arguments when calling module'''
+    """Get and parse input arguments when calling module."""
     parser = argparse.ArgumentParser()
     parser.add_argument('-f', '--inputDirectory',
                         help='Specify the full path of the directory containing the log files to convert')

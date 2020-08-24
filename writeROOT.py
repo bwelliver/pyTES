@@ -87,7 +87,6 @@ def writeTBranch(tree, branch_data):
                 nentries = len(branch_data[branchkey])
             else:
                 nentries = branch_data[branchkey].shape[0]
-            print('Branch key is: {}'.format(branchkey))
             nsamples = branch_data[branchkey][0].size
             # We can try to pre-allocate the vector by putting nentries at the end
             dloc[branchkey] = std.vector('double')(nsamples)
