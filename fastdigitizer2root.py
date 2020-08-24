@@ -123,7 +123,7 @@ def parse_binary_data(byteFile, header_info, ch_info, endian='<'):
         data = struct.unpack(endian + '{}h'.format(int(predata[3])), byteFile[offset:end_idx])
         data = np.array(data)
         data = data*predata[1]
-        parsed_data[entry][predata[2]] = {'header': predata, 'data': data}}
+        parsed_data[entry][predata[2]] = {'header': predata, 'data': data}
         subentry += 1
         if subentry == header_info['Nch']:
             subentry = 0
