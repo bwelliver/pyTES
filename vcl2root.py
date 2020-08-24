@@ -27,11 +27,11 @@ def write_to_root(outFile, trees, branches, byteFile, offset, dataType, dataSize
     print('Writing ROOT file...')
     nCol = len(headers)
     bSize = len(byteFile)
-    nRow = int( (bSize - offset)/nCol/dataSize )
+    nRow = int((bSize - offset)/nCol/dataSize)
 
     if isinstance(trees, str):
         trees = [trees]
-    if isinstance(branches,str):
+    if isinstance(branches, str):
         branches = [branches]
     branches = branches + ['Time_since_start_secs']
     # First create and open the root file
@@ -59,13 +59,13 @@ def write_to_root(outFile, trees, branches, byteFile, offset, dataType, dataSize
         for branch in branches:
             dloc[branch] = array('d', [0.0])
             bName = rt.TString(branch + '/D')
-            tTree.Branch(branch, dloc[branch], bName.Data() )
+            tTree.Branch(branch, dloc[branch], bName.Data())
         # Now loop over the events and fill the branches up.
         # The binary file makes it more natural to loop over events per branch
         print('There are {0} events'.format(nRow))
         for event in range(nRow):
             for branch in branches:
-                #print('Branch is {0}'.format(branch))
+                # print('Branch is {0}'.format(branch))
                 if branch != 'Time_since_start_secs':
                     dloc[branch][0] = struct.unpack(endian + dataType, byteFile[offset:offset+dataSize])[0]
                     offset = offset + dataSize
@@ -94,7 +94,7 @@ def write_to_csv(outFile, headers, byteFile, offset, dataType, dataSize, endian)
         while offset < bSize:
             data = []
             for col in range(nCol):
-                data.append( struct.unpack(endian + dataType, byteFile[offset:offset+dataSize])[0] )
+                data.append(struct.unpack(endian + dataType, byteFile[offset:offset+dataSize])[0])
                 dataDict[headers[col]] = data[col]
                 offset = offset + dataSize
             writer.writerow(dataDict)
@@ -146,9 +146,9 @@ if __name__ == '__main__':
         line = str(line, 'utf-8')
         line = line.strip('\x00')
         # tidy up for ROOT and CSV
-        if line is not '':
+        if line != '':
             # Turn E/P Cal into EP Cal
-            line = line.replace('/','')
+            line = line.replace('/', '')
             # For units replace spaces with _
             line = line.replace(' t(s)', '_t(s)')
             line = line.replace(' T(K)', '_T(K)')
@@ -160,7 +160,7 @@ if __name__ == '__main__':
             # Add temperature unit where needed
             if line in ['InputWaterTemp', 'OutputWaterTemp', 'HeliumTemp', 'OilTemp']:
                 line = line + '_C'
-            headers.append( line )
+            headers.append(line)
         # Next adjust offset
         offset = offset + headerSize
     # Now we have a list of headers. Starting at data_offset we have little-endian encoded doubles.
