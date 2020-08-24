@@ -125,12 +125,12 @@ def parse_binary_data(byteFile, header_info, ch_info, endian='<'):
         data = data*predata[1]
         parsed_data[entry][predata[2]] = {'header': predata, 'data': data}
         subentry += 1
+        offset = end_idx
+        end_idx += predata_size
         if subentry == header_info['Nch']:
             subentry = 0
             entry += 1
             parsed_data[entry] = {}
-        offset = end_idx
-        end_idx += predata_size
     return parsed_data
 
 
