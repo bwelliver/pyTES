@@ -176,6 +176,7 @@ def convert_to_root(header_info, ch_info, parsed_data):
     waveform_size = int(waveform_duration * sample_freq)
     num_root_per_bin = int(sample_duration/waveform_duration)
     num_entries = len(parsed_data)*num_root_per_bin
+    print('The number of bin entries is {} and the number of root entries then is: {}'.format(len(parsed_data), num_entries))
     data_dictionary = {'Timestamp_s': np.zeros(num_entries), 'Timestamp_mus': np.zeros(num_entries)}
     for channel in ch_info.keys():
         data_dictionary['Waveform{:03d}'.format(channel)] = {}
