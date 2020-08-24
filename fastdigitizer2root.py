@@ -164,9 +164,7 @@ def convert_to_root(header_info, ch_info, parsed_data):
     # Each root entry must contain: Timestamp_s, Timestamp_mus, NumberOfSamples, SamplingWidth_s, and Waveform%03d(vector)
     # The data dictionary format is keys: Branch, values: nEntries arrays of what we want
     # The waveform one is itself a dictionary whose keys are the actual root entry
-    data_dictionary = {'Timestamp_s': np.array([]), 'Timestamp_mus': np.array([])}
-    for channel in ch_info.keys():
-        data_dictionary['Waveform{:03d}'.format(channel)] = {}
+    
     nSamples = header_info['Nsamples']
     sample_freq = header_info['sample_freq']
     sample_duration = nSamples/sample_freq  # This indicates how many seconds our data is and hence how many divisions to make
@@ -175,6 +173,8 @@ def convert_to_root(header_info, ch_info, parsed_data):
     num_root_per_bin = int(sample_duration/waveform_duration)
     num_entries = len(parsed_data)*num_root_per_bin
     data_dictionary = {'Timestamp_s': np.zeros(num_entries), 'Timestamp_mus': np.zeros(num_entries)}
+    for channel in ch_info.keys():
+        data_dictionary['Waveform{:03d}'.format(channel)] = {}
     root_entry = 0
     for bin_entry, ch_dict in parsed_data.items():
         root_events = unroll_binary_event(ch_dict, num_root_per_bin, sample_freq)
