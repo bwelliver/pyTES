@@ -136,7 +136,7 @@ def unroll_binary_event(ch_data, num_root_per_bin, sample_rate):
     # For all channels everything except the Waveforms should be the same for a given ROOT event
     # ch_data[channel]['header'] = [time, gain, channel, nsamples]
     root_event = {}
-    for channel, values in ch_data:
+    for channel, values in ch_data.items():
         wf_size = values['data'].size
         subsize = int(wf_size/num_root_per_bin)
         t0 = values['header'][0]

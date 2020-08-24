@@ -62,7 +62,7 @@ def load_signal_express_file(fname, sample_duration, tz_offset, add_header=False
             event_data += time_correction
             # Split into second and microsecond part
             timestamp_s = np.array(np.floor(event_data), dtype=int)
-            timestamp_mus = np.array(event_data*1e6 - timestamp_s*1e6, dtype=int)  
+            timestamp_mus = np.array(event_data*1e6 - timestamp_s*1e6, dtype=int)
             # These are the timestamp info for every single sample. But I want only the ones at the start of entries
             entry_timestamp_s = np.zeros(num_entries)
             entry_timestamp_mus = np.zeros(num_entries)
