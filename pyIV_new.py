@@ -510,8 +510,9 @@ def iv_main(argin):
         # It will be a dictionary whose keys are temperatures (in mK). The sub-dictionary has keys that are iBias, vOut, timestamps, temperatures, sampling_width
         iv_dictionary, number_samples = get_iv_temperature_data(argin)
         # Step 2: Save these chopped up IV data
-        output_file = argin.outputPath + '/root/iv_data.root'
-        save_iv_to_root(output_file, iv_dictionary)
+        if argin.makeROOT:
+            output_file = argin.outputPath + '/root/iv_data.root'
+            save_iv_to_root(output_file, iv_dictionary)
     if argin.readROOT is True and argin.readTESROOT is False:
         # This loads saved data from steps 1 and 2 if it has been performed already and will put us in a state to proceed with TES quantity computations
         iv_dictionary = read_from_ivroot(argin.outputPath + '/root/iv_data.root', branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width'])
@@ -531,8 +532,9 @@ def iv_main(argin):
         iv_dictionary = get_tes_values(iv_dictionary, argin.squid)
         # Save actual data
         print('Saving ROOT file with TES quantities computed')
-        output_file = argin.outputPath + '/root/iv_data_processed.root'
-        save_iv_to_root(output_file, iv_dictionary, branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'iTES', 'rTES', 'vTES', 'pTES'])
+        if argin.makeROOT:
+            output_file = argin.outputPath + '/root/iv_data_processed.root'
+            save_iv_to_root(output_file, iv_dictionary, branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'iTES', 'rTES', 'vTES', 'pTES'])
     if argin.readTESROOT is True:
         # NOTE! IV data loaded is is already processed so the 0-offset correction is applied.
         iv_dictionary = read_from_ivroot(argin.outputPath + '/root/iv_data_processed.root', branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'iTES', 'rTES', 'vTES', 'pTES'])
