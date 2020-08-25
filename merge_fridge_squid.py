@@ -214,7 +214,8 @@ def get_interpolated_temperature(fData, sTunix, interpType, interpDegree, sensor
     uTemp_t, idxT = np.unique(fData[fBranch_t], return_index=True, return_inverse=False)
     uTemp = fData[fBranch][idxT]
     # First get only valid temperatures
-    cValidT = np.logical_and(uTemp > 0, ~np.isnan(uTemp))
+    # cValidT = np.logical_and(uTemp > 0, ~np.isnan(uTemp))
+    cValidT = ~np.isnan(uTemp)
     # Next select temperatures that occur during SQUID data
     cTSQUID = np.logical_and(uTemp_t >= uTunix[0], uTemp_t <= uTunix[-1])
     # Interpolation will only work also if the new values are not outside of what data is there
