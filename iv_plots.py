@@ -12,7 +12,7 @@ import iv_results
 
 import ROOT as rt
 
-matplotlib.use('Agg')
+#matplotlib.use('Agg')
 
 
 # Container for IV related plot functions
