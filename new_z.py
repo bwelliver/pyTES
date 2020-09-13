@@ -41,24 +41,24 @@ def convert_to_numpy(data):
 
 
 @jit(nopython=True, parallel=True)
-def lock_in_amplifier(signal, freq, fs, exfreq):
+def lock_in_amplifier(signal, freq, fs):
     """Compute lock-in amplifier components."""
-    result = np.zeros(3)
-    if np.remainder(freq, exfreq) == 0 and np.remainder(np.floor(freq/exfreq), 2) == 1:
-        t = (2*np.pi*np.linspace(0, signal.shape[1], signal.shape[1])/fs) * freq  # check this
-        #xv = np.mean(signal*np.sin(t))
-        #yv = np.mean(signal*np.cos(t))
-        # note: check: np.mean(np.dot(signal, sint))/signal.shape[1] might be equiv.
-        xv = np.mean(np.dot(signal, np.sin(t)))/signal.shape[1]
-        yv = np.mean(np.dot(signal, np.cos(t)))/signal.shape[1]
-        mod = 2*np.sqrt(xv*xv + yv*yv)
-        phase = np.arctan2(yv, xv)
-        result[0] = mod
-        result[1] = phase
-        result[2] = freq
+    result = np.zeros(2)
+    t = (2*np.pi*np.linspace(0, signal.shape[1], signal.shape[1])/fs) * freq  # check this
+    #xv = np.mean(signal*np.sin(t))
+    #yv = np.mean(signal*np.cos(t))
+    # note: check: np.mean(np.dot(signal, sint))/signal.shape[1] might be equiv.
+    xv = np.mean(np.dot(signal, np.sin(t)))/signal.shape[1]
+    yv = np.mean(np.dot(signal, np.cos(t)))/signal.shape[1]
+    mod = 2*np.sqrt(xv*xv + yv*yv)
+    phase = np.arctan2(yv, xv)
+    result[0] = mod
+    result[1] = phase
+    #result[2] = freq
     return result
 
 
+@jit(nopython=True, parallel=True)
 def lock_in(v_in, v_out, dt, number_samples, exfreq):
     """Try to do a lock-in amplifier."""
     T = number_samples * dt
@@ -71,9 +71,9 @@ def lock_in(v_in, v_out, dt, number_samples, exfreq):
     lock_vin_phase = np.zeros(freqs.size)
     lock_vout_mod = np.zeros(freqs.size)
     lock_vout_phase = np.zeros(freqs.size)
-    num_cores = multiprocessing.cpu_count()
-    results = Parallel(n_jobs=num_cores)(delayed(lock_in_amplifier)(v_in, freq, fs) for freq in nyfreqs)
-    for idx in range(nyfreqs.size):
+    #num_cores = multiprocessing.cpu_count()
+    #results = Parallel(n_jobs=num_cores)(delayed(lock_in_amplifier)(v_in, freq, fs, exfreq) for freq in nyfreqs)
+    for idx in prange(nyfreqs.size):
         freq = nyfreqs[idx]
         if np.remainder(freq, exfreq) == 0 and np.remainder(np.floor(freq/exfreq), 2) == 1:
             # odd multiple
