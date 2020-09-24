@@ -142,7 +142,7 @@ def nmad(arr, arr_median=None):
     return np.median(np.abs(arr - arr_median))
 
 
-@jit(nopython=True, parallel=True)
+@jit(nopython=True)
 def waveform_processor(samples, number_of_windows, process_type):
     '''Basic waveform processor'''
 #    subsamples = np.split(samples, number_of_windows, axis=0)
@@ -155,7 +155,7 @@ def waveform_processor(samples, number_of_windows, process_type):
         std_samples = np.zeros(number_of_windows)
         sz = samples.size
         window_size = sz//number_of_windows
-        for idx in prange(number_of_windows):
+        for idx in range(number_of_windows):
             start_idx = idx*window_size
             end_idx = (idx+1)*window_size
             mean_samples[idx] = np.mean(samples[start_idx:end_idx])
@@ -165,7 +165,7 @@ def waveform_processor(samples, number_of_windows, process_type):
         std_samples = np.zeros(number_of_windows)
         sz = samples.size
         window_size = sz//number_of_windows
-        for idx in prange(number_of_windows):
+        for idx in range(number_of_windows):
             start_idx = idx*window_size
             end_idx = (idx+1)*window_size
             mean_samples[idx] = np.mean(samples[start_idx:end_idx])
@@ -175,7 +175,7 @@ def waveform_processor(samples, number_of_windows, process_type):
         std_samples = np.zeros(number_of_windows)
         sz = samples.size
         window_size = sz//number_of_windows
-        for idx in prange(number_of_windows):
+        for idx in range(number_of_windows):
             start_idx = idx*window_size
             end_idx = (idx+1)*window_size
             mean_samples[idx] = np.median(samples[start_idx:end_idx])
