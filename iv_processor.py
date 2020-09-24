@@ -488,7 +488,7 @@ def get_sc_endpoints(buffer_size, index_min_x, dydx):
     """Select the region of the SC branch to pass to the fitter."""
     # Look for rightmost endpoint, keeping in mind it could be our initial point
     delta_mean_threshold = 1e-2
-    cut = np.zeros(dydx.shape, dtype=np.bool)
+    cut = np.zeros(dydx.shape, dtype=np.bool_)
     if buffer_size + index_min_x >= dydx.size:
         # Buffer size and offset would go past end of data
         right_buffer_size = np.max([dydx.size - index_min_x - 1, 0])
