@@ -349,7 +349,7 @@ def get_parasitic_resistance(iv_dictionary, squid, number_samples, sampling_widt
     result, perr = fit_sc_branch(iv_dictionary[min_temperature]['iBias'], iv_dictionary[min_temperature]['vOut'], iv_dictionary[min_temperature]['vOut_rms'], number_samples, sampling_width, number_of_windows, slew_rate, plane='iv')
     fit_params.sc.set_values(result, perr)
     resistance = convert_fit_to_resistance(fit_params, squid, fit_type='iv')
-    return resistance
+    return resistance.parasitic
 
 
 def get_parasitic_resistances(iv_dictionary, squid, number_samples, sampling_width, number_of_windows, slew_rate):
