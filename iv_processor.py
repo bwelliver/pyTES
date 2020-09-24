@@ -5,7 +5,7 @@ import numpy as np
 from numpy import square as pow2
 from numpy import sqrt as npsqrt
 from numpy import sum as nsum
-from numba import jit
+from numba import jit, prange
 
 from scipy.optimize import curve_fit
 
@@ -16,6 +16,15 @@ import iv_resistance
 import squid_info
 import pytes_errors as pyTESErrors
 from ring_buffer import RingBuffer
+
+
+@jit(nopython=True)
+def is_sorted(arr):
+    """Check if a flat array is sorted."""
+    for idx in range(arr.size-1):
+        if arr[idx+1] < arr[idx]:
+            return False
+    return True
 
 
 def convert_dict_to_ndarray(data_dictionary):
@@ -133,7 +142,7 @@ def nmad(arr, arr_median=None):
     return np.median(np.abs(arr - arr_median))
 
 
-@jit(nopython=True)
+@jit(nopython=True, parallel=True)
 def waveform_processor(samples, number_of_windows, process_type):
     '''Basic waveform processor'''
 #    subsamples = np.split(samples, number_of_windows, axis=0)
@@ -146,7 +155,7 @@ def waveform_processor(samples, number_of_windows, process_type):
         std_samples = np.zeros(number_of_windows)
         sz = samples.size
         window_size = sz//number_of_windows
-        for idx in range(number_of_windows):
+        for idx in prange(number_of_windows):
             start_idx = idx*window_size
             end_idx = (idx+1)*window_size
             mean_samples[idx] = np.mean(samples[start_idx:end_idx])
@@ -156,7 +165,7 @@ def waveform_processor(samples, number_of_windows, process_type):
         std_samples = np.zeros(number_of_windows)
         sz = samples.size
         window_size = sz//number_of_windows
-        for idx in range(number_of_windows):
+        for idx in prange(number_of_windows):
             start_idx = idx*window_size
             end_idx = (idx+1)*window_size
             mean_samples[idx] = np.mean(samples[start_idx:end_idx])
@@ -166,7 +175,7 @@ def waveform_processor(samples, number_of_windows, process_type):
         std_samples = np.zeros(number_of_windows)
         sz = samples.size
         window_size = sz//number_of_windows
-        for idx in range(number_of_windows):
+        for idx in prange(number_of_windows):
             start_idx = idx*window_size
             end_idx = (idx+1)*window_size
             mean_samples[idx] = np.median(samples[start_idx:end_idx])
@@ -329,8 +338,22 @@ def fit_iv_regions(xdata, ydata, sigma_y, number_samples, sampling_width, number
     return fit_params
 
 
+def get_parasitic_resistance(iv_dictionary, squid, number_samples, sampling_width, number_of_windows, slew_rate):
+    """Obtain estimate of parasitic series resistance from minimum temperature SC region.
+    
+    Here the data being examined is windowed.
+    """
+    min_temperature = list(iv_dictionary.keys())[np.argmin([float(temperature) for temperature in iv_dictionary.keys()])]
+    fit_params = iv_results.FitParameters()
+    print('Attempting to fit superconducting branch for temperature: {} mK'.format(min_temperature))
+    result, perr = fit_sc_branch(iv_dictionary[min_temperature]['iBias'], iv_dictionary[min_temperature]['vOut'], iv_dictionary[min_temperature]['vOut_rms'], number_samples, sampling_width, number_of_windows, slew_rate, plane='iv')
+    fit_params.sc.set_values(result, perr)
+    resistance = convert_fit_to_resistance(fit_params, squid, fit_type='iv')
+    return resistance
+
+
 def get_parasitic_resistances(iv_dictionary, squid, number_samples, sampling_width, number_of_windows, slew_rate):
-    '''Loop through IV data to obtain parasitic series resistance'''
+    '''Loop through windowed IV data to obtain parasitic series resistance'''
     parasitic_dictionary = {}
     fit_params = iv_results.FitParameters()
     min_temperature = list(iv_dictionary.keys())[np.argmin([float(temperature) for temperature in iv_dictionary.keys()])]
@@ -344,6 +367,178 @@ def get_parasitic_resistances(iv_dictionary, squid, number_samples, sampling_wid
 
 
 def fit_sc_branch(xdata, ydata, sigma_y, number_samples, sampling_width, number_of_windows, slew_rate, plane):
+    """Determine location of the SC branch and fit a line to it.
+    
+    In the 'iv' plane we have the vOut vs iBias and so dy/dx ~ resistance.
+    In the 'tes' plane we have iTES vs vTES and so dy/dx ~ 1/resistance.
+    """
+    # The philosophy here will be to select 1 of the directionalities (SC->N or N->SC) and assume that where iBias ~ 0
+    # we are around where we should be for the SC region
+    # We can break this up into the following steps:
+    # 1. Create directionality cut and select the relevant data
+    # 2. Sort the data by x since we will be in the y vs x plane now and both y and x are time-ordered.
+    # 3. Locate approximately (x=0, y(x=0))
+    # 4. Determine appropriate cut to select a region for fitting
+    # 5. Fit this region and extract relevant information.
+    
+    # If we did not need to sort by xdata we could just use flatiterators perhaps.
+    if xdata.ndim == 2:
+        number_samples = xdata.shape[1]
+        xdata = xdata.flatten()
+        ydata = ydata.flatten()
+        sigma_y = sigma_y.flatten()
+    sortkey = np.argsort(xdata)
+    # Sort
+    xdata = xdata[sortkey]
+    ydata = ydata[sortkey]
+    sigma_y = sigma_y[sortkey]
+    
+    # Get directionality cut
+    di_bias = np.gradient(xdata, edge_order=2)
+    c_normal_to_sc_pos = np.logical_and(xdata > 0, di_bias < 0)
+    c_normal_to_sc_neg = np.logical_and(xdata <= 0, di_bias > 0)
+    c_normal_to_sc = np.logical_or(c_normal_to_sc_pos, c_normal_to_sc_neg)
+    
+    xdata = xdata[~c_normal_to_sc]
+    ydata = ydata[~c_normal_to_sc]
+    sigma_y = sigma_y[~c_normal_to_sc]
+
+    sc_cut = walk_sc(xdata, ydata, number_samples, sampling_width, number_of_windows, slew_rate, plane=plane)
+    # Finally cut further to the sc region
+    xdata = xdata[sc_cut]
+    ydata = ydata[sc_cut]
+    sigma_y = sigma_y[sc_cut]
+    m0 = (ydata[-1] - ydata[0])/(xdata[-1] - xdata[0])
+    p0 = (m0, 0)
+    result, pcov = curve_fit(fitfuncs.lin_sq, xdata, ydata, sigma=sigma_y, absolute_sigma=True, p0=p0, method='trf')
+    # result, pcov = curve_fit(fitfuncs.lin_sq, xvalues, yvalues, p0=(38, 0), method='trf')
+    perr = np.sqrt(np.diag(pcov))
+        
+    return None
+
+
+def walk_sc(xdata, ydata, number_samples, sampling_width, number_of_windows, slew_rate, delta_current=None, plane='iv'):
+    """Function to walk the superconducting region of the IV curve and get the left and right edges
+
+    In order to be correct your x and y data values must be sorted by x
+    """
+    
+    # Input is a directional (SC->N or N->SC) cut array. Our task is to find a cut on this that we will pass
+    # off to a fitter.
+    # We will walk along the curve from the 0 point in either direction and flip a bool array from False to True if the new point is acceptable.
+    # To do this we can keep a RingBuffer that slides along the curve and checks the change in its average compared to some threshold. As long
+    # as it does not exceed this threshold the new point is acceptible. Otherwise it is not.
+    
+    # Ensure we have the proper sorting of the data
+    if not is_sorted(xdata):
+        raise pyTESErrors.ArrayIsUnsortedException('Input argument x is unsorted')
+    # Next we need to figure out how big the buffer should be. A larger buffer will be less suceptible to small scale fluctuations
+    # but if it is too big it could select data outside the SC region. A few uA is probably ok.
+    
+    # deltaT == deltaI/slew_rate --> gives an idea of how long in time the requested current size would take for this data
+    # tWindow = nSamples*dt/nWindows --> this is the total time per 'waveform' over the number of windows we chop it into --> lenght of time of each window
+    # deltaT/tWindow = number of windows inside deltaT (aka number of points)
+    # TODO: Adjust buffer size to reflect the amount of xData points (different based on the plane we live in)
+    # Check buffer size
+    if delta_current is None:
+        if plane == 'iv':
+            delta_current = 5
+        elif plane == 'tes':
+            delta_current = 5
+        else:
+            delta_current = 5
+    buffer_size = int((delta_current / slew_rate) / ((number_samples * sampling_width) / number_of_windows))
+    print('For a delta current of {} uA with a ramp slew rate of {} uA/s, the buffer requires {} windowed points'.format(delta_current, slew_rate, buffer_size))
+    
+    # First let us compute the gradient (i.e. dy/dx)
+    dydx = np.gradient(ydata, xdata, edge_order=2)
+
+    # Find whereabouts of (0,0)
+    # This should roughly correspond to x = 0 since if we input nothing we should get out nothing. In reality there are parasitics of course
+    if plane == 'tes':
+        # Ideally we should look for the point that is closest to (0, 0)!
+        distance = np.zeros(xdata.size)
+        px, py = (0, 0)
+        for idx in range(xdata.size):
+            dx = xdata[idx] - px
+            dy = ydata[idx] - py
+            distance[idx] = np.sqrt(dx**2 + dy**2)
+        index_min_x = np.nanargmin(distance)
+        print('The point closest to ({}, {}) is at index {} with distance {} and is ({}, {})'.format(
+            px,
+            py,
+            index_min_x,
+            distance[index_min_x],
+            xdata[index_min_x],
+            ydata[index_min_x]))
+        # Occasionally we may have a shifted curve that is not near 0 for some reason (SQUID jump)
+        # So find the min and max iTES and then find the central point
+    elif plane == 'iv':
+        # Find the point closest to 0 iBias.
+        ioffset = 0
+        index_min_x = np.argmin(np.abs(xdata + ioffset))
+        # NOTE: The above will fail for small SC regions where vOut normal > vOut sc!!!!
+    # Start by walking buffer_size events to the right from the minimum abs. voltage
+    cut = get_sc_endpoints(buffer_size, index_min_x, dydx)
+    return cut
+
+
+@jit(nopython=True)
+def get_sc_endpoints(buffer_size, index_min_x, dydx):
+    """Select the region of the SC branch to pass to the fitter."""
+    # Look for rightmost endpoint, keeping in mind it could be our initial point
+    delta_mean_threshold = 1e-2
+    cut = np.zeros(dydx.shape, dtype=np.bool)
+    if buffer_size + index_min_x >= dydx.size:
+        # Buffer size and offset would go past end of data
+        right_buffer_size = np.max([dydx.size - index_min_x - 1, 0])
+    else:
+        right_buffer_size = buffer_size
+    right_buffer_size = np.int32(right_buffer_size)
+    slope_buffer = RingBuffer(right_buffer_size, np.int32(0), np.float32)
+    # Now fill the buffer and cut
+    for event in range(right_buffer_size):
+        slope_buffer.append(dydx[index_min_x + event])
+        cut[index_min_x + event] = True
+    # The buffer is full with initial values. Now walk along it
+    ev_right = index_min_x + right_buffer_size
+    difference_of_means = 0
+    while difference_of_means < delta_mean_threshold and ev_right < dydx.size - 1:
+        current_mean = slope_buffer.get_mean()
+        slope_buffer.append(dydx[ev_right])
+        new_mean = slope_buffer.get_mean()
+        difference_of_means = np.abs((current_mean - new_mean)/current_mean)
+        cut[ev_right] = True
+        ev_right = ev_right + 1
+    # Now we must check the left direction. Again keep in mind we might start there.
+    if index_min_x - buffer_size <= 0:
+        # The buffer would go past the array edge
+        left_buffer_size = index_min_x
+    else:
+        left_buffer_size = buffer_size
+    if left_buffer_size == 0:
+        # Implies index_min_x is 0. Fit 1 point in?
+        left_buffer_size = 1
+    left_buffer_size = np.int32(left_buffer_size)
+    slope_buffer = RingBuffer(left_buffer_size, 0, np.float32)
+    # Do initial appending
+    for event in range(left_buffer_size):
+        slope_buffer.append(dydx[index_min_x - event])
+        cut[index_min_x - event] = True
+    # Walk to the left
+    ev_left = index_min_x - left_buffer_size
+    difference_of_means = 0
+    # print('The value of ev_left to start is: {}'.format(ev_left))
+    while difference_of_means < delta_mean_threshold and ev_left >= 0:
+        current_mean = slope_buffer.get_mean()
+        slope_buffer.append(dydx[ev_left])
+        new_mean = slope_buffer.get_mean()
+        difference_of_means = np.abs((current_mean - new_mean)/current_mean)
+        cut[ev_left] = True
+        ev_left -= 1
+    return cut
+
+def fit_sc_branch_old(xdata, ydata, sigma_y, number_samples, sampling_width, number_of_windows, slew_rate, plane):
     '''Walk and fit the superconducting branch
     In the vOut vs iBias plane x = iBias, y = vOut --> dy/dx ~ resistance
     In the iTES vs vTES plane x = vTES, y = iTES --> dy/dx ~ 1/resistance
@@ -360,7 +555,7 @@ def fit_sc_branch(xdata, ydata, sigma_y, number_samples, sampling_width, number_
     if len(sigma_y.shape) == 1:
         sigma_y = np.zeros(xdata.size) + sigma_y
     sort_key = np.argsort(xdata)
-    (event_left, event_right) = walk_sc(xdata[sort_key], ydata[sort_key], number_samples, sampling_width, number_of_windows, slew_rate, plane=plane)
+    (event_left, event_right) = walk_sc_old(xdata[sort_key], ydata[sort_key], number_samples, sampling_width, number_of_windows, slew_rate, plane=plane)
     print('SC fit gives event_left={} and event_right={}'.format(event_left, event_right))
     print('Diagnostics: The input into curve_fit is as follows:')
     print('\txdata size: {}, ydata size: {}, xdata NaN: {}, ydata NaN: {}'.format(
@@ -501,7 +696,7 @@ def walk_normal(xdata, ydata, side, number_samples, sampling_width, number_of_wi
     return event
 
 
-def walk_sc(xdata, ydata, number_samples, sampling_width, number_of_windows, slew_rate, delta_current=None, plane='iv'):
+def walk_sc_old(xdata, ydata, number_samples, sampling_width, number_of_windows, slew_rate, delta_current=None, plane='iv'):
     '''Function to walk the superconducting region of the IV curve and get the left and right edges
     Generally when ib = 0 we should be superconducting so we will start there and go up until the bias
     then return to 0 and go down until the bias
@@ -576,7 +771,7 @@ def walk_sc(xdata, ydata, number_samples, sampling_width, number_of_windows, sle
 
 
 @jit(nopython=True)
-def get_sc_endpoints(buffer_size, index_min_x, dydx):
+def get_sc_endpoints_old(buffer_size, index_min_x, dydx):
     '''A function to try and determine the endpoints for the SC region'''
     # Look for rightmost endpoint, keeping in mind it could be our initial point
     if buffer_size + index_min_x >= dydx.size:

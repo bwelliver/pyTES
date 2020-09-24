@@ -185,48 +185,72 @@ def get_iv_data_from_file(input_path, new_format=False, thermometer='EP'):
     return iv_data
 
 
-def parse_temperature_steps(output_path, time_values, temperatures, pid_log, tz_correction):
-    '''Run through the PID log and parse temperature steps
+def parse_temperature_steps(time_values, temperatures, pid_log, tz_correction):
+    """Run through the PID log and parse temperature steps.
+
     The PID log has as the first column the timestamp a PID setting STARTS
     The second column is the power or temperature setting point
-    '''
+    """
     times = pan.read_csv(pid_log, delimiter='\t', header=None)
+    have_duration = times.values.shape[1] == 3
+    if have_duration:
+        durations = times.values[:, 2]
+    else:
+        # we will construct the durations array based on the difference between start times
+        durations = np.full(times.values.shape[0], 0)
     times = times.values[:, 0]
     times = times + tz_correction  # adjust for any timezone issues
     # Each index of times is now the starting time of a temperature step.
     # Include an appropriate offset for mean computation BUT only a softer one for time boundaries
     # time_list is a list of tuples.
-    time_list = []
+    step_values = np.zeros((times.size, 5))  # start, stop, meanT, stdT, serrT
     start_offset = 60
     end_offset = 10
-    if times.size > 1:
-        for index in range(times.size - 1):
-            cut = np.logical_and(time_values > times[index]+start_offset, time_values < times[index+1] - end_offset)
-            mean_temperature = np.mean(temperatures[cut])
-            serr_temperature = np.std(temperatures[cut])/np.sqrt(temperatures[cut].size)
+    default_duration = 2000
+    # How we proceed depends if we have 3 columns or not
+    if have_duration:
+        for index in range(times.size):
             start_time = times[index] + start_offset
-            stop_time = times[index + 1] - end_offset
-            time_list.append((start_time, stop_time, mean_temperature, serr_temperature))
-        # Handle the last step
-        # How long was the previous step?
-        d_t = time_list[0][1] - time_list[0][0]
-        start_time = time_list[-1][1] + start_offset
-        end_time = start_time + d_t - end_offset
-        cut = np.logical_and(time_values > start_time, time_values < end_time)
-        mean_temperature = np.mean(temperatures[cut])
-        serr_temperature = np.std(temperatures[cut])/np.sqrt(temperatures[cut].size)
-        time_list.append((start_time, end_time, mean_temperature, serr_temperature))
-        d_t = time_values - time_values[0]
+            stop_time = times[index] + durations[index] - end_offset
+            cut = np.logical_and(time_values > start_time, time_values < stop_time)
+            step_values[index][0] = start_time
+            step_values[index][1] = stop_time
+            step_values[index][2] = np.mean(temperatures[cut])
+            step_values[index][3] = np.std(temperatures[cut])
+            step_values[index][4] = step_values[index][3]/np.sqrt(cut.sum())
     else:
-        # Only 1 temperature step defined
-        start_time = times[0] + start_offset
-        end_time = time_values[-1] - end_offset
-        cut = np.logical_and(time_values > start_time, time_values < end_time)
-        mean_temperature = np.mean(temperatures[cut])
-        time_list.append((start_time, end_time, mean_temperature, serr_temperature))
-        d_t = time_values - time_values[0]
-    ivplt.test_steps(d_t, temperatures, time_list, time_values[0], 'Time', 'T', output_path + '/' + 'test_temperature_steps.png')
-    return time_list
+        # Here we have to rely upon the time between steps. If there is only 1 step defined then we just assume some time duration
+        if times.size > 1:
+            for index in range(times.size-1):
+                duration = times[index+1] - times[index]
+                start_time = times[index] + start_offset
+                stop_time = times[index] + duration - end_offset
+                cut = np.logical_and(time_values > start_time, time_values < stop_time)
+                step_values[index][0] = start_time
+                step_values[index][1] = stop_time
+                step_values[index][2] = np.mean(temperatures[cut])
+                step_values[index][3] = np.std(temperatures[cut])
+                step_values[index][4] = step_values[index][3]/np.sqrt(cut.sum())
+            # Handle the last time step -- assume same duration as previous
+            start_time = times[-1] + start_offset
+            stop_time = times[-1] + duration - end_offset
+            cut = np.logical_and(time_values > start_time, time_values < stop_time)
+            step_values[index][0] = start_time
+            step_values[index][1] = stop_time
+            step_values[index][2] = np.mean(temperatures[cut])
+            step_values[index][3] = np.std(temperatures[cut])
+            step_values[index][4] = step_values[index][3]/np.sqrt(cut.sum())
+        else:
+            # Only 1 step present. Assume a default duration of 2000s
+            start_time = times[0] + start_offset
+            stop_time = times[0] + default_duration - end_offset
+            cut = np.logical_and(time_values > start_time, time_values < stop_time)
+            step_values[index][0] = start_time
+            step_values[index][1] = stop_time
+            step_values[index][2] = np.mean(temperatures[cut])
+            step_values[index][3] = np.std(temperatures[cut])
+            step_values[index][4] = step_values[index][3]/np.sqrt(cut.sum())
+    return step_values
 
 
 def get_temperature_steps(output_path, time_values, temperatures, pid_log, thermometer='EP', tz_correction=0):
@@ -235,14 +259,16 @@ def get_temperature_steps(output_path, time_values, temperatures, pid_log, therm
     attempt to find the temperature steps
     '''
     if pid_log is None:
-        timelist = find_temperature_steps(output_path, time_values, temperatures, thermometer)
+        step_values = find_temperature_steps(output_path, time_values, temperatures, thermometer)
     else:
-        timelist = parse_temperature_steps(output_path, time_values, temperatures, pid_log, tz_correction)
-    return timelist
+        step_values = parse_temperature_steps(time_values, temperatures, pid_log, tz_correction)
+    # Make diagnostic plot
+    ivplt.test_steps(time_values-time_values[0], temperatures, step_values, time_values[0], 'Time', 'T', output_path + '/' + 'test_temperature_steps.png')
+    return step_values
 
 
-def chop_data_by_temperature_steps(iv_data, timelist, thermometer_name, bias_channel, data_channel, squid):
-    '''Chop up waveform data based on temperature steps'''
+def chop_data_by_temperature_steps(iv_data, step_values, thermometer_name, bias_channel, data_channel, squid):
+    """Chop up waveform data based on temperature steps."""
     squid_parameters = squid_info.SQUIDParameters(squid)
     r_bias = squid_parameters.Rbias
     time_buffer = 60
@@ -250,31 +276,23 @@ def chop_data_by_temperature_steps(iv_data, timelist, thermometer_name, bias_cha
     # The following defines a range of temperatures to reject. That is:
     # reject = cut_temperature_min < T < cut_temperature_max
     #FIXME:
-    # Put these in units of mK for now...this is a hack!
-    cut_temperature_max = 20.8  # Should be the max rejected temperature
+    # Put these in units of mK for now.
+    # if min < T < max --> reject
+    cut_temperature_max = 0  # Should be the max rejected temperature
     cut_temperature_min = 0  # Should be the minimum rejected temperature
-    expected_duration = 2100  # TODO: make this an input argument or auto-determined somehow
+    expected_duration = 86400  # TODO: make this an input argument or auto-determined somehow
     # Now chop up the IV data into steps keyed by the mean temperature
-    for values in timelist:
-        start_time, stop_time, mean_temperature, serr_temperature = values
+    for values in step_values:
+        start_time, stop_time, mean_temperature, std_temperature, serr_temperature = values
         print('The mean temperature is: {}'.format(mean_temperature))
         times = iv_data['Timestamp_s'] + iv_data['Timestamp_mus']/1e6
-        cut = np.logical_and(times >= start_time + time_buffer, times <= np.min([stop_time, start_time + expected_duration]))
+        cut = np.logical_and(times >= start_time, times <= stop_time)
         # Warning: iv_data[WaveformXYZ] is a dictionary! Its keys are event numbers and its values are the samples.
-        n_events = len(iv_data['Waveform' + '{:03d}'.format(int(bias_channel))])
-        sz_array = iv_data['Waveform' + '{:03d}'.format(int(bias_channel))][0].size
-        print('Size check: The size of times is: {}, the number of events in waveform is: {}, the size of the waveform itself is: {}'.format(times.size, n_events, sz_array))
         print('Converting iBias from dictionary of arrays to a 2d array')
-        bias = np.empty((n_events, sz_array))
-        for event, sample in iv_data['Waveform' + '{:03d}'.format(int(bias_channel))].items():
-            bias[event] = sample
+        bias, sz_array = iv_processor.convert_dict_to_ndarray(iv_data['Waveform' + '{:03d}'.format(int(bias_channel))])
         bias = bias/r_bias
-        n_events = len(iv_data['Waveform' + '{:03d}'.format(int(data_channel))])
-        sz_array = iv_data['Waveform' + '{:03d}'.format(int(data_channel))][0].size
-        v_out = np.empty((n_events, sz_array))
         print('Converting vOut from dictionary of arrays to a 2d array')
-        for event, sample in iv_data['Waveform' + '{:03d}'.format(int(data_channel))].items():
-            v_out[event] = sample
+        v_out, sz_array = iv_processor.convert_dict_to_ndarray(iv_data['Waveform' + '{:03d}'.format(int(data_channel))])
         times = times[cut]
         bias = bias[cut]
         v_out = v_out[cut]
@@ -321,8 +339,8 @@ def get_iv_temperature_data(argin):
         thermometer_name = 'NT'
     elif argin.thermometer == 'ExpRuOx':
         thermometer_name = 'ExpRuOx_K'
-    timelist = get_temperature_steps(argin.outputPath, time_values=time_values, temperatures=iv_data[thermometer_name], pid_log=argin.pidLog, thermometer=argin.thermometer, tz_correction=argin.tzOffset)
-    iv_dictionary, number_samples = chop_data_by_temperature_steps(iv_data, timelist, thermometer_name, argin.biasChannel, argin.dataChannel, argin.squid)
+    step_values = get_temperature_steps(argin.outputPath, time_values=time_values, temperatures=iv_data[thermometer_name], pid_log=argin.pidLog, thermometer=argin.thermometer, tz_correction=argin.tzOffset)
+    iv_dictionary, number_samples = chop_data_by_temperature_steps(iv_data, step_values, thermometer_name, argin.biasChannel, argin.dataChannel, argin.squid)
     return iv_dictionary, number_samples
 
 
@@ -383,7 +401,7 @@ def process_iv_curves(squid, iv_dictionary, number_of_windows=0, slew_rate=1, nu
     '''
 
     # First determine if we need to split these data up into windows
-    # Note: iBias and vOut is at this point a nEvent x nSamples array and not a dict
+    # Note: iBias and vOut is at this point a nEvent x nSamples ndarray and NOT a dict
     # Variable lookup:
     # iv_dictionary: Contains all the raw IV data, i, v, t, dt, T
     # iv_curves: Contains the 'windowed' IV data for just i, ierr, v, verr, t
@@ -391,7 +409,8 @@ def process_iv_curves(squid, iv_dictionary, number_of_windows=0, slew_rate=1, nu
     # Next try to obtain a measure of the parasitic series resistance. Note that this value is subtracted
     # from subsquent fitted values of the TES resistance and is assumed to be T indepdent.
     sampling_width = iv_dictionary[list(iv_dictionary.keys())[0]]['sampling_width'][0]
-    parasitic_dictionary, min_temperature = iv_processor.get_parasitic_resistances(iv_curves, squid, number_samples, sampling_width, number_of_windows, slew_rate)
+    # parasitic_dictionary, min_temperature = iv_processor.get_parasitic_resistances(iv_curves, squid, number_samples, sampling_width, number_of_windows, slew_rate)
+    parasitic_resistance = iv_processor.get_parasitic_resistance(iv_curves, squid, number_samples, sampling_width, number_of_windows, slew_rate)
     # Loop through the iv data now and obtain fit parameters and correct alignment
     # fit_parameters_dictionary = {}
     for temperature, iv_data in sorted(iv_curves.items()):
@@ -409,7 +428,7 @@ def process_iv_curves(squid, iv_dictionary, number_of_windows=0, slew_rate=1, nu
         iv_dictionary[temperature]['vOut'] -= v_offset
         iv_dictionary[temperature]['iBias'] -= i_offset
         iv_dictionary[temperature]['fit_parameters'] = fit_parameters
-        iv_dictionary[temperature]['parasitic'] = parasitic_dictionary[temperature]
+        iv_dictionary[temperature]['parasitic'] = parasitic_resistance  #parasitic_dictionary[temperature]
 #    # Next loop through to generate plots
 #    for temperature, iv_data in sorted(iv_curves.items()):
 #        # Make I-V plot
