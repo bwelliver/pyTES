@@ -489,9 +489,12 @@ def get_sc_endpoints(buffer_size, index_min_x, dydx):
     # Look for rightmost endpoint, keeping in mind it could be our initial point
     delta_mean_threshold = 1e-2
     cut = np.zeros(dydx.shape, dtype=np.bool_)
+    sz_check = np.zeros(2)
+    sz_check[0] = dydx.size - index_min_x - 1
+    sz_check[1] = 0
     if buffer_size + index_min_x >= dydx.size:
         # Buffer size and offset would go past end of data
-        right_buffer_size = np.max([dydx.size - index_min_x - 1, 0])
+        right_buffer_size = np.max(sz_check)
     else:
         right_buffer_size = buffer_size
     right_buffer_size = np.int32(right_buffer_size)
