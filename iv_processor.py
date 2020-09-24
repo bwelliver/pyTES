@@ -476,7 +476,7 @@ def walk_sc(xdata, ydata, number_samples, sampling_width, number_of_windows, sle
     elif plane == 'iv':
         # Find the point closest to 0 iBias.
         ioffset = 0
-        index_min_x = np.argmin(np.abs(xdata + ioffset))
+        index_min_x = np.nanargmin(np.abs(xdata + ioffset))
         # NOTE: The above will fail for small SC regions where vOut normal > vOut sc!!!!
     # Start by walking buffer_size events to the right from the minimum abs. voltage
     cut = get_sc_endpoints(buffer_size, index_min_x, dydx)
@@ -494,7 +494,7 @@ def get_sc_endpoints(buffer_size, index_min_x, dydx):
     sz_check[1] = 0
     if buffer_size + index_min_x >= dydx.size:
         # Buffer size and offset would go past end of data
-        right_buffer_size = np.max(sz_check)
+        right_buffer_size = np.nanmax(sz_check)
     else:
         right_buffer_size = buffer_size
     right_buffer_size = np.int32(right_buffer_size)
@@ -507,9 +507,9 @@ def get_sc_endpoints(buffer_size, index_min_x, dydx):
     ev_right = index_min_x + right_buffer_size
     difference_of_means = 0
     while difference_of_means < delta_mean_threshold and ev_right < dydx.size - 1:
-        current_mean = slope_buffer.get_mean()
+        current_mean = slope_buffer.get_nanmean()
         slope_buffer.append(dydx[ev_right])
-        new_mean = slope_buffer.get_mean()
+        new_mean = slope_buffer.get_nanmean()
         difference_of_means = np.abs((current_mean - new_mean)/current_mean)
         cut[ev_right] = True
         ev_right = ev_right + 1
@@ -533,9 +533,9 @@ def get_sc_endpoints(buffer_size, index_min_x, dydx):
     difference_of_means = 0
     # print('The value of ev_left to start is: {}'.format(ev_left))
     while difference_of_means < delta_mean_threshold and ev_left >= 0:
-        current_mean = slope_buffer.get_mean()
+        current_mean = slope_buffer.get_nanmean()
         slope_buffer.append(dydx[ev_left])
-        new_mean = slope_buffer.get_mean()
+        new_mean = slope_buffer.get_nanmean()
         difference_of_means = np.abs((current_mean - new_mean)/current_mean)
         cut[ev_left] = True
         ev_left -= 1
