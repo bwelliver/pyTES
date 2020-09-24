@@ -5,6 +5,7 @@ import argparse
 
 import numpy as np
 import pandas as pan
+import h5py
 
 import iv_processor
 from numba import jit, prange
@@ -51,10 +52,8 @@ def lock_in_amplifier(signal, freq, fs):
     # note: check: np.mean(np.dot(signal, sint))/signal.shape[1] might be equiv.
     xv = np.mean(np.dot(signal, np.sin(t)))/signal.shape[1]
     yv = np.mean(np.dot(signal, np.cos(t)))/signal.shape[1]
-    mod = 2*np.sqrt(xv*xv + yv*yv)
-    phase = np.arctan2(yv, xv)
-    result[0] = mod
-    result[1] = phase
+    result[0] = 2*np.sqrt(xv*xv + yv*yv)
+    result[1] = np.arctan2(yv, xv)
     #result[2] = freq
     return result
 
@@ -62,12 +61,16 @@ def lock_in_amplifier(signal, freq, fs):
 @jit(nopython=True, parallel=True)
 def lock_in(v_in, v_out, dt, number_samples, exfreq):
     """Try to do a lock-in amplifier."""
-    T = number_samples * dt
-    fs = np.round(1/dt)
+    T = number_samples * dt  # the total time of the window
+    fs = np.round(1/dt)  # the sampling rate given by 1/sample_width
+    # Construct the vector of frequencies we sample at
     freqs = np.linspace(1/T, fs, np.int(number_samples))
+    # We need to round each frequency to whole values?
     for idx in prange(freqs.size):
         freqs[idx] = np.round(freqs[idx])
     nyfreqs = freqs[0:int(freqs.size/2)]
+    lockin_values = np.zeros((freqs.size, 4))  # Nx4 array
+    
     lock_vin_mod = np.zeros(freqs.size)
     lock_vin_phase = np.zeros(freqs.size)
     lock_vout_mod = np.zeros(freqs.size)
@@ -114,11 +117,14 @@ def transform_to_rect(polar_results):
     return fvin, fvout
 
 
-def main(filenames):
+def main():
     normal_file = '/Users/bwelliver/tmp/SlowDigit_Norm_250uA_1000nA_Square/root//SlowDigitNorm250uA1000nASquare_1.root'
     sc_file = '/Users/bwelliver/tmp/SlowDigit_SC_0uA_1uA_Suqare/root//SlowDigitSC0uA1uASquare_1.root'
+    print('Starting normal lock-in')
     norm_locked = get_lockin_averages(normal_file)
+    print('Starting sc lock-in')
     sc_locked = get_lockin_averages(sc_file)
+    print('Computing other quantities now...')
     norm_fvin, norm_fvout = transform_to_rect(norm_locked)
     sc_fvin, sc_fvout = transform_to_rect(sc_locked)
     exfreq = 17

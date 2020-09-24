@@ -515,11 +515,11 @@ def generate_multi_plot(outdir, temperature, biases, ztes):
     return True
 
 
-def generate_model_diagnostic_plots(output_directory, ratio, model_function, results, perr, x0=None, bias=None, mode='ratio'):
+def generate_model_diagnostic_plots(output_directory, freq, ratio, model_function, results, perr, x0=None, bias=None, mode='ratio'):
     '''Generate diagnostic plots for the model fits'''
     # Split into arrays
-    freq = np.fromiter(ratio.keys(), dtype='float')
-    ratio = np.fromiter(ratio.values(), dtype='c16')
+    #freq = np.fromiter(ratio.keys(), dtype='float')
+    #ratio = np.fromiter(ratio.values(), dtype='c16')
     model_freq = np.linspace(freq.min(), freq.max(), int(1e5))
     print('In diagnostic plot routine the results are: {}'.format(results))
     model_ratio = model_function(model_freq, *results)
