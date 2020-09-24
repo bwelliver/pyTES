@@ -414,7 +414,7 @@ def fit_sc_branch(xdata, ydata, sigma_y, number_samples, sampling_width, number_
     # result, pcov = curve_fit(fitfuncs.lin_sq, xvalues, yvalues, p0=(38, 0), method='trf')
     perr = np.sqrt(np.diag(pcov))
         
-    return None
+    return result, perr
 
 
 def walk_sc(xdata, ydata, number_samples, sampling_width, number_of_windows, slew_rate, delta_current=None, plane='iv'):
