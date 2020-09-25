@@ -392,6 +392,8 @@ def fit_sc_branch(xdata, ydata, sigma_y, number_samples, sampling_width, number_
     xdata = xdata[sortkey]
     ydata = ydata[sortkey]
     sigma_y = sigma_y[sortkey]
+    dydx = np.gradient(ydata, xdata, edge_order=2)
+    
     
     # Get directionality cut
     di_bias = np.gradient(xdata, edge_order=2)
@@ -402,8 +404,9 @@ def fit_sc_branch(xdata, ydata, sigma_y, number_samples, sampling_width, number_
     xdata = xdata[~c_normal_to_sc]
     ydata = ydata[~c_normal_to_sc]
     sigma_y = sigma_y[~c_normal_to_sc]
+    dydx = dydx[~cut_normal_to_sc]
 
-    sc_cut = walk_sc(xdata, ydata, number_samples, sampling_width, number_of_windows, slew_rate, plane=plane)
+    sc_cut = walk_sc(xdata, ydata, dydx, number_samples, sampling_width, number_of_windows, slew_rate, plane=plane)
     # Finally cut further to the sc region
     print('The size of sc_cut is {} and the amount that is true: {}'.format(sc_cut.size, sc_cut.sum()))
     xdata = xdata[sc_cut]
@@ -424,7 +427,7 @@ def fit_sc_branch(xdata, ydata, sigma_y, number_samples, sampling_width, number_
     return result, perr
 
 
-def walk_sc(xdata, ydata, number_samples, sampling_width, number_of_windows, slew_rate, delta_current=None, plane='iv'):
+def walk_sc(xdata, ydata, dydx, number_samples, sampling_width, number_of_windows, slew_rate, delta_current=None, plane='iv'):
     """Function to walk the superconducting region of the IV curve and get the left and right edges
 
     In order to be correct your x and y data values must be sorted by x
@@ -458,7 +461,7 @@ def walk_sc(xdata, ydata, number_samples, sampling_width, number_of_windows, sle
     print('For a delta current of {} uA with a ramp slew rate of {} uA/s, the buffer requires {} windowed points'.format(delta_current, slew_rate, buffer_size))
     
     # First let us compute the gradient (i.e. dy/dx)
-    dydx = np.gradient(ydata, xdata, edge_order=2)
+    #dydx = np.gradient(ydata, xdata, edge_order=2)
 
     # Find whereabouts of (0,0)
     # This should roughly correspond to x = 0 since if we input nothing we should get out nothing. In reality there are parasitics of course
