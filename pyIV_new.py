@@ -409,10 +409,8 @@ def process_iv_curves(squid, iv_dictionary, number_of_windows=0, slew_rate=1, nu
     # Next try to obtain a measure of the parasitic series resistance. Note that this value is subtracted
     # from subsquent fitted values of the TES resistance and is assumed to be T indepdent.
     sampling_width = iv_dictionary[list(iv_dictionary.keys())[0]]['sampling_width'][0]
-    parasitic_dictionary, min_temperature = iv_processor.get_parasitic_resistances(iv_curves, squid, number_samples, sampling_width, number_of_windows, slew_rate)
-    print('The parasitic values are and min_temp are: {} and {}'.format(parasitic_dictionary, min_temperature))
-    assert(False)
-    #parasitic_resistance = iv_processor.get_parasitic_resistance(iv_curves, squid, number_samples, sampling_width, number_of_windows, slew_rate)
+    # parasitic_dictionary, min_temperature = iv_processor.get_parasitic_resistances(iv_curves, squid, number_samples, sampling_width, number_of_windows, slew_rate)
+    parasitic_resistance = iv_processor.get_parasitic_resistance(iv_curves, squid, number_samples, sampling_width, number_of_windows, slew_rate)
     # Loop through the iv data now and obtain fit parameters and correct alignment
     # fit_parameters_dictionary = {}
     for temperature, iv_data in sorted(iv_curves.items()):
@@ -430,8 +428,8 @@ def process_iv_curves(squid, iv_dictionary, number_of_windows=0, slew_rate=1, nu
         iv_dictionary[temperature]['vOut'] -= v_offset
         iv_dictionary[temperature]['iBias'] -= i_offset
         iv_dictionary[temperature]['fit_parameters'] = fit_parameters
-        #iv_dictionary[temperature]['parasitic'] = parasitic_resistance  #parasitic_dictionary[temperature]
-        iv_dictionary[temperature]['parasitic'] = parasitic_dictionary[temperature]
+        iv_dictionary[temperature]['parasitic'] = parasitic_resistance  #parasitic_dictionary[temperature]
+        # iv_dictionary[temperature]['parasitic'] = parasitic_dictionary[temperature]
 #    # Next loop through to generate plots
 #    for temperature, iv_data in sorted(iv_curves.items()):
 #        # Make I-V plot
