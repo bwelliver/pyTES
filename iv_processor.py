@@ -387,27 +387,23 @@ def fit_sc_branch(xdata, ydata, sigma_y, number_samples, sampling_width, number_
         xdata = xdata.flatten()
         ydata = ydata.flatten()
         sigma_y = sigma_y.flatten()
-    sortkey = np.argsort(xdata)
-    # Sort
-    xdata = xdata[sortkey]
-    ydata = ydata[sortkey]
-    sigma_y = sigma_y[sortkey]
-    dydx = np.gradient(ydata, xdata, edge_order=2)
-    
-    
     # Get directionality cut
     di_bias = np.gradient(xdata, edge_order=2)
     c_normal_to_sc_pos = np.logical_and(xdata > 0, di_bias < 0)
     c_normal_to_sc_neg = np.logical_and(xdata <= 0, di_bias > 0)
     c_normal_to_sc = np.logical_or(c_normal_to_sc_pos, c_normal_to_sc_neg)
-    
+    # Sort by x
+    sortkey = np.argsort(xdata)
+    xdata = xdata[sortkey]
+    ydata = ydata[sortkey]
+    sigma_y = sigma_y[sortkey]
+    c_normal_to_sc = c_normal_to_sc[sortkey]
     xdata = xdata[~c_normal_to_sc]
     ydata = ydata[~c_normal_to_sc]
     sigma_y = sigma_y[~c_normal_to_sc]
-    dydx = dydx[~c_normal_to_sc]
     np.save("xdata_bw", xdata)
     np.save("ydata_bw", ydata)
-    sc_cut = walk_sc(xdata, ydata, dydx, number_samples, sampling_width, number_of_windows, slew_rate, plane=plane)
+    sc_cut = walk_sc(xdata, ydata, number_samples, sampling_width, number_of_windows, slew_rate, plane=plane)
     # Finally cut further to the sc region
     print('The size of sc_cut is {} and the amount that is true: {}'.format(sc_cut.size, sc_cut.sum()))
     xdata = xdata[sc_cut]
@@ -462,7 +458,7 @@ def walk_sc(xdata, ydata, dydx, number_samples, sampling_width, number_of_window
     print('For a delta current of {} uA with a ramp slew rate of {} uA/s, the buffer requires {} windowed points'.format(delta_current, slew_rate, buffer_size))
     
     # First let us compute the gradient (i.e. dy/dx)
-    #dydx = np.gradient(ydata, xdata, edge_order=2)
+    dydx = np.gradient(ydata, xdata, edge_order=2)
 
     # Find whereabouts of (0,0)
     # This should roughly correspond to x = 0 since if we input nothing we should get out nothing. In reality there are parasitics of course
