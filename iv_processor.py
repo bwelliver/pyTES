@@ -404,8 +404,9 @@ def fit_sc_branch(xdata, ydata, sigma_y, number_samples, sampling_width, number_
     xdata = xdata[~c_normal_to_sc]
     ydata = ydata[~c_normal_to_sc]
     sigma_y = sigma_y[~c_normal_to_sc]
-    dydx = dydx[~cut_normal_to_sc]
-
+    dydx = dydx[~c_normal_to_sc]
+    np.save("xdata_bw", xdata)
+    np.save("ydata_bw", ydata)
     sc_cut = walk_sc(xdata, ydata, dydx, number_samples, sampling_width, number_of_windows, slew_rate, plane=plane)
     # Finally cut further to the sc region
     print('The size of sc_cut is {} and the amount that is true: {}'.format(sc_cut.size, sc_cut.sum()))
@@ -751,6 +752,8 @@ def walk_sc_old(xdata, ydata, number_samples, sampling_width, number_of_windows,
         ydata[~c_normal_to_sc] = np.nan
         dydx[~c_normal_to_sc] = np.nan
         print('Setting things to nan')
+    np.save("xdata_oldbw", xdata)
+    np.save("ydata_oldbw", ydata)
 
     # In the sc region the gradient should be constant
     # So we will walk along and compute the average of N elements at a time.
