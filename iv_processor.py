@@ -588,6 +588,130 @@ def fit_sc_branch_old(xdata, ydata, sigma_y, number_samples, sampling_width, num
 
 
 def fit_normal_branches(xdata, ydata, sigma_y, number_samples, sampling_width, number_of_windows, slew_rate):
+    """Fit the normal branches and extract slope.
+    
+    In the 'iv' plane we have the vOut vs iBias and so dy/dx ~ resistance.
+    In the 'tes' plane we have iTES vs vTES and so dy/dx ~ 1/resistance.
+    """
+    # The philosophy here will be to select 1 of the directionalities (SC->N or N->SC) and assume that where iBias ~ 0
+    # we are around where we should be for the SC region
+    # We can break this up into the following steps:
+    # 1. Create directionality cut and select the relevant data
+    # 2. Sort the data by x since we will be in the y vs x plane now and both y and x are time-ordered.
+    # 3. Locate approximately (x=0, y(x=0))
+    # 4. Determine appropriate cut to select a region for fitting
+    # 5. Fit this region and extract relevant information.
+    
+    # If we did not need to sort by xdata we could just use flatiterators perhaps.
+    if xdata.ndim == 2:
+        number_samples = xdata.shape[1]
+        xdata = xdata.flatten()
+        ydata = ydata.flatten()
+        sigma_y = sigma_y.flatten()
+    # Get directionality cut
+    di_bias = np.gradient(xdata, edge_order=2)
+    c_normal_to_sc_pos = np.logical_and(xdata > 0, di_bias < 0)
+    c_normal_to_sc_neg = np.logical_and(xdata <= 0, di_bias > 0)
+    c_normal_to_sc = np.logical_or(c_normal_to_sc_pos, c_normal_to_sc_neg)
+    # Sort by x
+    sortkey = np.argsort(xdata)
+    xdata = xdata[sortkey]
+    ydata = ydata[sortkey]
+    sigma_y = sigma_y[sortkey]
+    c_normal_to_sc = c_normal_to_sc[sortkey]
+    # Apply directionality cut (N->SC)
+    xdata = xdata[c_normal_to_sc]
+    ydata = ydata[c_normal_to_sc]
+    sigma_y = sigma_y[c_normal_to_sc]
+    side = 'left'
+    left_cut = walk_normal(xdata, ydata, side, number_samples, sampling_width, number_of_windows, slew_rate)
+    # Finally cut further to the normal region
+    print('The size of left_cut is {} and the amount that is true: {}'.format(left_cut.size, left_cut.sum()))
+    xval = xdata[left_cut]
+    yval = ydata[left_cut]
+    sigma_y_vals = sigma_y[left_cut]
+    # print('Diagnostics: The input into curve fit is as follows:')
+    # print('xdata size: {}, ydata size: {}, xdata NaN: {}, ydata NaN: {}'.format(xdata.size, ydata.size, np.sum(np.isnan(xdata)), np.sum(np.isnan(ydata))))
+    m0 = (ydata[-1] - ydata[0])/(xdata[-1] - xdata[0])
+    p0 = (m0, 0)
+    left_result, pcov = curve_fit(fitfuncs.lin_sq, xval, yval, sigma=sigma_y_vals, absolute_sigma=True, p0=p0, method='trf')
+    # result, pcov = curve_fit(fitfuncs.lin_sq, xvalues, yvalues, p0=(38, 0), method='trf')
+    left_perr = np.sqrt(np.diag(pcov))
+    side = 'right'
+    right_cut = walk_normal(xdata, ydata, side, number_samples, sampling_width, number_of_windows, slew_rate)
+    # Finally cut further to the normal region
+    print('The size of left_cut is {} and the amount that is true: {}'.format(left_cut.size, left_cut.sum()))
+    xval = xdata[right_cut]
+    yval = ydata[right_cut]
+    sigma_y_vals = sigma_y[right_cut]
+    # print('Diagnostics: The input into curve fit is as follows:')
+    # print('xdata size: {}, ydata size: {}, xdata NaN: {}, ydata NaN: {}'.format(xdata.size, ydata.size, np.sum(np.isnan(xdata)), np.sum(np.isnan(ydata))))
+    m0 = (ydata[-1] - ydata[0])/(xdata[-1] - xdata[0])
+    p0 = (m0, 0)
+    right_result, pcov = curve_fit(fitfuncs.lin_sq, xval, yval, sigma=sigma_y_vals, absolute_sigma=True, p0=p0, method='trf')
+    # result, pcov = curve_fit(fitfuncs.lin_sq, xvalues, yvalues, p0=(38, 0), method='trf')
+    right_perr = np.sqrt(np.diag(pcov))
+    return left_result, left_perr, right_result, right_perr
+
+
+def walk_normal(xdata, ydata, side, number_samples, sampling_width, number_of_windows, slew_rate=8, delta_current=70):
+    """Function to walk the normal branches and find the line fit.
+    To do this we will start at the min or max input current and compute a walking derivative
+    If the derivative starts to change then this indicates we entered the biased region and should stop
+    NOTE: We assume data is sorted by voltage values
+    """
+
+    print('The shape of xdata in walk_normal is: {}'.format(xdata.shape))
+    # Ensure we have the proper sorting of the data
+    if not is_sorted(xdata):
+        raise pyTESErrors.ArrayIsUnsortedException('Input argument x is unsorted')
+    # deltaT == deltaI/slew_rate --> gives an idea of how long in time the requested current size would take for this data
+    # tWindow = nSamples*dt/nWindows --> this is the total time per 'waveform' over the number of windows we chop it into --> lenght of time of each window
+    # deltaT/tWindow = number of windows inside deltaT (aka number of points)
+    buffer_size = int((delta_current / slew_rate) / ((number_samples * sampling_width) / number_of_windows))
+    print('For a delta current of {} uA with a ramp slew rate of {} uA/s, the buffer requires {} windowed points'.format(delta_current, slew_rate, buffer_size))
+    # We should select only the physical data points for examination
+
+    # First let us compute the gradient (dy/dx)
+    dydx = np.gradient(ydata, xdata, edge_order=2)
+    # Set data that is in the SC to N transition to NaN in here
+    if side == 'right':
+        # Flip the array
+        norm_cut = get_normal_endpoints(buffer_size, np.flip(dydx))
+        return np.flip(norm_cut)
+    norm_cut = get_normal_endpoints(buffer_size, dydx)
+    return norm_cut
+
+
+@jit(nopython=True)
+def get_normal_endpoints(buffer_size, dydx):
+    """Get the normal branch endpoints."""
+
+    # In the normal region the gradient should be constant
+    # So we will walk along and compute the average of N elements at a time.
+    # If the new average differs from the previous by some amount mark that as the boundary to the bias region
+    delta_mean_threshold = 1e-2
+    cut = np.zeros(dydx.shape, dtype=np.bool_)
+    dbuff = RingBuffer(buffer_size, 0, np.float32)
+    for event in range(buffer_size):
+        dbuff.append(dydx[event])
+        cut[event] = True
+    # Now our buffer is initialized so loop over all events until we find a change
+    event = buffer_size
+    difference_of_means = 0
+    d_event = 0
+    while difference_of_means < 1e-2 and event < dydx.size - 1:
+        current_mean = dbuff.get_nanmean()
+        dbuff.append(dydx[event])
+        new_mean = dbuff.get_nanmean()
+        difference_of_means = np.abs((current_mean - new_mean)/current_mean)
+        cut[event] = True
+        event += 1
+        d_event += 1
+    return cut
+
+
+def fit_normal_branches_old(xdata, ydata, sigma_y, number_samples, sampling_width, number_of_windows, slew_rate):
     '''Walk and fit the normal branches in the vOut vs iBias plane.'''
     # Flatten if necessary
     # Flatten if necessary:
@@ -611,7 +735,7 @@ def fit_normal_branches(xdata, ydata, sigma_y, number_samples, sampling_width, n
     sort_key = np.argsort(xdata)
     # Get the left side normal branch first
     side = 'left'
-    left_ev = walk_normal(xdata[sort_key], ydata[sort_key], side, number_samples, sampling_width, number_of_windows, slew_rate)
+    left_ev = walk_normal_old(xdata[sort_key], ydata[sort_key], side, number_samples, sampling_width, number_of_windows, slew_rate)
     xvalues = xdata[sort_key][0:left_ev]
     yvalues = ydata[sort_key][0:left_ev]
     ysigmas = sigma_y[sort_key][0:left_ev]
@@ -626,7 +750,7 @@ def fit_normal_branches(xdata, ydata, sigma_y, number_samples, sampling_width, n
     left_perr = npsqrt(np.diag(pcov))
     # Now get the other branch
     side = 'right'
-    right_ev = walk_normal(xdata[sort_key], ydata[sort_key], side, number_samples, sampling_width, number_of_windows, slew_rate)
+    right_ev = walk_normal_old(xdata[sort_key], ydata[sort_key], side, number_samples, sampling_width, number_of_windows, slew_rate)
     xvalues = xdata[sort_key][right_ev:]
     yvalues = ydata[sort_key][right_ev:]
     ysigmas = sigma_y[sort_key][right_ev:]
@@ -642,7 +766,7 @@ def fit_normal_branches(xdata, ydata, sigma_y, number_samples, sampling_width, n
 
 
 @jit(nopython=True)
-def get_normal_endpoints(buffer_size, dydx):
+def get_normal_endpoints_old(buffer_size, dydx):
     '''Get the normal branch endpoints'''
 
     # In the normal region the gradient should be constant
@@ -665,7 +789,7 @@ def get_normal_endpoints(buffer_size, dydx):
     return event
 
 
-def walk_normal(xdata, ydata, side, number_samples, sampling_width, number_of_windows, slew_rate=8, delta_current=70):
+def walk_normal_old(xdata, ydata, side, number_samples, sampling_width, number_of_windows, slew_rate=8, delta_current=70):
     '''Function to walk the normal branches and find the line fit
     To do this we will start at the min or max input current and compute a walking derivative
     If the derivative starts to change then this indicates we entered the biased region and should stop
@@ -695,7 +819,7 @@ def walk_normal(xdata, ydata, side, number_samples, sampling_width, number_of_wi
     if side == 'right':
         # Flip the array
         dydx = dydx[::-1]
-    event = get_normal_endpoints(buffer_size, dydx)
+    event = get_normal_endpoints_old(buffer_size, dydx)
     if side == 'right':
         # Flip event index back the right way
         event = dydx.size - 1 - event
