@@ -405,12 +405,19 @@ def fit_sc_branch(xdata, ydata, sigma_y, number_samples, sampling_width, number_
 
     sc_cut = walk_sc(xdata, ydata, number_samples, sampling_width, number_of_windows, slew_rate, plane=plane)
     # Finally cut further to the sc region
+    print('The size of sc_cut is {} and the amount that is true: {}'.format(sc_cut.size, sc_cut.sum()))
     xdata = xdata[sc_cut]
     ydata = ydata[sc_cut]
     sigma_y = sigma_y[sc_cut]
+    print('Diagnostics: The input into curve fit is as follows:')
+    print('xdata size: {}, ydata size: {}, xdata NaN: {}, ydata NaN: {}'.format(xdata.size, ydata.size, np.sum(np.isnan(xdata)), np.sum(np.isnan(ydata))))
     m0 = (ydata[-1] - ydata[0])/(xdata[-1] - xdata[0])
     p0 = (m0, 0)
+    np.save("xdata", xdata)
+    np.save("ydata", ydata)
+    assert(False)
     result, pcov = curve_fit(fitfuncs.lin_sq, xdata, ydata, sigma=sigma_y, absolute_sigma=True, p0=p0, method='trf')
+    print('The sc fit result is: {}'.format(result))
     # result, pcov = curve_fit(fitfuncs.lin_sq, xvalues, yvalues, p0=(38, 0), method='trf')
     perr = np.sqrt(np.diag(pcov))
         
@@ -442,11 +449,11 @@ def walk_sc(xdata, ydata, number_samples, sampling_width, number_of_windows, sle
     # Check buffer size
     if delta_current is None:
         if plane == 'iv':
-            delta_current = 5
+            delta_current = 15
         elif plane == 'tes':
-            delta_current = 5
+            delta_current = 15
         else:
-            delta_current = 5
+            delta_current = 15
     buffer_size = int((delta_current / slew_rate) / ((number_samples * sampling_width) / number_of_windows))
     print('For a delta current of {} uA with a ramp slew rate of {} uA/s, the buffer requires {} windowed points'.format(delta_current, slew_rate, buffer_size))
     
@@ -572,9 +579,13 @@ def fit_sc_branch_old(xdata, ydata, sigma_y, number_samples, sampling_width, num
     # print('The values of x, y, and sigmaY are: {} and {} and {}'.format(xvalues, yvalues, ysigma))
     m0 = (yvalues[-1] - yvalues[0])/(xvalues[-1] - xvalues[0])
     p0 = (m0, 0)
+    np.save("xdata_old", xvalues)
+    np.save("ydata_old", yvalues)
+    assert(False)
     result, pcov = curve_fit(fitfuncs.lin_sq, xvalues, yvalues, sigma=ysigma, absolute_sigma=True, p0=p0, method='trf')
     # result, pcov = curve_fit(fitfuncs.lin_sq, xvalues, yvalues, p0=(38, 0), method='trf')
     perr = np.sqrt(np.diag(pcov))
+    print('The sc fit result is: {}'.format(result))
     # In order to properly plot the superconducting branch fit try to find the boundaries of the SC region
     # One possibility is that the region has the smallest and largest y-value excursions. However this may not be the case
     # and certainly unless the data is sorted these indices are meaningless to use in a slice
@@ -769,7 +780,7 @@ def walk_sc_old(xdata, ydata, number_samples, sampling_width, number_of_windows,
         # NOTE: The above will fail for small SC regions where vOut normal > vOut sc!!!!
     # Start by walking buffer_size events to the right from the minimum abs. voltage
     print('The size of dydx is: {}'.format(dydx.size))
-    event_values = get_sc_endpoints(buffer_size, index_min_x, dydx)
+    event_values = get_sc_endpoints_old(buffer_size, index_min_x, dydx)
     return event_values
 
 

@@ -279,7 +279,7 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
     # Rtes = R(i,T) so we are really asking for R(i=constant, T).
     # iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
     fixed_name = 'iTES'
-    fixed_value = 0.2e-6
+    fixed_value = 0.5e-6
     delta_values = [0.1e-6, 0.3e-6]
     r_normal = 0.500
 
@@ -330,14 +330,14 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
     return tc, rN, norm_to_sc['T'], norm_to_sc['R'], norm_to_sc['rmsR']
 
 
-def get_power_temperature_curves(output_path, data_channel, number_of_windows, iv_dictionary, tc=None, rN=None):
+def get_power_temperature_curves(output_path, data_channel, number_of_windows, iv_dictionary, tc=None, rN=500e-3):
     '''Generate a power vs temperature curve for a TES'''
     # Need to select power in the biased region, i.e. where P(R) ~ constant
     # Try something at 0.5*Rn
     # iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
-    R = rN or 500e-3
     R = 0.85*rN
-    deltaR = 0.1*rN
+    deltaR = 20e-3
+    print('The resistance range selected is: {} +/- {} mOhms'.format(R, deltaR))
     temperatures = np.empty(0)
     power = np.empty(0)
     power_rms = np.empty(0)
@@ -365,7 +365,7 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
             pTES_value_rms = np.std(pTES_mean)
             pTES_value = np.sqrt(np.mean(pTES*pTES)) # RMS^2 = mean(p^2) == mean(p)^2 + sigma(p)^2
             pTES_value_rms = np.std(pTES)
-            #pTES_value_rms = np.sqrt(np.sum(pTES_rms*pTES_rms))
+            pTES_value_rms = np.sqrt(np.sum(pTES_rms*pTES_rms))
             power = np.append(power, pTES_value)
             power_rms = np.append(power_rms, pTES_value_rms)
         # Cuts get complicated. We will need to make a cut on a cut.
@@ -402,7 +402,7 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
         if pP is None:
             print('Tc = {} mK was passed. Fixing to this value'.format(tc))
             lbounds = [1e-9, 0]
-            ubounds = [1, 5]
+            ubounds = [1, 10]
             fixedArgs = {'Pp': 0, 'Ttes': tc}
             x0 = [1000e-9, 5]
         else:
