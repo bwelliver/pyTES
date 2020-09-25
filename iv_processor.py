@@ -398,24 +398,20 @@ def fit_sc_branch(xdata, ydata, sigma_y, number_samples, sampling_width, number_
     ydata = ydata[sortkey]
     sigma_y = sigma_y[sortkey]
     c_normal_to_sc = c_normal_to_sc[sortkey]
+    # Apply directionality cut
     xdata = xdata[~c_normal_to_sc]
     ydata = ydata[~c_normal_to_sc]
     sigma_y = sigma_y[~c_normal_to_sc]
-    np.save("xdata_bw", xdata)
-    np.save("ydata_bw", ydata)
     sc_cut = walk_sc(xdata, ydata, number_samples, sampling_width, number_of_windows, slew_rate, plane=plane)
     # Finally cut further to the sc region
     print('The size of sc_cut is {} and the amount that is true: {}'.format(sc_cut.size, sc_cut.sum()))
     xdata = xdata[sc_cut]
     ydata = ydata[sc_cut]
     sigma_y = sigma_y[sc_cut]
-    print('Diagnostics: The input into curve fit is as follows:')
-    print('xdata size: {}, ydata size: {}, xdata NaN: {}, ydata NaN: {}'.format(xdata.size, ydata.size, np.sum(np.isnan(xdata)), np.sum(np.isnan(ydata))))
+    # print('Diagnostics: The input into curve fit is as follows:')
+    # print('xdata size: {}, ydata size: {}, xdata NaN: {}, ydata NaN: {}'.format(xdata.size, ydata.size, np.sum(np.isnan(xdata)), np.sum(np.isnan(ydata))))
     m0 = (ydata[-1] - ydata[0])/(xdata[-1] - xdata[0])
     p0 = (m0, 0)
-    np.save("xdata", xdata)
-    np.save("ydata", ydata)
-    assert(False)
     result, pcov = curve_fit(fitfuncs.lin_sq, xdata, ydata, sigma=sigma_y, absolute_sigma=True, p0=p0, method='trf')
     print('The sc fit result is: {}'.format(result))
     # result, pcov = curve_fit(fitfuncs.lin_sq, xvalues, yvalues, p0=(38, 0), method='trf')
@@ -424,7 +420,7 @@ def fit_sc_branch(xdata, ydata, sigma_y, number_samples, sampling_width, number_
     return result, perr
 
 
-def walk_sc(xdata, ydata, dydx, number_samples, sampling_width, number_of_windows, slew_rate, delta_current=None, plane='iv'):
+def walk_sc(xdata, ydata, number_samples, sampling_width, number_of_windows, slew_rate, delta_current=None, plane='iv'):
     """Function to walk the superconducting region of the IV curve and get the left and right edges
 
     In order to be correct your x and y data values must be sorted by x
@@ -449,11 +445,11 @@ def walk_sc(xdata, ydata, dydx, number_samples, sampling_width, number_of_window
     # Check buffer size
     if delta_current is None:
         if plane == 'iv':
-            delta_current = 15
+            delta_current = 7
         elif plane == 'tes':
-            delta_current = 15
+            delta_current = 7
         else:
-            delta_current = 15
+            delta_current = 7
     buffer_size = int((delta_current / slew_rate) / ((number_samples * sampling_width) / number_of_windows))
     print('For a delta current of {} uA with a ramp slew rate of {} uA/s, the buffer requires {} windowed points'.format(delta_current, slew_rate, buffer_size))
     
@@ -579,9 +575,6 @@ def fit_sc_branch_old(xdata, ydata, sigma_y, number_samples, sampling_width, num
     # print('The values of x, y, and sigmaY are: {} and {} and {}'.format(xvalues, yvalues, ysigma))
     m0 = (yvalues[-1] - yvalues[0])/(xvalues[-1] - xvalues[0])
     p0 = (m0, 0)
-    np.save("xdata_old", xvalues)
-    np.save("ydata_old", yvalues)
-    assert(False)
     result, pcov = curve_fit(fitfuncs.lin_sq, xvalues, yvalues, sigma=ysigma, absolute_sigma=True, p0=p0, method='trf')
     # result, pcov = curve_fit(fitfuncs.lin_sq, xvalues, yvalues, p0=(38, 0), method='trf')
     perr = np.sqrt(np.diag(pcov))
@@ -748,8 +741,6 @@ def walk_sc_old(xdata, ydata, number_samples, sampling_width, number_of_windows,
         ydata[~c_normal_to_sc] = np.nan
         dydx[~c_normal_to_sc] = np.nan
         print('Setting things to nan')
-    np.save("xdata_oldbw", xdata)
-    np.save("ydata_oldbw", ydata)
 
     # In the sc region the gradient should be constant
     # So we will walk along and compute the average of N elements at a time.
