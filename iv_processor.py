@@ -445,11 +445,11 @@ def walk_sc(xdata, ydata, number_samples, sampling_width, number_of_windows, sle
     # Check buffer size
     if delta_current is None:
         if plane == 'iv':
-            delta_current = 7
+            delta_current = 10
         elif plane == 'tes':
-            delta_current = 7
+            delta_current = 10
         else:
-            delta_current = 7
+            delta_current = 15
     buffer_size = int((delta_current / slew_rate) / ((number_samples * sampling_width) / number_of_windows))
     print('For a delta current of {} uA with a ramp slew rate of {} uA/s, the buffer requires {} windowed points'.format(delta_current, slew_rate, buffer_size))
     
@@ -654,7 +654,7 @@ def fit_normal_branches(xdata, ydata, sigma_y, number_samples, sampling_width, n
     return left_result, left_perr, right_result, right_perr
 
 
-def walk_normal(xdata, ydata, side, number_samples, sampling_width, number_of_windows, slew_rate=8, delta_current=70):
+def walk_normal(xdata, ydata, side, number_samples, sampling_width, number_of_windows, slew_rate=8, delta_current=50):
     """Function to walk the normal branches and find the line fit.
     To do this we will start at the min or max input current and compute a walking derivative
     If the derivative starts to change then this indicates we entered the biased region and should stop
@@ -690,7 +690,7 @@ def get_normal_endpoints(buffer_size, dydx):
     # In the normal region the gradient should be constant
     # So we will walk along and compute the average of N elements at a time.
     # If the new average differs from the previous by some amount mark that as the boundary to the bias region
-    delta_mean_threshold = 1e-2
+    delta_mean_threshold = 5e-2
     cut = np.zeros(dydx.shape, dtype=np.bool_)
     dbuff = RingBuffer(buffer_size, 0, np.float32)
     for event in range(buffer_size):
@@ -700,7 +700,7 @@ def get_normal_endpoints(buffer_size, dydx):
     event = buffer_size
     difference_of_means = 0
     d_event = 0
-    while difference_of_means < 1e-2 and event < dydx.size - 1:
+    while difference_of_means < delta_mean_threshold and event < dydx.size - 1:
         current_mean = dbuff.get_nanmean()
         dbuff.append(dydx[event])
         new_mean = dbuff.get_nanmean()

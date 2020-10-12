@@ -42,7 +42,7 @@ class SQUIDParameters:
             self.serial = 'S0204'
             self.Li = 6e-9
             self.Mi = 1/25.135
-            self.Mfb = 1/33.6735 #1/(33.5028)
+            self.Mfb = 1/33.343662 #1/(33.5028)
             self.Rfb = 3e3
             self.Rsh = 20.2e-3
             self.Rbias = 10000.0
@@ -54,7 +54,7 @@ class SQUIDParameters:
             self.Mfb = 1/33.3209538 #1/33.855534
             self.Rfb = 10e3
             self.Rsh = 21e-3
-            self.Rbias = 393.04896 # Adjust 10kOhm bias for attenuator at digitizer with factor of 25.442123 10000.0
+            self.Rbias = 394.092459 # Adjust 10kOhm bias for attenuator at digitizer with factor of 25.374756 10000.0
             self.Cbias = 100e-12
         else:
             raise InvalidChannelNumberException('Requested serial: {} is invalid. Please select S0094, S0121, S0204, S0206.'.format(serial))

@@ -279,8 +279,8 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
     # Rtes = R(i,T) so we are really asking for R(i=constant, T).
     # iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
     fixed_name = 'iTES'
-    fixed_value = 0.5e-6
-    delta_values = [0.1e-6, 0.3e-6]
+    fixed_value = 1e-6
+    delta_values = [0.1e-6, 0.1e-6]
     r_normal = 0.500
 
     norm_to_sc = {'T': np.empty(0), 'R': np.empty(0), 'rmsR': np.empty(0)}

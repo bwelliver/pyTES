@@ -204,7 +204,7 @@ def parse_temperature_steps(time_values, temperatures, pid_log, tz_correction):
     # Include an appropriate offset for mean computation BUT only a softer one for time boundaries
     # time_list is a list of tuples.
     step_values = np.zeros((times.size, 5))  # start, stop, meanT, stdT, serrT
-    start_offset = 60
+    start_offset = 300
     end_offset = 10
     default_duration = 2000
     # How we proceed depends if we have 3 columns or not
@@ -278,9 +278,9 @@ def chop_data_by_temperature_steps(iv_data, step_values, thermometer_name, bias_
     #FIXME:
     # Put these in units of mK for now.
     # if min < T < max --> reject
-    cut_temperature_max = 0  # Should be the max rejected temperature
-    cut_temperature_min = 0  # Should be the minimum rejected temperature
-    expected_duration = 86400  # TODO: make this an input argument or auto-determined somehow
+    cut_temperature_max = 100  # Should be the max rejected temperature
+    cut_temperature_min = 39  # Should be the minimum rejected temperature
+    expected_duration = 3600  # TODO: make this an input argument or auto-determined somehow
     # Now chop up the IV data into steps keyed by the mean temperature
     for values in step_values:
         start_time, stop_time, mean_temperature, std_temperature, serr_temperature = values
@@ -569,7 +569,7 @@ def iv_main(argin):
     print('The number_samples argument is: {}'.format(number_samples))
     iv_dictionary, iv_curves = process_tes_curves(iv_dictionary, number_of_windows=argin.numberOfWindows, slew_rate=argin.slewRate, number_samples=number_samples)
     if argin.plotTES is True:
-        make_tes_plots(output_path=argin.outputPath, data_channel=argin.dataChannel, squid=argin.squid, number_of_windows=argin.numberOfWindows, iv_dictionary=iv_dictionary, individual=False)
+        make_tes_plots(output_path=argin.outputPath, data_channel=argin.dataChannel, squid=argin.squid, number_of_windows=argin.numberOfWindows, iv_dictionary=iv_dictionary, individual=True)
     # Step 6: Compute interesting curves
     iv_dictionary = tes_char.find_normal_to_sc_data(iv_dictionary, argin.numberOfWindows, iv_curves=iv_curves)
     tc, rN, temp, R, R_sigma = tes_char.get_resistance_temperature_curves_new(argin.outputPath, argin.dataChannel, argin.numberOfWindows, iv_dictionary)
