@@ -279,8 +279,8 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
     # Rtes = R(i,T) so we are really asking for R(i=constant, T).
     # iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
     fixed_name = 'iTES'
-    fixed_value = 1e-6
-    delta_values = [0.1e-6, 0.1e-6]
+    fixed_value = 0.04e-6
+    delta_values = [0.02e-6, 0.02e-6]
     r_normal = 0.500
 
     norm_to_sc = {'T': np.empty(0), 'R': np.empty(0), 'rmsR': np.empty(0)}
@@ -335,8 +335,8 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     # Need to select power in the biased region, i.e. where P(R) ~ constant
     # Try something at 0.5*Rn
     # iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
-    R = 0.85*rN
-    deltaR = 20e-3
+    R = 0.7*rN
+    deltaR = 30e-3
     print('The resistance range selected is: {} +/- {} mOhms'.format(R, deltaR))
     temperatures = np.empty(0)
     power = np.empty(0)
@@ -361,10 +361,10 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
             pTES_mean = np.mean(pTES, axis=1)
             pTES_rms = np.std(pTES, axis=1)/np.sqrt(pTES.shape[1])
             # combine these
-            pTES_value = np.mean(pTES_mean)
-            pTES_value_rms = np.std(pTES_mean)
+            #pTES_value = np.mean(pTES_mean)
+            #pTES_value_rms = np.std(pTES_mean)
             pTES_value = np.sqrt(np.mean(pTES*pTES)) # RMS^2 = mean(p^2) == mean(p)^2 + sigma(p)^2
-            pTES_value_rms = np.std(pTES)
+            #pTES_value_rms = np.std(pTES)
             pTES_value_rms = np.sqrt(np.sum(pTES_rms*pTES_rms))
             power = np.append(power, pTES_value)
             power_rms = np.append(power_rms, pTES_value_rms)
@@ -386,25 +386,27 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     # TODO: Make these input values?
     #tc = None
     max_temp = tc or 60e-3
-    cut_temperature = np.logical_and(temperatures > 10e-3, temperatures < max_temp)  # This should be the expected Tc
+    min_temp = 10e-3
+    cut_temperature = np.logical_and(temperatures > min_temp, temperatures < max_temp)  # This should be the expected Tc
     cut_power = power < 1e-6
     cut_temperature = np.logical_and(cut_temperature, cut_power)
 
     # [k, n, Ttes, Pp]
     pP = None
+    tc = None
     if tc is None:
         print('No Tc was passed, floating Tc')
-        lbounds = [1e-9, 0, 42e-3]
-        ubounds = [1, 10, 47e-3]
-        fixedArgs = {'Pp': 0}
-        x0 = [20e-9, 4, 45e-3]
+        lbounds = [1e-9, 20e-3]
+        ubounds = [1, 47e-3]
+        fixedArgs = {'n': 5, 'Pp': 0}
+        x0 = [20e-9, 30e-3]
     else:
         if pP is None:
             print('Tc = {} mK was passed. Fixing to this value'.format(tc))
             lbounds = [1e-9, 0]
             ubounds = [1, 10]
             fixedArgs = {'Pp': 0, 'Ttes': tc}
-            x0 = [1000e-9, 5]
+            x0 = [1000e-9, 4]
         else:
             print('Tc = {} mK was passed. Fixing to this value'.format(tc))
             lbounds = [1e-9, 0, -3e-5]

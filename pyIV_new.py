@@ -463,6 +463,7 @@ def get_tes_values(iv_dictionary, squid):
     min_temperature = list(iv_dictionary.keys())[np.argmin([float(temperature) for temperature in iv_dictionary.keys()])]
     r_parasitic = iv_dictionary[min_temperature]['parasitic']
     r_p = r_parasitic.value
+    #r_p = 0
     for iv_data in iv_dictionary.values():
         iTES = tes_parameters.compute_iTES(iv_data['vOut'], r_fb, m_ratio)
         rTES = tes_parameters.compute_rTES(iv_data['iBias'], iTES, r_sh, r_p)
@@ -550,11 +551,13 @@ def iv_main(argin):
         #save_iv_fits_to_root(output_file, iv_dictionary, branches=['fit_parameters', 'parasitic'])
         # Step 4: Using (i,v) compute TES quantities and insert into the iv_dictionary
         iv_dictionary = get_tes_values(iv_dictionary, argin.squid)
+        print('Getting N to SC cut')
+        iv_dictionary = tes_char.find_normal_to_sc_data(iv_dictionary, argin.numberOfWindows)
         # Save actual data
         print('Saving ROOT file with TES quantities computed')
         if argin.makeROOT:
             output_file = argin.outputPath + '/root/iv_data_processed.root'
-            save_iv_to_root(output_file, iv_dictionary, branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'iTES', 'rTES', 'vTES', 'pTES'])
+            save_iv_to_root(output_file, iv_dictionary, branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'iTES', 'rTES', 'vTES', 'pTES', 'cut_norm_to_sc'])
     if argin.readTESROOT is True:
         # NOTE! IV data loaded is is already processed so the 0-offset correction is applied.
         iv_dictionary = read_from_ivroot(argin.outputPath + '/root/iv_data_processed.root', branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'iTES', 'rTES', 'vTES', 'pTES'])
