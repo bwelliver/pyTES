@@ -19,13 +19,13 @@ from writeROOT import writeROOT
 
 
 def mkdpaths(dirpath):
-    '''Function to make a directory path if it is not present'''
+    """Make a directory path if it is not present."""
     os.makedirs(dirpath, exist_ok=True)
     return True
 
 
 def get_tree_names(input_file):
-    '''Quick and dirty function to get name of trees'''
+    """Quick and dirty function to get name of trees."""
     rt_tfile = getattr(rt, 'TFile')  # avoids pylint complaining rt.TFile doesn't exist
     tfile = rt_tfile.Open(input_file)
     # tFile = TFile.Open(input_file)
@@ -37,11 +37,12 @@ def get_tree_names(input_file):
 
 
 def read_from_ivroot(filename, branches):
-    '''Read data from special IV root file and put it into a dictionary
+    """Read data from special IV root file and put it into a dictionary.
+
     TDir - iv
         TTrees - temperatures
             TBranches - iv properties
-    '''
+    """
     print('Trying to open {}'.format(filename))
     iv_dictionary = {}
     tree_names = get_tree_names(filename)
@@ -56,7 +57,8 @@ def read_from_ivroot(filename, branches):
 
 
 def save_iv_fits_to_root(output_file, iv_dictionary, branches=None):
-    '''Function to save iv fit data to a root file
+    """Save iv fit data to a root file.
+
     Here we will let the temperatures be the name of TTrees
     Branches of each TTree will be the various iv components
     Here we will let the bias currents be the name of TTrees
@@ -81,7 +83,7 @@ def save_iv_fits_to_root(output_file, iv_dictionary, branches=None):
                     }
                 }
             }
-    '''
+    """
     data = {'TTree': {}}
     for temperature, iv_data in iv_dictionary.items():
         data['TTree']['T' + temperature] = {'TBranch': {}}
@@ -102,7 +104,8 @@ def save_iv_fits_to_root(output_file, iv_dictionary, branches=None):
 
 
 def save_iv_to_root(output_file, iv_dictionary, branches=None):
-    '''Function to save iv data to a root file
+    """Save iv data to a root file.
+
     Here we will let the temperatures be the name of TTrees
     Branches of each TTree will be the various iv components
     Here we will let the bias currents be the name of TTrees
@@ -127,7 +130,7 @@ def save_iv_to_root(output_file, iv_dictionary, branches=None):
                     }
                 }
             }
-    '''
+    """
     data = {'TTree': {}}
     for temperature, iv_data in iv_dictionary.items():
         data['TTree']['T' + temperature] = {'TBranch': {}}
@@ -145,9 +148,7 @@ def save_iv_to_root(output_file, iv_dictionary, branches=None):
 
 
 def format_and_make_output_path(path, output_path):
-    '''This function will format the output path into an absolute path and make
-    the directory if needed.
-    '''
+    """Format the output path into an absolute path and make the directory if needed."""
     output_path = output_path if output_path else dirname(path) + '/' + basename(path).replace('.root', '')
     if not isabs(output_path):
         output_path = dirname(path) + '/' + output_path
@@ -156,7 +157,7 @@ def format_and_make_output_path(path, output_path):
 
 
 def get_iv_data_from_file(input_path, new_format=False, thermometer='EP'):
-    '''Load IV data from specified directory'''
+    """Load IV data from specified directory."""
     if thermometer == 'EP':
         thermometer_name = 'EPCal_K'
     elif thermometer == 'NT':
@@ -254,12 +255,14 @@ def parse_temperature_steps(time_values, temperatures, pid_log, tz_correction):
 
 
 def get_temperature_steps(output_path, time_values, temperatures, pid_log, thermometer='EP', tz_correction=0):
-    '''Returns a list of tuples that corresponds to temperature steps
+    """Return a list of tuples that corresponds to temperature steps.
+
     Depending on the value of pid_log we will either parse an existing pid log file or if it is None
     attempt to find the temperature steps
-    '''
+    """
     if pid_log is None:
-        step_values = find_temperature_steps(output_path, time_values, temperatures, thermometer)
+        print("This is not implemented as yet")
+        # step_values = find_temperature_steps(output_path, time_values, temperatures, thermometer)
     else:
         step_values = parse_temperature_steps(time_values, temperatures, pid_log, tz_correction)
     # Make diagnostic plot
@@ -275,7 +278,7 @@ def chop_data_by_temperature_steps(iv_data, step_values, thermometer_name, bias_
     iv_dictionary = {}
     # The following defines a range of temperatures to reject. That is:
     # reject = cut_temperature_min < T < cut_temperature_max
-    #FIXME:
+    # FIXME:
     # Put these in units of mK for now.
     # if min < T < max --> reject
     cut_temperature_max = 100  # Should be the max rejected temperature
@@ -327,7 +330,7 @@ def chop_data_by_temperature_steps(iv_data, step_values, thermometer_name, bias_
 
 
 def get_iv_temperature_data(argin):
-    '''Based on requested input data, load the IV data into memory and split by temperatures'''
+    """Based on requested input data, load the IV data into memory and split by temperatures."""
     # Step 1: Load IV data into memory
 
     iv_data = get_iv_data_from_file(input_path=argin.inputPath, new_format=argin.newFormat, thermometer=argin.thermometer)
@@ -345,7 +348,7 @@ def get_iv_temperature_data(argin):
 
 
 def plot_iv_curves(output_path, data_channel, number_of_windows, squid, iv_dictionary):
-    '''Simple function to loop through IV data and generate the plots'''
+    """Loop through IV data and generate the plots."""
     # Next loop through to generate plots
     iv_curves = iv_processor.iv_windower(iv_dictionary, number_of_windows)
     min_temperature = list(iv_dictionary.keys())[np.argmin([float(temperature) for temperature in iv_dictionary.keys()])]
@@ -366,24 +369,36 @@ def plot_iv_curves(output_path, data_channel, number_of_windows, squid, iv_dicti
 
 
 def process_tes_curves(iv_dictionary, number_of_windows=0, slew_rate=1, number_samples=None):
-    '''Process the IV TES data and find Rsc and Rn values
-    Here we assume incoming data streams are all ndarrays of some shape and not dictionaries
-    '''
+    """Process the IV TES data and find Rsc and Rn values.
 
+    Here we assume incoming data streams are all ndarrays of some shape and not dictionaries.
+    """
     # 1. window the data
     iv_curves = iv_processor.iv_windower(iv_dictionary, number_of_windows, mode='tes')
+    iv_dictionary = tes_char.find_normal_to_sc_data(iv_dictionary, number_of_windows, iv_curves=iv_curves, mode='tes')
     # 2. Get fit parameters
     for temperature, iv_data in sorted(iv_curves.items()):
         print('Processing TES data for temperature = {} mK'.format(temperature))
         st = time.time()
-        fit_params = iv_processor.fit_iv_regions(xdata=iv_data['vTES'], ydata=iv_data['iTES'], sigma_y=iv_data['vTES_rms'], number_samples=number_samples, sampling_width=iv_dictionary[temperature]['sampling_width'][0], number_of_windows=number_of_windows, slew_rate=slew_rate, plane='tes')
+        cut_direction = iv_data['cut_norm_to_sc']
+        fit_params = iv_processor.fit_iv_regions(xdata=iv_data['vTES'][cut_direction], ydata=iv_data['iTES'][cut_direction], sigma_y=iv_data['vTES_rms'][cut_direction], number_samples=number_samples, sampling_width=iv_dictionary[temperature]['sampling_width'][0], number_of_windows=number_of_windows, slew_rate=slew_rate, plane='tes')
         print('It took the fit protocol {} s to complete.'.format(time.time() - st))
         iv_dictionary[temperature]['tes_fit_parameters'] = fit_params
     return iv_dictionary, iv_curves
 
 
+def convert_temp_dicts_to_ndarrays(iv_dictionary):
+    """Convert the main IV dictionary containing dicts into one containing ndarrays."""
+    for temperature, iv_data in iv_dictionary.items():
+        for key, value in iv_data.items():
+            if isinstance(value, dict):
+                iv_dictionary[temperature][key], number_samples = iv_processor.convert_dict_to_ndarray(value)
+    return iv_dictionary
+
+
 def process_iv_curves(squid, iv_dictionary, number_of_windows=0, slew_rate=1, number_samples=None):
-    '''Processes the IV data to obtain electrical parameters
+    """Process the IV data to obtain electrical parameters.
+
     The IV curve has 3 regions -- normal, biased, superconducting
     When the temperature becomes warm enough the superconducting
     and biased regions will vanish leaving just a normal resistance line
@@ -398,14 +413,14 @@ def process_iv_curves(squid, iv_dictionary, number_of_windows=0, slew_rate=1, nu
     estimate of the normal resistance and an estimate of the residual TES resistance in the 'superconducting' region.
 
     Additionally the IV curve must be corrected so that iBias = 0 corresponds to vOut = 0.
-    '''
-
+    """
     # First determine if we need to split these data up into windows
     # Note: iBias and vOut is at this point a nEvent x nSamples ndarray and NOT a dict
     # Variable lookup:
     # iv_dictionary: Contains all the raw IV data, i, v, t, dt, T
     # iv_curves: Contains the 'windowed' IV data for just i, ierr, v, verr, t
     iv_curves = iv_processor.iv_windower(iv_dictionary, number_of_windows)
+    iv_dictionary = tes_char.find_normal_to_sc_data(iv_dictionary, number_of_windows, iv_curves=iv_curves, mode='tes')
     # Next try to obtain a measure of the parasitic series resistance. Note that this value is subtracted
     # from subsquent fitted values of the TES resistance and is assumed to be T indepdent.
     sampling_width = iv_dictionary[list(iv_dictionary.keys())[0]]['sampling_width'][0]
@@ -414,7 +429,8 @@ def process_iv_curves(squid, iv_dictionary, number_of_windows=0, slew_rate=1, nu
     # Loop through the iv data now and obtain fit parameters and correct alignment
     # fit_parameters_dictionary = {}
     for temperature, iv_data in sorted(iv_curves.items()):
-        fit_parameters = iv_processor.fit_iv_regions(xdata=iv_data['iBias'], ydata=iv_data['vOut'], sigma_y=iv_data['vOut_rms'], number_samples=number_samples, sampling_width=iv_dictionary[temperature]['sampling_width'][0], number_of_windows=number_of_windows, slew_rate=slew_rate, plane='iv')
+        cut_direction = iv_data['cut_norm_to_sc']
+        fit_parameters = iv_processor.fit_iv_regions(xdata=iv_data['iBias'][cut_direction], ydata=iv_data['vOut'][cut_direction], sigma_y=iv_data['vOut_rms'][cut_direction], number_samples=number_samples, sampling_width=iv_dictionary[temperature]['sampling_width'][0], number_of_windows=number_of_windows, slew_rate=slew_rate, plane='iv')
         # Make it pass through zero. Correct offset.
         # i_offset, v_offset = correct_offsets(fit_parameters_dictionary[temperature], iv_data, 'interceptbalance')
         i_offset, v_offset = iv_processor.correct_offsets(fit_parameters, iv_data, 'dual')
@@ -422,13 +438,13 @@ def process_iv_curves(squid, iv_dictionary, number_of_windows=0, slew_rate=1, nu
         print('For temperature {} the normal offset adjustment value to subtract from vOut is: {} and from iBias: {}'.format(temperature, v_offset, i_offset))
         iv_data['vOut'] -= v_offset
         iv_data['iBias'] -= i_offset
-        # Get fit information
-        fit_parameters = iv_processor.fit_iv_regions(xdata=iv_data['iBias'], ydata=iv_data['vOut'], sigma_y=iv_data['vOut_rms'], number_samples=number_samples, sampling_width=iv_dictionary[temperature]['sampling_width'][0], number_of_windows=number_of_windows, slew_rate=slew_rate, plane='iv')
+        # Get fit information after having corrected for offsets
+        fit_parameters = iv_processor.fit_iv_regions(xdata=iv_data['iBias'][cut_direction], ydata=iv_data['vOut'][cut_direction], sigma_y=iv_data['vOut_rms'][cut_direction], number_samples=number_samples, sampling_width=iv_dictionary[temperature]['sampling_width'][0], number_of_windows=number_of_windows, slew_rate=slew_rate, plane='iv')
         # Correct the main dictionary as well and stuff other things inside
         iv_dictionary[temperature]['vOut'] -= v_offset
         iv_dictionary[temperature]['iBias'] -= i_offset
         iv_dictionary[temperature]['fit_parameters'] = fit_parameters
-        iv_dictionary[temperature]['parasitic'] = parasitic_resistance  #parasitic_dictionary[temperature]
+        iv_dictionary[temperature]['parasitic'] = parasitic_resistance  # parasitic_dictionary[temperature]
         # iv_dictionary[temperature]['parasitic'] = parasitic_dictionary[temperature]
 #    # Next loop through to generate plots
 #    for temperature, iv_data in sorted(iv_curves.items()):
@@ -451,10 +467,7 @@ def process_iv_curves(squid, iv_dictionary, number_of_windows=0, slew_rate=1, nu
 
 
 def get_tes_values(iv_dictionary, squid):
-    '''From the (now offset corrected) IV data, compute the TES values of:
-        iTES, vTES, rTES, pTES
-    and insert these into the iv_dictionary
-    '''
+    """From the (now offset corrected) IV data, compute the TES values of: iTES, vTES, rTES, pTES and insert these into the iv_dictionary."""
     squid_parameters = squid_info.SQUIDParameters(squid)
     r_sh = squid_parameters.Rsh
     m_ratio = squid_parameters.M
@@ -478,14 +491,15 @@ def get_tes_values(iv_dictionary, squid):
 
 
 def tes_plots(output_path, data_channel, squid, temperature, data):
-    '''Helper function to generate standard TES plots
+    """Generate standard TES plots.
+
     iTES vs vTES
     rTES vs iTES
     rTES vs vTES
     rTES vs iBias
     pTES vs rTES
     pTES vs vTES
-    '''
+    """
     # Current vs Voltage
     ivplt.plot_current_vs_voltage(output_path, data_channel, squid, temperature, data)
     # Resistance vs Current
@@ -502,7 +516,7 @@ def tes_plots(output_path, data_channel, squid, temperature, data):
 
 
 def make_tes_plots(output_path, data_channel, squid, number_of_windows, iv_dictionary, individual=False):
-    '''Loop through data to generate TES specific plots'''
+    """Loop through data to generate TES specific plots."""
     # Generate windowed values if needed.
     iv_curves = iv_processor.iv_windower(iv_dictionary, number_of_windows, mode='tes')
     for temperature, data in iv_curves.items():
@@ -517,9 +531,7 @@ def make_tes_plots(output_path, data_channel, squid, number_of_windows, iv_dicti
 
 
 def iv_main(argin):
-    '''The main IV processing function that will call other functions in order
-    to process the entire IV dataset
-    '''
+    """The main IV processing function that will call other functions in order to process the entire IV dataset."""
     argin.outputPath = format_and_make_output_path(argin.inputPath, argin.outputPath)
     print('We will run with the following options:')
     print('The squid run is {}'.format(argin.run))
@@ -530,20 +542,18 @@ def iv_main(argin):
         # Step 1: Load IV data into memory from the base data files and split it up into distinct temperature steps
         # It will be a dictionary whose keys are temperatures (in mK). The sub-dictionary has keys that are iBias, vOut, timestamps, temperatures, sampling_width
         iv_dictionary, number_samples = get_iv_temperature_data(argin)
+        iv_dictionary = tes_char.find_normal_to_sc_data(iv_dictionary, argin.numberOfWindows)
         # Step 2: Save these chopped up IV data
         if argin.makeROOT:
             output_file = argin.outputPath + '/root/iv_data.root'
             save_iv_to_root(output_file, iv_dictionary)
     if argin.readROOT is True and argin.readTESROOT is False:
         # This loads saved data from steps 1 and 2 if it has been performed already and will put us in a state to proceed with TES quantity computations
-        iv_dictionary = read_from_ivroot(argin.outputPath + '/root/iv_data.root', branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width'])
+        iv_dictionary = read_from_ivroot(argin.outputPath + '/root/iv_data.root', branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'cut_norm_to_sc'])
         # Things will be dicts here so we should convert to arrays
-        for temperature, iv_data in iv_dictionary.items():
-            for key, value in iv_data.items():
-                if isinstance(value, dict):
-                    iv_data[key], number_samples = iv_processor.convert_dict_to_ndarray(value)
+        iv_dictionary = convert_temp_dicts_to_ndarrays(iv_dictionary)
     if argin.readTESROOT is False:
-        # Step 3: Process IV data and correct (i,v) offsets, get Rp, and generate plots
+        # Step 3: Process IV data and correct  (i,v) offsets, get Rp, and generate plots
         iv_dictionary = process_iv_curves(argin.squid, iv_dictionary, argin.numberOfWindows, argin.slewRate, number_samples)
         plot_iv_curves(argin.outputPath, argin.dataChannel, argin.numberOfWindows, argin.squid, iv_dictionary)
         # TODO: Save fit and parasitics?
@@ -562,19 +572,14 @@ def iv_main(argin):
         # NOTE! IV data loaded is is already processed so the 0-offset correction is applied.
         iv_dictionary = read_from_ivroot(argin.outputPath + '/root/iv_data_processed.root', branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'iTES', 'rTES', 'vTES', 'pTES'])
         # Things will be dicts here so we should convert to arrays
-        for temperature, iv_data in iv_dictionary.items():
-            print('Converting data to ndarray for temperature: {}'.format(temperature))
-            for key, value in iv_data.items():
-                if isinstance(value, dict):
-                    iv_data[key], number_samples = iv_processor.convert_dict_to_ndarray(value)
-                    # iv_dictionary[temperature][key] = new_value
+        iv_dictionary = convert_temp_dicts_to_ndarrays(iv_dictionary)
     # Step 5: Process the TES values
     print('The number_samples argument is: {}'.format(number_samples))
     iv_dictionary, iv_curves = process_tes_curves(iv_dictionary, number_of_windows=argin.numberOfWindows, slew_rate=argin.slewRate, number_samples=number_samples)
     if argin.plotTES is True:
         make_tes_plots(output_path=argin.outputPath, data_channel=argin.dataChannel, squid=argin.squid, number_of_windows=argin.numberOfWindows, iv_dictionary=iv_dictionary, individual=True)
     # Step 6: Compute interesting curves
-    iv_dictionary = tes_char.find_normal_to_sc_data(iv_dictionary, argin.numberOfWindows, iv_curves=iv_curves)
+    iv_dictionary = tes_char.find_normal_to_sc_data(iv_dictionary, argin.numberOfWindows, iv_curves=iv_curves, mode='tes')
     tc, rN, temp, R, R_sigma = tes_char.get_resistance_temperature_curves_new(argin.outputPath, argin.dataChannel, argin.numberOfWindows, iv_dictionary)
     output_file = argin.outputPath + '/root/rt_data.root'
     rt_data = {'rtdata': {'temperature': temp, 'rTES': R, 'rTES_sigma': R_sigma}}
@@ -590,7 +595,7 @@ def iv_main(argin):
 
 
 def input_parser():
-    '''Parse input arguments and return an argument object'''
+    """Parse input arguments and return an argument object."""
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--inputPath', default='/Users/bwelliver/cuore/bolord/squid/',
                         help='Specify full file path of input data')

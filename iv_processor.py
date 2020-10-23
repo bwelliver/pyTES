@@ -324,7 +324,7 @@ def iv_windower(iv_dictionary, number_of_windows, mode='iv'):
 
 
 def fit_iv_regions(xdata, ydata, sigma_y, number_samples, sampling_width, number_of_windows, slew_rate, plane='iv'):
-    '''Fit the iv data regions and extract fit parameters'''
+    """Fit the iv data regions and extract fit parameters."""
 
     fit_params = iv_results.FitParameters()
     # We need to walk and fit the superconducting region first since there RTES = 0
@@ -346,7 +346,8 @@ def get_parasitic_resistance(iv_dictionary, squid, number_samples, sampling_widt
     min_temperature = list(iv_dictionary.keys())[np.argmin([float(temperature) for temperature in iv_dictionary.keys()])]
     fit_params = iv_results.FitParameters()
     print('Attempting to fit superconducting branch for temperature: {} mK'.format(min_temperature))
-    result, perr = fit_sc_branch(iv_dictionary[min_temperature]['iBias'], iv_dictionary[min_temperature]['vOut'], iv_dictionary[min_temperature]['vOut_rms'], number_samples, sampling_width, number_of_windows, slew_rate, plane='iv')
+    cut_direction = iv_dictionary[min_temperature]['cut_norm_to_sc']
+    result, perr = fit_sc_branch(iv_dictionary[min_temperature]['iBias'][cut_direction], iv_dictionary[min_temperature]['vOut'][cut_direction], iv_dictionary[min_temperature]['vOut_rms'][cut_direction], number_samples, sampling_width, number_of_windows, slew_rate, plane='iv')
     fit_params.sc.set_values(result, perr)
     resistance = convert_fit_to_resistance(fit_params, squid, fit_type='iv')
     return resistance.parasitic
@@ -387,21 +388,11 @@ def fit_sc_branch(xdata, ydata, sigma_y, number_samples, sampling_width, number_
         xdata = xdata.flatten()
         ydata = ydata.flatten()
         sigma_y = sigma_y.flatten()
-    # Get directionality cut
-    di_bias = np.gradient(xdata, edge_order=2)
-    c_normal_to_sc_pos = np.logical_and(xdata > 0, di_bias < 0)
-    c_normal_to_sc_neg = np.logical_and(xdata <= 0, di_bias > 0)
-    c_normal_to_sc = np.logical_or(c_normal_to_sc_pos, c_normal_to_sc_neg)
     # Sort by x
     sortkey = np.argsort(xdata)
     xdata = xdata[sortkey]
     ydata = ydata[sortkey]
     sigma_y = sigma_y[sortkey]
-    c_normal_to_sc = c_normal_to_sc[sortkey]
-    # Apply directionality cut
-    xdata = xdata[~c_normal_to_sc]
-    ydata = ydata[~c_normal_to_sc]
-    sigma_y = sigma_y[~c_normal_to_sc]
     sc_cut = walk_sc(xdata, ydata, number_samples, sampling_width, number_of_windows, slew_rate, plane=plane)
     # Finally cut further to the sc region
     print('The size of sc_cut is {} and the amount that is true: {}'.format(sc_cut.size, sc_cut.sum()))
@@ -608,21 +599,11 @@ def fit_normal_branches(xdata, ydata, sigma_y, number_samples, sampling_width, n
         xdata = xdata.flatten()
         ydata = ydata.flatten()
         sigma_y = sigma_y.flatten()
-    # Get directionality cut
-    di_bias = np.gradient(xdata, edge_order=2)
-    c_normal_to_sc_pos = np.logical_and(xdata > 0, di_bias < 0)
-    c_normal_to_sc_neg = np.logical_and(xdata <= 0, di_bias > 0)
-    c_normal_to_sc = np.logical_or(c_normal_to_sc_pos, c_normal_to_sc_neg)
     # Sort by x
     sortkey = np.argsort(xdata)
     xdata = xdata[sortkey]
     ydata = ydata[sortkey]
     sigma_y = sigma_y[sortkey]
-    c_normal_to_sc = c_normal_to_sc[sortkey]
-    # Apply directionality cut (N->SC)
-    xdata = xdata[c_normal_to_sc]
-    ydata = ydata[c_normal_to_sc]
-    sigma_y = sigma_y[c_normal_to_sc]
     side = 'left'
     left_cut = walk_normal(xdata, ydata, side, number_samples, sampling_width, number_of_windows, slew_rate)
     # Finally cut further to the normal region

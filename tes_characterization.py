@@ -28,16 +28,17 @@ def normal_to_sc_cut_constructor(timestamps, start_times, end_times):
     return master_cut
 
 
-def find_normal_to_sc_data(iv_dictionary, number_of_windows, iv_curves=None):
+def find_normal_to_sc_data(iv_dictionary, number_of_windows, iv_curves=None, mode='iv'):
     '''A function to try and locate time boundaries to define N --> SC data'''
     # Step 1: Average using the number of windows\
     if iv_curves is None:
-        iv_curves = iv_windower(iv_dictionary, number_of_windows, mode='tes')
+        iv_curves = iv_windower(iv_dictionary, number_of_windows, mode=mode)
     for temperature, iv_data in iv_curves.items():
         dbias = np.gradient(iv_data['iBias'].flatten(), edge_order=2)
         cut1 = np.logical_and(iv_data['iBias'].flatten() > 0, dbias < 0)   # Positive iBias -slope (High to Low, N-->Sc)
         cut2 = np.logical_and(iv_data['iBias'].flatten() <= 0, dbias >= 0)  # Negative iBias +slope (-High to -Low, N-->Sc)
         cut_norm_to_sc = np.logical_or(cut1, cut2)
+        iv_curves[temperature]['cut_norm_to_sc'] = cut_norm_to_sc
         timestamps = iv_data['timestamps'].flatten()
         boundaries = np.where(cut_norm_to_sc[:-1] != cut_norm_to_sc[1:])[0]
         print(boundaries)
