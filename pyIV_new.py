@@ -287,6 +287,8 @@ def chop_data_by_temperature_steps(iv_data, step_values, thermometer_name, bias_
     # Now chop up the IV data into steps keyed by the mean temperature
     for values in step_values:
         start_time, stop_time, mean_temperature, std_temperature, serr_temperature = values
+        if np.isnan(mean_temperature):
+            continue
         print('The mean temperature is: {}'.format(mean_temperature))
         times = iv_data['Timestamp_s'] + iv_data['Timestamp_mus']/1e6
         cut = np.logical_and(times >= start_time, times <= stop_time)

@@ -2,7 +2,7 @@
 The RingBuffer is a FIFO style and fills from left to right, so that oldest
 entries are at the end of the buffer. Requires numpy.'''
 import numpy as np
-from numba import jitclass
+from numba.experimental import jitclass
 from numba import int32, float32
 
 spec = [('size_max', int32), ('_data', float32[:]), ('size', int32)]
