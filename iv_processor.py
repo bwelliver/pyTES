@@ -436,11 +436,11 @@ def walk_sc(xdata, ydata, number_samples, sampling_width, number_of_windows, sle
     # Check buffer size
     if delta_current is None:
         if plane == 'iv':
-            delta_current = 10
+            delta_current = 3 #10
         elif plane == 'tes':
-            delta_current = 10
+            delta_current = 3 #10
         else:
-            delta_current = 10
+            delta_current = 3 #10
     buffer_size = int((delta_current / slew_rate) / ((number_samples * sampling_width) / number_of_windows))
     print('For a delta current of {} uA with a ramp slew rate of {} uA/s, the buffer requires {} windowed points'.format(delta_current, slew_rate, buffer_size))
     
