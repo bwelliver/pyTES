@@ -103,22 +103,13 @@ def writeTBranch(tree, branch_data):
     # Ultimately nentries should be the number of distinct 'events' that there are
     #print('There are {} entries to write.'.format(nentries))
     for event in range(nentries):
-        #if event % 1000 == 0:
-        #    print('Event {} out of {}'.format(event, nentries))
         for branchkey in branch_data.keys():
-            if isinstance(branch_data[branchkey], dict) or (isinstance(branch_data[branchkey], np.ndarray) and len(branch_data[branchkey].shape) == 2):
-                # keys of branch_data[branchkey] are event
-                # To get values of event: waveform = branch_data[branchkey][event]
-                if dloc[branchkey].size() == 0:
-                    # print('Using push_back for branch {} and event {}'.format(branchkey, event))
-                    for value in branch_data[branchkey][event]:
-                        dloc[branchkey].push_back(float(value))
-                else:
-                    # print('Using indexed assignment for branch {} and event {}'.format(branchkey, event))
-                    # print('The size of the branch_data for this branchkey is: {}'.format(len(branch_data[branchkey])))
-                    for idx, value in enumerate(branch_data[branchkey][event]):
-                        dloc[branchkey][idx] = float(value)
-                        # print(dloc[branchkey][idx])
+            # We can have 2 types of entries -- scalar or vector
+            # dictionaries or np.ndarrays then it is a vector, otherwise scalar
+            if isinstance(branch_data[branchkey], dict):
+                dloc[branchkey].assign(list(branch_data[branchkey][event].values()))
+            elif isinstance(branch_data[branchkey], np.ndarray) and len(branch_data[branchkey].shape == 2):
+                dloc[branchkey].assign(branch_data[branchkey][event])
             else:
                 dloc[branchkey][0] = branch_data[branchkey][event]
         tree.Fill()
