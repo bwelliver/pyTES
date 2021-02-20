@@ -280,8 +280,8 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
     # Rtes = R(i,T) so we are really asking for R(i=constant, T).
     # iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
     fixed_name = 'iTES'
-    fixed_value = 0.04e-6
-    delta_values = [0.02e-6, 0.02e-6]
+    fixed_value = 0.5e-6
+    delta_values = [0.15e-6, 0.15e-6]
     r_normal = 0.500
 
     norm_to_sc = {'T': np.empty(0), 'R': np.empty(0), 'rmsR': np.empty(0)}
@@ -336,8 +336,8 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     # Need to select power in the biased region, i.e. where P(R) ~ constant
     # Try something at 0.5*Rn
     # iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
-    R = 0.7*rN
-    deltaR = 30e-3
+    R = 0.6*rN
+    deltaR = 50e-3
     print('The resistance range selected is: {} +/- {} mOhms'.format(R, deltaR))
     temperatures = np.empty(0)
     power = np.empty(0)
@@ -394,7 +394,7 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
 
     # [k, n, Ttes, Pp]
     pP = None
-    tc = None
+    
     if tc is None:
         print('No Tc was passed, floating Tc')
         lbounds = [1e-9, 20e-3]
@@ -404,10 +404,10 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     else:
         if pP is None:
             print('Tc = {} mK was passed. Fixing to this value'.format(tc))
-            lbounds = [1e-9, 0]
-            ubounds = [1, 10]
+            lbounds = [1e-12, 0]
+            ubounds = [1, 7]
             fixedArgs = {'Pp': 0, 'Ttes': tc}
-            x0 = [1000e-9, 4]
+            x0 = [1000e-9, 4.5]
         else:
             print('Tc = {} mK was passed. Fixing to this value'.format(tc))
             lbounds = [1e-9, 0, -3e-5]

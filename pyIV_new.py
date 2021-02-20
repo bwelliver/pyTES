@@ -206,8 +206,8 @@ def parse_temperature_steps(time_values, temperatures, pid_log, tz_correction):
     # time_list is a list of tuples.
     step_values = np.zeros((times.size, 5))  # start, stop, meanT, stdT, serrT
     start_offset = 300
-    end_offset = 10
-    default_duration = 2000
+    end_offset = 0
+    default_duration = 2500
     # How we proceed depends if we have 3 columns or not
     if have_duration:
         for index in range(times.size):
@@ -281,13 +281,14 @@ def chop_data_by_temperature_steps(iv_data, step_values, thermometer_name, bias_
     # FIXME:
     # Put these in units of mK for now.
     # if min < T < max --> reject
-    cut_temperature_max = 100  # Should be the max rejected temperature
-    cut_temperature_min = 39  # Should be the minimum rejected temperature
+    cut_temperature_max = 1  # Should be the max rejected temperature
+    cut_temperature_min = 0  # Should be the minimum rejected temperature
     expected_duration = 3600  # TODO: make this an input argument or auto-determined somehow
     # Now chop up the IV data into steps keyed by the mean temperature
     for values in step_values:
         start_time, stop_time, mean_temperature, std_temperature, serr_temperature = values
         if np.isnan(mean_temperature):
+            print('Mean temp of NaN found. skipping...')
             continue
         print('The mean temperature is: {}'.format(mean_temperature))
         times = iv_data['Timestamp_s'] + iv_data['Timestamp_mus']/1e6
@@ -395,7 +396,7 @@ def convert_temp_dicts_to_ndarrays(iv_dictionary):
         for key, value in iv_data.items():
             if isinstance(value, dict):
                 iv_dictionary[temperature][key], number_samples = iv_processor.convert_dict_to_ndarray(value)
-    return iv_dictionary
+    return iv_dictionary, number_samples
 
 
 def process_iv_curves(squid, iv_dictionary, number_of_windows=0, slew_rate=1, number_samples=None):
@@ -553,7 +554,7 @@ def iv_main(argin):
         # This loads saved data from steps 1 and 2 if it has been performed already and will put us in a state to proceed with TES quantity computations
         iv_dictionary = read_from_ivroot(argin.outputPath + '/root/iv_data.root', branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'cut_norm_to_sc'])
         # Things will be dicts here so we should convert to arrays
-        iv_dictionary = convert_temp_dicts_to_ndarrays(iv_dictionary)
+        iv_dictionary, number_samples = convert_temp_dicts_to_ndarrays(iv_dictionary)
     if argin.readTESROOT is False:
         # Step 3: Process IV data and correct  (i,v) offsets, get Rp, and generate plots
         iv_dictionary = process_iv_curves(argin.squid, iv_dictionary, argin.numberOfWindows, argin.slewRate, number_samples)
@@ -572,9 +573,10 @@ def iv_main(argin):
             save_iv_to_root(output_file, iv_dictionary, branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'iTES', 'rTES', 'vTES', 'pTES', 'cut_norm_to_sc'])
     if argin.readTESROOT is True:
         # NOTE! IV data loaded is is already processed so the 0-offset correction is applied.
+        print("Reading processed data file.")
         iv_dictionary = read_from_ivroot(argin.outputPath + '/root/iv_data_processed.root', branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'iTES', 'rTES', 'vTES', 'pTES'])
         # Things will be dicts here so we should convert to arrays
-        iv_dictionary = convert_temp_dicts_to_ndarrays(iv_dictionary)
+        iv_dictionary, number_samples = convert_temp_dicts_to_ndarrays(iv_dictionary)
     # Step 5: Process the TES values
     print('The number_samples argument is: {}'.format(number_samples))
     iv_dictionary, iv_curves = process_tes_curves(iv_dictionary, number_of_windows=argin.numberOfWindows, slew_rate=argin.slewRate, number_samples=number_samples)
