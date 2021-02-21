@@ -108,7 +108,7 @@ def writeTBranch(tree, branch_data):
             # dictionaries or np.ndarrays then it is a vector, otherwise scalar
             if isinstance(branch_data[branchkey], dict):
                 dloc[branchkey].assign(list(branch_data[branchkey][event].values()))
-            elif isinstance(branch_data[branchkey], np.ndarray) and len(branch_data[branchkey].shape == 2):
+            elif isinstance(branch_data[branchkey], np.ndarray) and len(branch_data[branchkey].shape) == 2:
                 dloc[branchkey].assign(branch_data[branchkey][event])
             else:
                 dloc[branchkey][0] = branch_data[branchkey][event]
