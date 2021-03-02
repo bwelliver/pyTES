@@ -336,8 +336,8 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     # Need to select power in the biased region, i.e. where P(R) ~ constant
     # Try something at 0.5*Rn
     # iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
-    R = 0.6*rN
-    deltaR = 50e-3
+    R = 0.8*rN
+    deltaR = 0.1*rN
     print('The resistance range selected is: {} +/- {} mOhms'.format(R, deltaR))
     temperatures = np.empty(0)
     power = np.empty(0)
@@ -358,28 +358,28 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
         if select_cut.sum() > 0:
             temperatures = np.append(temperatures, float(temperature)*1e-3)
             pTES = iv_data['pTES'][select_cut]  # (nCut, nSamples)
+            # could try an integral method... pavg = 1/(T2-T1) * int(P(t)*dt)
+            # here P(t) is our pTES[0] array. Just assume we integrate from 0-T with steps of dt where dt = 1/number_windows seconds
+            # in thise case by the way then T = nSamples/number_windows --> sum(P(t))*(1/number_windows)/(nSamples/number_windows)
+            # this then becomes sum(P(t))/nSamples which is just...the mean.
+            # Realistically I think we'd want to more rigorously index this by sample number globally and coherently average.
             print('The shape of pTES after select cut is: {}'.format(pTES.shape))
+            # these are the average and stdev of each individual selected sampling (e.g., nCut means and stdevs)
             pTES_mean = np.mean(pTES, axis=1)
             pTES_rms = np.std(pTES, axis=1)/np.sqrt(pTES.shape[1])
-            # combine these
-            #pTES_value = np.mean(pTES_mean)
-            #pTES_value_rms = np.std(pTES_mean)
-            pTES_value = np.sqrt(np.mean(pTES*pTES)) # RMS^2 = mean(p^2) == mean(p)^2 + sigma(p)^2
-            #pTES_value_rms = np.std(pTES)
-            pTES_value_rms = np.sqrt(np.sum(pTES_rms*pTES_rms))
+            # Compress these now to 1 point
+            pTES_value = np.mean(pTES_mean)  # mean of means
+            #pTES_value = np.sqrt(np.mean(pTES*pTES))  # RMS^2 = mean(p^2) == mean(p)^2 + sigma(p)^2
+            #pTES_value = np.mean(pTES_mean)  # mean of all values directly
+            # Get RMS values
+            pTES_value_rms = np.std(pTES_mean) # simply the spread of mean values
+            #pTES_value_rms = np.std(pTES)  # simply the spread of all pTES values
+            #pTES_value_rms = np.std(pTES)/np.sqrt(pTES.size)  # the SEM for all pTES values
+            #pTES_value_rms = np.sqrt(np.sum(pTES_rms*pTES_rms))  # Add each cut's RMS in quadrature and sqrt it
+            #pTES_value_rms = np.sqrt(np.mean(pTES_rms*pTES_rms))  # Mean of pTES_RMS^2 and sqrt of that.
+            # Add single point to the array
             power = np.append(power, pTES_value)
             power_rms = np.append(power_rms, pTES_value_rms)
-        # Cuts get complicated. We will need to make a cut on a cut.
-        # cut_fixed_norm_to_sc = np.logical_and(iv_data['rTES'][cut_norm_to_sc] > R - deltaR, iv_data['rTES'][cut_norm_to_sc] < R + deltaR)
-        # cut_fixed_norm_to_sc = cut_fixed_norm_to_sc.flatten()
-        # if cut_fixed_norm_to_sc.sum() > 0:
-        #     temperatures = np.append(temperatures, float(temperature)*1e-3)
-        #     pTES = iv_data['pTES'][cut_norm_to_sc].flatten()
-        #     pTES_rms = np.std(iv_data['pTES'][cut_norm_to_sc].flatten())
-        #     pTES_rms = pTES_rms/np.sqrt(cut_fixed_norm_to_sc.sum())
-        #     power = np.append(power, np.mean(pTES[cut_fixed_norm_to_sc]))
-        #     # power_rms = np.append(power_rms, np.std(pTES[cut_fixed_norm_to_sc])/np.sqrt(cut_fixed_norm_to_sc.sum()))
-        #     power_rms = np.append(power_rms, pTES_rms)
         else:
             print('For T = {} mK there were no values used.'.format(temperature))
     # print('The main T vector is: {}'.format(temperatures))
@@ -387,9 +387,9 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     # TODO: Make these input values?
     #tc = None
     max_temp = tc or 60e-3
-    min_temp = 10e-3
+    min_temp = 1e-3
     cut_temperature = np.logical_and(temperatures > min_temp, temperatures < max_temp)  # This should be the expected Tc
-    cut_power = power < 1e-6
+    cut_power = power < 10e-6
     cut_temperature = np.logical_and(cut_temperature, cut_power)
 
     # [k, n, Ttes, Pp]
