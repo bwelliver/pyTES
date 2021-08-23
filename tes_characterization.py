@@ -337,7 +337,9 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     # Try something at 0.5*Rn
     # iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
     R = 0.8*rN
-    deltaR = 0.1*rN
+    deltaR = 0.15*rN
+    #R = 0.310
+    #deltaR = 0.150
     print('The resistance range selected is: {} +/- {} mOhms'.format(R, deltaR))
     temperatures = np.empty(0)
     power = np.empty(0)
@@ -368,14 +370,15 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
             pTES_mean = np.mean(pTES, axis=1)
             pTES_rms = np.std(pTES, axis=1)/np.sqrt(pTES.shape[1])
             # Compress these now to 1 point
-            pTES_value = np.mean(pTES_mean)  # mean of means
-            #pTES_value = np.sqrt(np.mean(pTES*pTES))  # RMS^2 = mean(p^2) == mean(p)^2 + sigma(p)^2
+            #pTES_value = np.mean(pTES_mean)  # mean of means
+            pTES_value = np.sqrt(np.mean(pTES*pTES))  # RMS^2 = mean(p^2) == mean(p)^2 + sigma(p)^2
             #pTES_value = np.mean(pTES_mean)  # mean of all values directly
             # Get RMS values
-            pTES_value_rms = np.std(pTES_mean) # simply the spread of mean values
+            #pTES_value_rms = np.std(pTES_mean) # simply the spread of mean values
+            #pTES_value_rms = np.std(pTES_mean)/np.sqrt(pTES_mean.size)
             #pTES_value_rms = np.std(pTES)  # simply the spread of all pTES values
             #pTES_value_rms = np.std(pTES)/np.sqrt(pTES.size)  # the SEM for all pTES values
-            #pTES_value_rms = np.sqrt(np.sum(pTES_rms*pTES_rms))  # Add each cut's RMS in quadrature and sqrt it
+            pTES_value_rms = np.sqrt(np.sum(pTES_rms*pTES_rms))  # Add each cut's RMS in quadrature and sqrt it
             #pTES_value_rms = np.sqrt(np.mean(pTES_rms*pTES_rms))  # Mean of pTES_RMS^2 and sqrt of that.
             # Add single point to the array
             power = np.append(power, pTES_value)
@@ -394,13 +397,14 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
 
     # [k, n, Ttes, Pp]
     pP = None
-    
+    tc = None 
     if tc is None:
         print('No Tc was passed, floating Tc')
-        lbounds = [1e-9, 20e-3]
-        ubounds = [1, 47e-3]
-        fixedArgs = {'n': 5, 'Pp': 0}
-        x0 = [20e-9, 30e-3]
+        lbounds = [1e-9, 1, 20e-3]
+        ubounds = [1, 7, 47e-3]
+        #fixedArgs = {'n': 5, 'Pp': 0}
+        fixedArgs = {'Pp': 0}
+        x0 = [20e-9, 5, 30e-3]
     else:
         if pP is None:
             print('Tc = {} mK was passed. Fixing to this value'.format(tc))

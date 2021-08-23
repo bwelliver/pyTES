@@ -1,8 +1,8 @@
 import numpy as np
 import ROOT as rt
-
-#print('Enabling explicit MT')
-#rt.ROOT.EnableImplicitMT()
+import time
+print('Enabling explicit MT')
+rt.ROOT.EnableImplicitMT()
 #TODO: REPLACE ROOT_DICTIONARY WITH A CLASS
 #class ROOTDictionary:
 #    '''A class to store root objects'''
@@ -315,14 +315,21 @@ def readROOT(inFile, tree, branches, method='single', tobject=None, directory=No
                 vectorDict[branch] = rt.std.vector('double')()
                 #pt = rt.std.vector('double')()
                 obj.SetBranchAddress(branch, rt.AddressOf(vectorDict[branch]))
+                #obj.SetBranchAddress(branch, vectorDict[branch])
                 npData[branch] = {}
             else:
                 npData[branch] = np.zeros(nEntries)
         for entry in range(nEntries):
+            #st = time.time()
             getEv(entry)
+            #et = time.time()
+            #print('entry getting time is: {}'.format(et-st))
             for branch in branches:
                 if isinstance(npData[branch], dict):
-                    npData[branch][entry] = np.array(vectorDict[branch])
+                    #st = time.time()
+                    npData[branch][entry] = np.array(vectorDict[branch].data())
+                    #et = time.time()
+                    #print('Vector to np array conversion time: {}'.format(et-st))
                 else:
                     data = getattr(obj, branch)
                     npData[branch][entry] = data
@@ -336,7 +343,12 @@ def readROOT(inFile, tree, branches, method='single', tobject=None, directory=No
 #                else:
 #                    npData[branch][entry] = data
             # Print a notification every N events
+            #print(entry)
+            #if entry == 1000:
+            #    return None
             if entry%nTen == 0:
+                if (entry == 100):
+                    return None
                 print('\tGrabbing entry Number {0} ({1} %)'.format(entry, round(100*entry/nEntries,2)))
     elif tobject is not None:
         # For now this is to load a TVector object to a numpy vector

@@ -436,7 +436,7 @@ def walk_sc(xdata, ydata, number_samples, sampling_width, number_of_windows, sle
     # Check buffer size
     if delta_current is None:
         if plane == 'iv':
-            delta_current = 3 #10
+            delta_current = 8 #10
         elif plane == 'tes':
             delta_current = 3 #10
         else:
@@ -635,7 +635,7 @@ def fit_normal_branches(xdata, ydata, sigma_y, number_samples, sampling_width, n
     return left_result, left_perr, right_result, right_perr
 
 
-def walk_normal(xdata, ydata, side, number_samples, sampling_width, number_of_windows, slew_rate=8, delta_current=40):
+def walk_normal(xdata, ydata, side, number_samples, sampling_width, number_of_windows, slew_rate=8, delta_current=15):
     """Function to walk the normal branches and find the line fit.
     To do this we will start at the min or max input current and compute a walking derivative
     If the derivative starts to change then this indicates we entered the biased region and should stop

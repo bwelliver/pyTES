@@ -2,7 +2,7 @@ import os
 import time
 from os.path import isabs, dirname, basename
 import argparse
-
+import time
 import numpy as np
 import pandas as pan
 
@@ -205,7 +205,7 @@ def parse_temperature_steps(time_values, temperatures, pid_log, tz_correction):
     # Include an appropriate offset for mean computation BUT only a softer one for time boundaries
     # time_list is a list of tuples.
     step_values = np.zeros((times.size, 5))  # start, stop, meanT, stdT, serrT
-    start_offset = 300
+    start_offset = 500
     end_offset = 0
     default_duration = 2500
     # How we proceed depends if we have 3 columns or not
@@ -283,7 +283,7 @@ def chop_data_by_temperature_steps(iv_data, step_values, thermometer_name, bias_
     # if min < T < max --> reject
     cut_temperature_max = 1  # Should be the max rejected temperature
     cut_temperature_min = 0  # Should be the minimum rejected temperature
-    expected_duration = 3600  # TODO: make this an input argument or auto-determined somehow
+    expected_duration = 11000  # TODO: make this an input argument or auto-determined somehow
     # Now chop up the IV data into steps keyed by the mean temperature
     for values in step_values:
         start_time, stop_time, mean_temperature, std_temperature, serr_temperature = values
@@ -549,7 +549,11 @@ def iv_main(argin):
         # Step 2: Save these chopped up IV data
         if argin.makeROOT:
             output_file = argin.outputPath + '/root/iv_data.root'
+            startt = time.time()
             save_iv_to_root(output_file, iv_dictionary)
+            endt = time.time()
+            print("Save time duration was {}".format(endt-startt))
+            #return True
     if argin.readROOT is True and argin.readTESROOT is False:
         # This loads saved data from steps 1 and 2 if it has been performed already and will put us in a state to proceed with TES quantity computations
         iv_dictionary = read_from_ivroot(argin.outputPath + '/root/iv_data.root', branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'cut_norm_to_sc'])
@@ -570,7 +574,10 @@ def iv_main(argin):
         print('Saving ROOT file with TES quantities computed')
         if argin.makeROOT:
             output_file = argin.outputPath + '/root/iv_data_processed.root'
+            st = time.time()
             save_iv_to_root(output_file, iv_dictionary, branches=['iBias', 'vOut', 'timestamps', 'temperatures', 'sampling_width', 'iTES', 'rTES', 'vTES', 'pTES', 'cut_norm_to_sc'])
+            et = time.time()
+            print('Duration for save: {}'.format(et-st))
     if argin.readTESROOT is True:
         # NOTE! IV data loaded is is already processed so the 0-offset correction is applied.
         print("Reading processed data file.")
@@ -593,8 +600,8 @@ def iv_main(argin):
     pt_data = {'ptdata': {'temperature': temp, 'pTES': power, 'pTES_sigma': power_sigma}}
     save_iv_to_root(output_file, pt_data, branches=['pTES', 'pTES_sigma', 'temperature'])
     # Let's generate corrected RT curves now using PT data to get Ttes.
-    pt_data['fit'] = pfitResults
-    tes_char.get_corrected_resistance_temperature_curves(argin.outputPath, argin.dataChannel, argin.numberOfWindows, iv_dictionary, pt_data)
+    #pt_data['fit'] = pfitResults
+    #tes_char.get_corrected_resistance_temperature_curves(argin.outputPath, argin.dataChannel, argin.numberOfWindows, iv_dictionary, pt_data)
     return True
 
 

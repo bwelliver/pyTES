@@ -95,8 +95,12 @@ def writeTBranch(tree, branch_data):
             tree.Branch(branchkey, 'std::vector<double>', AddressOf(dloc[branchkey]))
         else:
             nentries = branch_data[branchkey].size
-            dloc[branchkey] = array('d', [0.0])
-            tree.Branch(branchkey, dloc[branchkey], branchkey + '/D')
+            if branchkey in ['Timestamp_s', 'Timestamp_mus', 'NumberOfSamples']:
+                dloc[branchkey] = array('I', [0])
+                tree.Branch(branchkey, dloc[branchkey], branchkey + '/i')
+            else:
+                dloc[branchkey] = array('d', [0.0])
+                tree.Branch(branchkey, dloc[branchkey], branchkey + '/D')
     # Now loop over the branches and fill them
     # In the event the thing we are trying to fill is a vector nentries is supposed to be the number of things in vector, aka vector::size
     # In the event the thing we are trying to fill is not a vector it is the number of entries in the array...should this be so?
@@ -107,11 +111,18 @@ def writeTBranch(tree, branch_data):
             # We can have 2 types of entries -- scalar or vector
             # dictionaries or np.ndarrays then it is a vector, otherwise scalar
             if isinstance(branch_data[branchkey], dict):
-                dloc[branchkey].assign(list(branch_data[branchkey][event].values()))
+                #dloc[branchkey].assign(list(branch_data[branchkey][event].values()))
+                dloc[branchkey].assign(list(branch_data[branchkey][event]))
             elif isinstance(branch_data[branchkey], np.ndarray) and len(branch_data[branchkey].shape) == 2:
+                #dtemp = branch_data[branchkey][event]
+                #print('For branch {} the type is {}'.format(branchkey, type(dtemp)))
+                #print("The shape of the temp data is {}".format(dtemp.shape))
                 dloc[branchkey].assign(branch_data[branchkey][event])
             else:
-                dloc[branchkey][0] = branch_data[branchkey][event]
+                if branchkey in ['Timestamp_s', 'Timestamp_mus', 'NumberOfSamples']:
+                    dloc[branchkey][0] = int(branch_data[branchkey][event])
+                else:
+                    dloc[branchkey][0] = branch_data[branchkey][event]
         tree.Fill()
     tree.Write()
     return True

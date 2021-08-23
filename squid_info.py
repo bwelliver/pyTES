@@ -12,11 +12,12 @@ class SQUIDParameters:
     def get_squid_parameters(self, serial):
         '''Based on the serial number obtain SQUID parameters'''
         if serial == 'S0121':
+            print("getting s121 parameters")
             self.serial = 'S0121'
             self.Li = 6e-9
             self.Mi = 1/26.062
-            self.Mfb = 1/33.51162 #1/33.96774594  # 1/33.5132196
-            self.Rfb = 10.0e3
+            self.Mfb = 1/33.33730134 #1/33.16710559014 #1/33.33730134  #1/33.51162 #1/33.96774594  # 1/33.5132196
+            self.Rfb = 10000.0
             self.Rsh = 21.0e-3
             self.Rbias = 10000.0
             self.Cbias = 100e-12
@@ -33,8 +34,8 @@ class SQUIDParameters:
             self.serial = 'S0094'
             self.Li = 6e-9
             self.Mi = 1/23.993
-            self.Mfb = 1/32.9
-            self.Rfb = 10e3
+            self.Mfb = 1/33.01006542
+            self.Rfb = 3e3
             self.Rsh = 22.9e-3
             self.Rbias = 10000.0
             self.Cbias = 100e-12
@@ -42,7 +43,7 @@ class SQUIDParameters:
             self.serial = 'S0204'
             self.Li = 6e-9
             self.Mi = 1/25.135
-            self.Mfb = 1/33.343662 #1/33.08377 #1/33.21197780928  #1/33.08377 #1/33.343662 #1/(33.5028)
+            self.Mfb = 1/33.8403378  #1/32.62  #1/33.343662  #1/33.88826885424  #1/33.21197780928  #1/33.343662 #1/33.08377 #1/33.21197780928  #1/33.08377 #1/33.343662 #1/(33.5028)
             self.Rfb = 10e3
             self.Rsh = 20.2e-3
             self.Rbias = 10000.0
@@ -51,7 +52,7 @@ class SQUIDParameters:
             self.serial = 'S0206'
             self.Li = 6e-9
             self.Mi = 1/26.467
-            self.Mfb = 1/33.39468924 #1/33.48441744234 #1/33.69269472 #1/33.855534
+            self.Mfb = 1/33.40749307824  #1/33.39468924  #1/33.18313142268 #1/33.48441744234  #1/33.39468924 #1/33.48441744234 #1/33.69269472 #1/33.855534
             self.Rfb = 10e3
             self.Rsh = 21e-3
             self.Rbias = 10000  #394.092459 # Adjust 10kOhm bias for attenuator at digitizer with factor of 25.374756 10000.0
