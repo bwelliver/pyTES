@@ -69,6 +69,8 @@ def load_data_file(fname, sample_rate, tz_offset, t0=0, header_names=None, delim
         t1 = entry_timestamp_s[entry-1] + entry_timestamp_mus[entry-1]/1e6 + entry*waveform_duration
         entry_timestamp_s[entry] = int(t1)
         entry_timestamp_mus[entry] = int((t1 - entry_timestamp_s[entry])*1e6)
+    data_dictionary['Timestamp_s'] = entry_timestamp_s
+    data_dictionary['Timestamp_mus'] = entry_timestamp_mus
     # Now run through actual channel data
     for header in headers:
         event_data = data[header]
