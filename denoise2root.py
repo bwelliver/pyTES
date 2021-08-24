@@ -182,6 +182,8 @@ def get_args():
         args.outputDirectory = args.inputDirectory
     if not mkdpaths(args.outputDirectory):
         raise Exception('Could not make output directory {}'.format(args.outputDirectory))
+    if args.header is not None:
+        args.header = args.header.split(',')
     return args
 
 
