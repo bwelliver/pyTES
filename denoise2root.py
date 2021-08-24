@@ -66,7 +66,7 @@ def load_data_file(fname, sample_rate, tz_offset, t0=0, header_names=None, delim
     entry_timestamp_s[0] = start_seconds
     entry_timestamp_mus[0] = start_microseconds
     for entry in range(1, num_entries):
-        t1 = entry_timestamp_s[entry-1] + entry_timestamp_mus[entry-1]/1e6 + entry*waveform_duration
+        t1 = entry_timestamp_s[entry-1] + entry_timestamp_mus[entry-1]/1e6 + waveform_duration
         entry_timestamp_s[entry] = int(t1)
         entry_timestamp_mus[entry] = int((t1 - entry_timestamp_s[entry])*1e6)
     data_dictionary['Timestamp_s'] = entry_timestamp_s
