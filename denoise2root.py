@@ -114,7 +114,11 @@ def logfile_converter(output_directory, logfile, sample_rate, tz_offset, t0=0, h
     output_file = output_directory + '/' + output_file + '.root'
     print('Passing data to root file {} for writing...'.format(output_file))
     write_to_root(output_file, data_dictionary)
-    return True
+    # Get also the very last time stamp used.
+    tend = data_dictionary['Timestamp_s'][-1]
+    tend_mus = data_dictionary['Timestamp_mus'][-1]
+    time_end = tend + tend_mus/1e6
+    return {'result': True, 'lastTime': time_end}
 
 
 def convert_logfile(input_directory, output_directory, run_number, sample_rate, tz_offset, t0=0, header_names=None, delimiter=',', waveform_duration=1, use_parallel=False):
@@ -136,13 +140,18 @@ def convert_logfile(input_directory, output_directory, run_number, sample_rate, 
         results = []
         for logfile in list_of_files:
             print('Converting file {}'.format(logfile))
-            result = logfile_converter(output_directory, logfile, sample_rate, tz_offset, t0=t0, header_names=header_names, delimiter=delimiter, waveform_duration=waveform_duration)
-            results.append(result)
+            output = logfile_converter(output_directory, logfile, sample_rate, tz_offset, t0=t0, header_names=header_names, delimiter=delimiter, waveform_duration=waveform_duration)
+            results.append(output['result'])
+            time_end = output['lastTime']
+            # Now time_end is the Timestamp_s + Timestamp_mus of the last entry. The next one should start at this + waveform_duration
+            t0 = time_end + waveform_duration
     else:
         # Attempt at using joblib
-        print('Performing conversions in parallel')
-        num_cores = multiprocessing.cpu_count()
-        results = Parallel(n_jobs=num_cores)(delayed(logfile_converter)(output_directory, logfile, sample_rate, tz_offset, t0=t0, header_names=header_names, delimiter=delimiter, waveform_duration=waveform_duration) for logfile in list_of_files)
+        # print('Performing conversions in parallel')
+        print('Parallel conversion is not enabled in this version. Sorry')
+        return False
+        # num_cores = multiprocessing.cpu_count()
+        # results = Parallel(n_jobs=num_cores)(delayed(logfile_converter)(output_directory, logfile, sample_rate, tz_offset, t0=t0, header_names=header_names, delimiter=delimiter, waveform_duration=waveform_duration) for logfile in list_of_files)
     if np.all(results):
         if len(results) == len(list_of_files):
             print('All files converted')
