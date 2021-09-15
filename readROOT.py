@@ -114,20 +114,23 @@ def fetch_branches(root_object, branches, entries=None):
     branches:       A list of branch names to query from the root_object
     '''
     nEntries = root_object.GetEntries()
-    print('Starting ROOT entry grabbing. There are {} entries'.format(nEntries))
-    if entries is None:
-        entries = range(0, nEntries)
+    if entries == -1:
+        data = nEntries
     else:
-        if entries[0] >= nEntries:
-            print('Minimum requested entry is larger than total number of entries: {} requested, {} available'.format(entries[0], nEntries))
-            return None
-        if entries[-1] >= nEntries:
-            print('Maximum requested entry is larger than total number of entries: {} requested, {} available'.format(entries[-1], nEntries))
-            return None
-    # Construct data storage dictionaries
-    vector_data, data = create_branch_arrays(root_object, branches=branches, number_of_entries=len(entries))
-    # Now let us loop over all the entries in the object and fill the branches
-    data = get_entries(root_object, branches, vector_data, data, entries=entries)
+        print('Starting ROOT entry grabbing. There are {} entries'.format(nEntries))
+        if entries is None:
+            entries = range(0, nEntries)
+        else:
+            if entries[0] >= nEntries:
+                print('Minimum requested entry is larger than total number of entries: {} requested, {} available'.format(entries[0], nEntries))
+                return None
+            if entries[-1] >= nEntries:
+                print('Maximum requested entry is larger than total number of entries: {} requested, {} available'.format(entries[-1], nEntries))
+                return None
+        # Construct data storage dictionaries
+        vector_data, data = create_branch_arrays(root_object, branches=branches, number_of_entries=len(entries))
+        # Now let us loop over all the entries in the object and fill the branches
+        data = get_entries(root_object, branches, vector_data, data, entries=entries)
     # We have looped over all the entries for this particular root object and filled the requested branches into a numpy array.
     return data
 
