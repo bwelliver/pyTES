@@ -37,12 +37,15 @@ rt.ROOT.EnableImplicitMT()
 #
 
 
-
-def get_root_object(file_list, method, full_tree_name, branches):
-    '''Function that returns a TTree or a TChain for the requested tree name based on the method requested'''
+def get_root_object(file_list, method='chain', full_tree_name=None, branches=None):
+    """Function that returns a TTree or a TChain for the requested tree name based on the method requested."""
     if method == 'single':
         # This method probably can be deprecated since everything, even 1 file, can be loaded as a chain!
-        root_object = None
+        if isinstance(file_list, list):
+            file_open = file_list[0]
+        else:
+            file_open = file_list
+        root_object = rt.TFile.Open(file_open, "READ")
     if method == 'chain':
         root_object = rt.TChain(full_tree_name)
         print('The filelist is {}'.format(file_list))
@@ -198,18 +201,30 @@ def walk_directories(file_list, method, directory_dictionary, directory_prefix=N
     return data_dictionary
 
 
+def get_tvector(input_files, read_method, directory_name, tobject):
+    """Read a TObject (TVector<double>) from some directory path in the ROOT file."""
+    object_name = tobject if directory_name is None else directory_name + '/' + tobject
+    tfile = get_root_object(input_files, method="single", full_tree_name=None, branches=None)
+    tvector = tfile.Get(object_name)
+    if tvector.ClassName() == 'TVectorT<double>':
+        data = np.array(tvector)
+    else:
+        print("Requested object {} is not a TVectorT<double>".format(object_name))
+        data = None
+    return {object_name: data}
+
+
 def readROOT_new(input_files, root_dictionary, read_method='chain', entries=None):
-    '''A function to make loading data from ROOT files into numpy arrays more flexible.
+    """A function to make loading data from ROOT files into numpy arrays more flexible.
     This function reads from an input root file
     The root_dictionary is a specially formatted dictionary of names, similar to the interface in writeROOT.
     root_dictionary = {'TDirectory': {DirectoryName1: {'TTree': {Tree1: [Branch1, Branch2, Branch3 ...], 'TBranch': [BranchA, BranchB, ...]} } }, 'TTree': {...} }
-
     As an example we can get a list of branch names in Dir/TreeA as follows:
     branches = root_dictionary['TDirectory'][Dir]['TTree'][TreeA]
 
     read_method defines if we are opening the TFile directly (single, deprecated) or using a TChain (chain).
 
-    '''
+    """
 
     # The course of action depends if we are chaining or not
     # If we have a TChain note that these chain together *TREES* across files.
@@ -219,7 +234,7 @@ def readROOT_new(input_files, root_dictionary, read_method='chain', entries=None
     # So let's recreate the hiearchy as need be then I guess
 
     # root_dictionary.keys() can be any of ['TDirectory', 'TTree', or 'TBranch']
-    
+
     if entries is not None:
         if isinstance(entries, (int, float)):
             entries = np.array([entries])
@@ -238,23 +253,26 @@ def readROOT_new(input_files, root_dictionary, read_method='chain', entries=None
             # Here value is a list of branch names
             # TODO: How do we handle these? Can they exist?
             data = None
+        if key == 'TVector':
+            # Here we are loading a TVectorD from the data
+            data = get_tvector(input_files, read_method, directory_name=None, tobject=value)
         data_dictionary.update(data)
     return data_dictionary
 
 
 def readROOT(inFile, tree, branches, method='single', tobject=None, directory=None, info=None):
     '''Read in root file'''
-    if isinstance(branches,str):
+    if isinstance(branches, str):
         branches = [branches]
     print('The method is: {}'.format(method))
     if method is 'chain':
         # TChain Method
-        #fPrefix = '/Volumes/Lantea/data/CUORE0/OfficialProcessed_v02.30/ds2049/'
+        # fPrefix = '/Volumes/Lantea/data/CUORE0/OfficialProcessed_v02.30/ds2049/'
         # lof = rt.TString(fPrefix + 'background_Blinded_ds2049.list")
-        #lof = rt.TString('/Users/bwelliver/cuore/data/Blinded_200450_B.list')
-        #lof = rt.TString('/Users/bwelliver/cuore/data/CUORE0/OfficialProcessed_v02.30/ds2070/background_Blinded_ds2070.list')
-        #fileList = lof.Data()
-        #lof = rt.TString('/Users/bwelliver/cuore/data/ds2160/physics_Production_ds2160.list')
+        # lof = rt.TString('/Users/bwelliver/cuore/data/Blinded_200450_B.list')
+        # lof = rt.TString('/Users/bwelliver/cuore/data/CUORE0/OfficialProcessed_v02.30/ds2070/background_Blinded_ds2070.list')
+        # fileList = lof.Data()
+        # lof = rt.TString('/Users/bwelliver/cuore/data/ds2160/physics_Production_ds2160.list')
         # Here inFile could be a specific list of files or a wildcard pattern
         tChain = rt.TChain(tree)
         print('The filelist is {0}'.format(inFile))
