@@ -36,9 +36,9 @@ def read_new_header_file(hfile):
             channel = int(key.split('CH')[1].split(' ')[0])
             if channel != seen_channel:
                 keyprefix = 'CH{}'.format(channel)
-                ch_info[channel] = {'range': header_dict['{} Vertical range'.format(keyprefix)],
-                                    'inputZ': header_dict['{} Input impedance'.format(keyprefix)],
-                                    'attenuation': header_dict['{} Probe attenuation'.format(keyprefix)]
+                ch_info[channel] = {'range': float(header_dict['{} Vertical range'.format(keyprefix)]),
+                                    'inputZ': float(header_dict['{} Input impedance'.format(keyprefix)]),
+                                    'attenuation': float(header_dict['{} Probe attenuation'.format(keyprefix)])
                                     }
                 seen_channel = channel
             else:
@@ -126,9 +126,11 @@ def parse_header_time(header_info, tz_offset, manual_tstart=None):
     unix_offset = -2082844800
     time_correction = unix_offset + tz_correction
     if manual_tstart is None:
-        header_info['timestamp'] = header_info['timestamp'] + time_correction
+        header_info['Start time UNIX'] = float(header_info['Start time UNIX']) + time_correction
+        header_info['Stop time UNIX'] = float(header_info['Stop time UNIX']) + time_correction
     else:
-        header_info['timestamp'] = manual_tstart + time_correction
+        header_info['Start time UNIX'] = manual_tstart + time_correction
+        header_info['Stop time UNIX'] = manual_tstart + time_correction
     return header_info
 
 
@@ -142,7 +144,7 @@ def parse_binary_data(byteFile, header_info, ch_info, endian='<'):
     # (int16) values for waveform array (2 bytes each)
     offset = 0
     predata_size = 24  # 8 + 8 + 4 + 4 = 24 bytes
-    array_size = int(header_info['Nsamples'] * 2)
+    array_size = int(header_info['Acquired points'])*2
     file_size = len(byteFile)
     end_idx = offset + predata_size
     # We need to define an 'entry' as each cycle containing all Nch's.
@@ -154,12 +156,12 @@ def parse_binary_data(byteFile, header_info, ch_info, endian='<'):
     subentry = 0
     while end_idx < file_size:
         # Read predata (time, gain, channel, nsamples)
-        if subentry == header_info['Nch']:
+        if subentry == int(header_info['# channels']):
             subentry = 0
             entry += 1
             parsed_data[entry] = {}
         predata = list(struct.unpack(endian + 'ddii', byteFile[offset:end_idx]))
-        predata[0] = predata[0] + header_info['timestamp']
+        predata[0] = predata[0] + header_info['Start time UNIX']
         offset = end_idx
         end_idx += array_size
         data = struct.unpack(endian + '{}h'.format(int(predata[3])), byteFile[offset:end_idx])
@@ -205,8 +207,8 @@ def convert_to_root(header_info, ch_info, parsed_data):
     # The data dictionary format is keys: Branch, values: nEntries arrays of what we want
     # The waveform one is itself a dictionary whose keys are the actual root entry
 
-    nSamples = header_info['Nsamples']
-    sample_freq = header_info['sample_freq']
+    nSamples = float(header_info['Acquired points'])
+    sample_freq = float(header_info['Sampling Frequency'])
     sample_duration = nSamples/sample_freq  # This indicates how many seconds our data is and hence how many divisions to make
     waveform_duration = 1
     waveform_size = int(waveform_duration * sample_freq)
@@ -268,7 +270,7 @@ def process_digifile(input_directory, output_directory, run_number, tz_offset=0,
     list_of_files.sort(key=lambda l: [int(s) if s.isdigit() else s.lower() for s in re.split(dre, l)])
     print('The list of files after sorting is: {}'.format(list_of_files))
     print('The size of the file list is: {}'.format(len(list_of_files)))
-    header_info, ch_info = read_header_file(list_of_header_files[0])
+    header_info, ch_info = read_new_header_file(list_of_header_files[0])
     header_info = parse_header_time(header_info, tz_offset, manual_tstart=None)
     if use_parallel is False:
         print('Performing conversions serially')
