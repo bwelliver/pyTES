@@ -212,8 +212,8 @@ def convert_to_root(header_info, ch_info, parsed_data):
     sample_duration = nSamples/sample_freq  # This indicates how many seconds our data is and hence how many divisions to make
     waveform_duration = 1
     waveform_size = int(waveform_duration * sample_freq)
-    num_root_per_bin = int(sample_duration/waveform_duration)
-    num_entries = len(parsed_data)*num_root_per_bin
+    num_root_per_bin = float(sample_duration/waveform_duration)
+    num_entries = int(len(parsed_data)*num_root_per_bin)
     print('The number of bin entries is {} and the number of root entries then is: {}'.format(len(parsed_data), num_entries))
     data_dictionary = {'Timestamp_s': np.zeros(num_entries), 'Timestamp_mus': np.zeros(num_entries)}
     for channel in ch_info.keys():
