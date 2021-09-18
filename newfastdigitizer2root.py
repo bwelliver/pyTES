@@ -195,7 +195,7 @@ def unroll_binary_event(ch_data, num_root_per_bin, sample_rate):
     return root_event
 
 
-def convert_to_root(header_info, ch_info, parsed_data):
+def convert_to_root(header_info, ch_info, parsed_data, waveform_duration=None):
     """Convert the data into ROOT format now."""
     # Here we need to make 1 entry per second for the ROOT file and it needs to be such that
     # it contains all channel waveforms as need be.
@@ -210,10 +210,10 @@ def convert_to_root(header_info, ch_info, parsed_data):
     nSamples = float(header_info['Acquired points'])
     sample_freq = float(header_info['Sampling Frequency'])
     sample_duration = nSamples/sample_freq  # This indicates how many seconds our data is and hence how many divisions to make
-    waveform_duration = 1
+    waveform_duration = sample_duration if waveform_duration is None else waveform_duration
     waveform_size = int(waveform_duration * sample_freq)
-    num_root_per_bin = float(sample_duration/waveform_duration)
-    num_entries = int(len(parsed_data)*num_root_per_bin)
+    num_root_per_bin = int(sample_duration/waveform_duration)
+    num_entries = len(parsed_data)*num_root_per_bin
     print('The number of bin entries is {} and the number of root entries then is: {}'.format(len(parsed_data), num_entries))
     data_dictionary = {'Timestamp_s': np.zeros(num_entries), 'Timestamp_mus': np.zeros(num_entries)}
     for channel in ch_info.keys():
@@ -259,7 +259,7 @@ def datfile_converter(output_directory, logfile, header_info, ch_info):
     return result
 
 
-def process_digifile(input_directory, output_directory, run_number, tz_offset=0, use_parallel=False):
+def process_digifile(input_directory, output_directory, run_number, tz_offset=0, waveform_duration=None, use_parallel=False):
     """Actually parse log files."""
     list_of_header_files = glob.glob('{}/*.hdr'.format(input_directory))  # should be just one
     list_of_dat_files = glob.glob('{}/*.dat'.format(input_directory))
@@ -277,13 +277,13 @@ def process_digifile(input_directory, output_directory, run_number, tz_offset=0,
         results = []
         for logfile in list_of_files:
             print('Converting file {}'.format(logfile))
-            result = datfile_converter(output_directory, logfile, header_info, ch_info)
+            result = datfile_converter(output_directory, logfile, header_info, ch_info, waveform_duration)
             results.append(result)
     else:
         # Attempt at using joblib
         print('Performing conversions in parallel')
         num_cores = multiprocessing.cpu_count()
-        results = Parallel(n_jobs=num_cores)(delayed(datfile_converter)(output_directory, logfile, header_info, ch_info) for logfile in list_of_files)
+        results = Parallel(n_jobs=num_cores)(delayed(datfile_converter)(output_directory, logfile, header_info, ch_info, waveform_duration) for logfile in list_of_files)
     if np.all(results):
         if len(results) == len(list_of_files):
             print('All files converted')
@@ -306,6 +306,9 @@ def get_args():
                         help='Specify output directory. If not a full path, it will be output in the same directory as the input directory')
     parser.add_argument('-r', '--runNumber',
                         help='Specify the run number in the log file to convert')
+    parser.add_argument('-w', '--waveformDuration', default=None,
+                        help='Specify the duration (in seconds) a root waveform should be. Defaults to same size as the digitizer header specifies. \
+                            Only values < digitizer binary file duration are supported.')
     parser.add_argument('-z', '--tzOffset', default=0.0, type=float,
                         help='The number of hours of timezone offset to use.\
                         Default is 0 and assumes timestamps to convert are from the same timezone.\
@@ -322,5 +325,5 @@ def get_args():
 
 if __name__ == '__main__':
     ARGS = get_args()
-    process_digifile(ARGS.inputDirectory, ARGS.outputDirectory, ARGS.runNumber, ARGS.tzOffset, ARGS.useParallel)
+    process_digifile(ARGS.inputDirectory, ARGS.outputDirectory, ARGS.runNumber, ARGS.tzOffset, ARGS.waveformDuration, ARGS.useParallel)
     print('All done')
