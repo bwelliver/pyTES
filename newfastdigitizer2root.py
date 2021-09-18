@@ -246,11 +246,11 @@ def write_to_root(output_file, data_dictionary):
     return True
 
 
-def datfile_converter(output_directory, logfile, header_info, ch_info):
+def datfile_converter(output_directory, logfile, header_info, ch_info, waveform_duration=None):
     """Full processing for a given binary data file."""
     byteFile = all_bytes_from_file(logfile)
     parsed_data = parse_binary_data(byteFile, header_info, ch_info, endian='<')
-    data_dictionary = convert_to_root(header_info, ch_info, parsed_data)
+    data_dictionary = convert_to_root(header_info, ch_info, parsed_data, waveform_duration)
     output_file = basename(logfile)
     output_file = output_file.split('.')[0]
     output_file = output_directory + '/' + output_file + '.root'
