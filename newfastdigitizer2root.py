@@ -306,7 +306,7 @@ def get_args():
                         help='Specify output directory. If not a full path, it will be output in the same directory as the input directory')
     parser.add_argument('-r', '--runNumber',
                         help='Specify the run number in the log file to convert')
-    parser.add_argument('-w', '--waveformDuration', default=None,
+    parser.add_argument('-w', '--waveformDuration', default=None, type=float,
                         help='Specify the duration (in seconds) a root waveform should be. Defaults to same size as the digitizer header specifies. \
                             Only values < digitizer binary file duration are supported.')
     parser.add_argument('-z', '--tzOffset', default=0.0, type=float,
