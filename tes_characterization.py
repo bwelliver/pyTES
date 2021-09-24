@@ -396,8 +396,7 @@ def get_power_temperature_curves(output_path, data_channel, number_of_windows, i
     cut_temperature = np.logical_and(cut_temperature, cut_power)
 
     # [k, n, Ttes, Pp]
-    pP = None
-    tc = None 
+    pP = None 
     if tc is None:
         print('No Tc was passed, floating Tc')
         lbounds = [1e-9, 1, 20e-3]
