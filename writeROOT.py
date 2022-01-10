@@ -9,13 +9,13 @@ import ROOT as rt
 # from ROOT import vec
 
 
-def writeTDir(source, dir_data):
+def writeTDir(source, dir_data, allowExistingDir=False):
     '''Write contents of current TDirectory into file
     dir_data is a dictionary whose keys are the directory names
     The values of each key represent data structures to put INTO the directory
     '''
     for key, value in dir_data.items():
-        tdir = source.mkdir(key)
+        tdir = source.mkdir(key, key, allowExistingDir)
         tdir.cd()
         for subkey, subvalue in value.items():
             if subkey == 'TDirectoryFile':
@@ -24,12 +24,24 @@ def writeTDir(source, dir_data):
                 result = writeTDir(tdir, subvalue)
             elif subkey == 'TTree':
                 result = writeTTree(subvalue)
+            elif subkey == 'vector<double>':
+                result = writeVector(tdir, subvalue)
             else:
                 result = None
         del tdir
         source.cd()
         # print(rt.gDirectory.pwd())
     return result
+
+
+def writeVector(tdir, vecdata):
+    """Write a std::vector<double> object into the current directory directly."""
+    for key, value in vecdata.items():
+        vec = rt.std.vector('double')(value.size)
+        vec.assign(value)
+        tdir.WriteObject(vec, key)
+        vec.clear();
+    return True
 
 
 def writeTVectorT(tdata):
@@ -129,7 +141,7 @@ def writeTBranch(tree, branch_data):
     return True
 
 
-def writeROOT(input_file, data):
+def writeROOT(input_file, data, mode="RECREATE"):
     '''Write a root file. This function works by passing in data as a dictionary. Dictionary keys should be "TDirectory", "TTree", "TBranch", and "TObject". Nested inside each can be appropriate items. For example a TTree key may contain as a value a dictionary of branches, or a TDirectory can contain a list of trees and other such things.
     Example:
     dict = {'TDirectory': {
@@ -158,14 +170,15 @@ def writeROOT(input_file, data):
 
     # Make the ROOT file first
     TFile = getattr(rt, 'TFile')
-    tfile = TFile(input_file, 'RECREATE')
+    tfile = TFile(input_file, mode)
+    allowExistingDir = mode == 'update'
     # tfile.SetCompressionLevel(0)
     # Now we parse the dictionary. It is a good idea here to separate things by type
     for key, value in data.items():
         if key == 'TDirectoryFile':
             result = writeTDirF(value)
         if key == 'TDirectory':
-            result = writeTDir(tfile, value)
+            result = writeTDir(tfile, value, allowExistingDir)
         elif key == 'TTree':
             result = writeTTree(value)
         elif key == 'TVectorT':
