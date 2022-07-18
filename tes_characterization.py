@@ -280,9 +280,9 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
     # Rtes = R(i,T) so we are really asking for R(i=constant, T).
     # iv_dictionary = find_normal_to_sc_data(iv_dictionary, number_of_windows)
     fixed_name = 'iTES'
-    fixed_value = 0.5e-6
+    fixed_value = 1e-6
     delta_values = [0.15e-6, 0.15e-6]
-    r_normal = 0.500
+    r_normal = 0.300
 
     norm_to_sc = {'T': np.empty(0), 'R': np.empty(0), 'rmsR': np.empty(0)}
     sc_to_norm = {'T': np.empty(0), 'R': np.empty(0), 'rmsR': np.empty(0)}
@@ -297,7 +297,7 @@ def get_resistance_temperature_curves_new(output_path, data_channel, number_of_w
     # Try to do a smart Tc0 estimate:
     sort_key = np.argsort(norm_to_sc['T'])
     T0 = norm_to_sc['T'][sort_key][np.gradient(norm_to_sc['R'][sort_key], norm_to_sc['T'][sort_key], edge_order=2).argmax()]*1.01
-    x_0 = [0.6, 1e-3, T0, 1e-3]
+    x_0 = [0.35, 1e-3, T0, 1e-3]
     lbounds = (0, 0, 0, 0)
     ubounds = (2, 2, norm_to_sc['T'].max(), norm_to_sc['T'].max())
 

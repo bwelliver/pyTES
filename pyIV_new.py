@@ -207,10 +207,12 @@ def parse_temperature_steps(time_values, temperatures, pid_log, tz_correction):
     step_values = np.zeros((times.size, 5))  # start, stop, meanT, stdT, serrT
     start_offset = 500
     end_offset = 0
-    default_duration = 2500
+    default_duration = 3000
     # How we proceed depends if we have 3 columns or not
     if have_duration:
+        print("Using duration inside of file.")
         for index in range(times.size):
+            print("Duration is: {} s".format(durations[index]))
             start_time = times[index] + start_offset
             stop_time = times[index] + durations[index] - end_offset
             cut = np.logical_and(time_values > start_time, time_values < stop_time)
@@ -274,7 +276,7 @@ def chop_data_by_temperature_steps(iv_data, step_values, thermometer_name, bias_
     """Chop up waveform data based on temperature steps."""
     squid_parameters = squid_info.SQUIDParameters(squid)
     r_bias = squid_parameters.Rbias
-    time_buffer = 60
+    time_buffer = 70
     iv_dictionary = {}
     # The following defines a range of temperatures to reject. That is:
     # reject = cut_temperature_min < T < cut_temperature_max
@@ -283,7 +285,7 @@ def chop_data_by_temperature_steps(iv_data, step_values, thermometer_name, bias_
     # if min < T < max --> reject
     cut_temperature_max = 1  # Should be the max rejected temperature
     cut_temperature_min = 0  # Should be the minimum rejected temperature
-    expected_duration = 11000  # TODO: make this an input argument or auto-determined somehow
+    expected_duration = 3000  # TODO: make this an input argument or auto-determined somehow
     # Now chop up the IV data into steps keyed by the mean temperature
     for values in step_values:
         start_time, stop_time, mean_temperature, std_temperature, serr_temperature = values

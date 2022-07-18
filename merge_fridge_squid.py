@@ -218,6 +218,7 @@ def get_interpolated_temperature(fData, sTunix, interpType, interpDegree, sensor
     cValidT = ~np.isnan(uTemp)
     # Next select temperatures that occur during SQUID data
     cTSQUID = np.logical_and(uTemp_t >= uTunix[0], uTemp_t <= uTunix[-1])
+    print("Number of temp points that occur during SQUID data: {}".format(np.sum(cTSQUID)))
     # Interpolation will only work also if the new values are not outside of what data is there
     cNF = np.logical_and(uTunix >= uTemp_t[cValidT][0], uTunix <= uTemp_t[cValidT][-1])
     print('Number of useable values inside squid data is {}'.format(np.sum(cNF)))
