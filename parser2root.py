@@ -63,7 +63,7 @@ def binfile_converter(output_directory, binary_files, sample_freq, run_number, e
     #['Timestamp_s', 'Timestamp_mus', 'NumberOfSamples']
     #data_dictionary['NumberOfSamples'] = np.zeros(num_entries) + waveform_size
     #data_dictionary['SamplingWidth_s'] = np.zeros(num_entries) + 1/sample_freq
-    chArray = {'ChList': np.array(binary_files.keys())}
+    chArray = {'ChList': np.array(list(binary_files.keys()))}
     left_to_read = total_samples
     entry = 0
     output_name = output_directory + 'MUX_Run{:06d}'.format(run_number)
