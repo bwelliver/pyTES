@@ -176,7 +176,7 @@ def get_args():
                         help='The number of hours of timezone offset to use.\
                         Default is 0 and assumes timestamps to convert are from the same timezone.\
                         If you need to convert to an earlier timezone use a negative number.')
-    parser.add_argument('-c', '--channels', type=list, default=None, help="Specify a list of channels to convert")
+    parser.add_argument('-c', '--channels', nargs='+', type=int, default=None, help="Specify a list of channels to convert")
     parser.add_argument('-p', '--useParallel', action='store_true',
                         help='If flag is set use parallel dispatcher to process files as opposed to performing conversion serially')
     args = parser.parse_args()
