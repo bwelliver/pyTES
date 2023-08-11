@@ -76,7 +76,7 @@ def binfile_converter(output_directory, binary_files, sample_freq, run_number, e
             # new file
             partial += 1
             entry = 0
-            partial_name = output_name + "_p{:06d}.root".format(partial)
+            partial_name = output_name + "_p{:05d}.root".format(partial)
             print("Creating partial: {}".format(partial_name))
             tfile = rt.TFile(partial_name, 'RECREATE')
             wr.writeTVectorT(chArray)
