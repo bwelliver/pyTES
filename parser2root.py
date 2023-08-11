@@ -58,8 +58,8 @@ def binfile_converter(output_directory, binary_files, sample_freq, run_number, e
     # The standard root format associates all channels with a given file
     # Now we have to build up waveforms for every damn thing
     # Because we have to grow things in a way writeROOT isn't able to handle yet, we form the ROOT stuff here.
-    root_dict = {'TTree': {'data_tree': {'TBranch': {}}}}
-    root_dict['TVectorT'] = {'ChList': np.array(chArray)}
+    #root_dict = {'TTree': {'data_tree': {'TBranch': {}}}}
+    #root_dict['TVectorT'] = {'ChList': np.array(chArray)}
     #['Timestamp_s', 'Timestamp_mus', 'NumberOfSamples']
     #data_dictionary['NumberOfSamples'] = np.zeros(num_entries) + waveform_size
     #data_dictionary['SamplingWidth_s'] = np.zeros(num_entries) + 1/sample_freq
