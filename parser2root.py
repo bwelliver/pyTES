@@ -189,5 +189,5 @@ def get_args():
 
 if __name__ == '__main__':
     ARGS = get_args()
-    process_binfile(ARGS.inputDirectory, ARGS.outputDirectory, ARGS.runNumber, ARGS.sampleRate, ARGS.tzOffset, ARGS.useParallel)
+    process_binfile(ARGS.inputDirectory, ARGS.outputDirectory, ARGS.runNumber, ARGS.sampleRate, channels=ARGS.channels, tz_offset=ARGS.tzOffset, use_parallel=ARGS.useParallel)
     print('All done')
