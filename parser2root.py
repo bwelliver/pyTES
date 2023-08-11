@@ -52,7 +52,9 @@ def binfile_converter(output_directory, binary_files, sample_freq, run_number, e
             minsize = fsize if fsize < minsize else minsize
             io_dictionary[ch][iq] = open(file, mode='rb')
     #int32 = 4 bytes
-    total_samples = minsize/8
+    total_samples = minsize/4
+    print("The minsize of binary files is: {} bytes and we have a total samples of: {}".format(minsize, total_samples))
+    print("This means we should roughly expect: {} partials".format(total_samples/(sample_freq*event_duration*events_per_partial)))
     # now the tricky part
     # We have to get a waveform out of doing sqrt(i^2 + q^2) for each sample
     # The standard root format associates all channels with a given file
@@ -71,7 +73,7 @@ def binfile_converter(output_directory, binary_files, sample_freq, run_number, e
     timestamp = 0
     timestamp_mus = 0
     partial_name = output_name + "_p{:05d}.root".format(partial)
-    while left_to_read > 0:
+    while left_to_read > 0 or left_to_read >= sample_freq*event_duration:
         if entry%events_per_partial == 0:
             # new file
             partial += 1
@@ -120,7 +122,7 @@ def binfile_converter(output_directory, binary_files, sample_freq, run_number, e
             tfile.Close()
             del tfile
             print("Done with file: {}".format(partial_name))
-        left_to_read -= 4*sample_freq*event_duration
+        left_to_read -= sample_freq*event_duration  # no factor of 4 here because this is _samples_ not bytes
     # done with all reading?
     return True
 
