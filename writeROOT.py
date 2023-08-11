@@ -40,7 +40,7 @@ def writeVector(tdir, vecdata):
         vec = rt.std.vector('double')(value.size)
         vec.assign(value)
         tdir.WriteObject(vec, key)
-        vec.clear();
+        vec.clear()
     return True
 
 
