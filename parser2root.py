@@ -66,11 +66,11 @@ def binfile_converter(output_directory, binary_files, sample_freq, run_number, e
     chArray = {'ChList': np.array(list(binary_files.keys()))}
     left_to_read = total_samples
     entry = 0
-    output_name = output_directory + 'MUX_Run{:06d}'.format(run_number)
+    output_name = output_directory + '/' + 'MUX_Run_{:06d}'.format(run_number)
     partial = 0
     timestamp = 0
     timestamp_mus = 0
-    partial_name = output_name + "_p{:06d}.root".format(partial)
+    partial_name = output_name + "_p{:05d}.root".format(partial)
     while left_to_read > 0:
         if entry%events_per_partial == 0:
             # new file
@@ -115,7 +115,9 @@ def binfile_converter(output_directory, binary_files, sample_freq, run_number, e
         if entry == events_per_partial:
             # when we have written all entries catch the tree write and cleanup
             tree.Write()
+            tfile.Write()
             del tree
+            tfile.Close()
             del tfile
             print("Done with file: {}".format(partial_name))
         left_to_read -= 4*sample_freq*event_duration
