@@ -168,7 +168,7 @@ def get_args():
                         help='Specify the full path of the directory containing the binary files to convert')
     parser.add_argument('-o', '--outputDirectory',
                         help='Specify output directory. If not a full path, it will be output in the same directory as the input directory')
-    parser.add_argument('-r', '--runNumber',
+    parser.add_argument('-r', '--runNumber', type=int,
                         help='Specify the run number in the log file to convert')
     parser.add_argument('-s', '--sampleRate', default=4000, type=int,
                         help='Specify the sampling rate in Hz')
