@@ -143,7 +143,7 @@ def process_binfile(input_directory, output_directory, run_number, sample_freq, 
             if not opexists(dict_of_files[ch]['i']):
                 print("Warning! The file {} does not exist!".format(dict_of_files[ch]['i']))
                 return False
-            if not opexists(dict_of_files[ch]['q]']):
+            if not opexists(dict_of_files[ch]['q']):
                 print("Warning! The file {} does not exist!".format(dict_of_files[ch]['q']))
                 return False
     # If we are here then our files are found and exist for both i and q
