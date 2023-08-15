@@ -30,7 +30,7 @@ def all_bytes_from_file(filename):
 
 
 
-def binfile_converter(output_directory, binary_files, sample_freq, run_number, event_duration=1, events_per_partial=50, scale_factor=0.00390625, endian='<'):
+def binfile_converter(output_directory, prefix_name, binary_files, sample_freq, run_number, event_duration=1, events_per_partial=50, scale_factor=0.00390625, endian='<'):
     """Processing a mux binary file to root"""
     # Since the files are just one long contiguous binary file
     # we cannot open them all at once into memory
@@ -68,7 +68,7 @@ def binfile_converter(output_directory, binary_files, sample_freq, run_number, e
     chArray = {'ChList': np.array(list(binary_files.keys()))}
     left_to_read = total_samples
     entry = 0
-    output_name = output_directory + '/' + 'MUX_Run_{:06d}'.format(run_number)
+    output_name = output_directory + '/' + '{}_Run_{:06d}'.format(prefix_name, run_number)
     partial = 0
     timestamp = 0
     timestamp_mus = 0
@@ -127,7 +127,7 @@ def binfile_converter(output_directory, binary_files, sample_freq, run_number, e
     # done with all reading?
     return True
 
-def process_binfile(input_directory, output_directory, run_number, sample_freq, channels=None, tz_offset=0, use_parallel=False):
+def process_binfile(input_directory, output_directory, prefix_name, run_number, sample_freq, channels=None, tz_offset=0, use_parallel=False):
     """Actually parse log files."""
     #list_of_header_files = glob.glob('{}/*.hdr'.format(input_directory))  # should be just one
     if channels is None:
@@ -162,7 +162,7 @@ def process_binfile(input_directory, output_directory, run_number, sample_freq, 
 
     #header_info, ch_info = read_header_file(list_of_header_files[0])
     #header_info = parse_header_time(header_info, tz_offset, manual_tstart=None)
-    result = binfile_converter(output_directory, dict_of_files, sample_freq=sample_freq, run_number=run_number, event_duration=1, events_per_partial=50)
+    result = binfile_converter(output_directory, prefix_name, dict_of_files, sample_freq=sample_freq, run_number=run_number, event_duration=1, events_per_partial=50)
     return result
 
 
@@ -182,6 +182,7 @@ def get_args():
                         Default is 0 and assumes timestamps to convert are from the same timezone.\
                         If you need to convert to an earlier timezone use a negative number.')
     parser.add_argument('-c', '--channels', nargs='+', type=int, default=None, help="Specify a list of channels to convert")
+    parser.add_argument('-n', '--name', default='MUX', type=str, help="The prefix name for the run")
     parser.add_argument('-p', '--useParallel', action='store_true',
                         help='If flag is set use parallel dispatcher to process files as opposed to performing conversion serially')
     args = parser.parse_args()
@@ -194,5 +195,5 @@ def get_args():
 
 if __name__ == '__main__':
     ARGS = get_args()
-    process_binfile(ARGS.inputDirectory, ARGS.outputDirectory, ARGS.runNumber, ARGS.sampleRate, channels=ARGS.channels, tz_offset=ARGS.tzOffset, use_parallel=ARGS.useParallel)
+    process_binfile(ARGS.inputDirectory, ARGS.outputDirectory, ARGS.name, ARGS.runNumber, ARGS.sampleRate, channels=ARGS.channels, tz_offset=ARGS.tzOffset, use_parallel=ARGS.useParallel)
     print('All done')
