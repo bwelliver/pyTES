@@ -73,7 +73,8 @@ def binfile_converter(output_directory, binary_files, sample_freq, run_number, e
     timestamp = 0
     timestamp_mus = 0
     partial_name = output_name + "_p{:05d}.root".format(partial)
-    while left_to_read > 0 or left_to_read >= sample_freq*event_duration:
+    while left_to_read >= sample_freq*event_duration:
+        print("Left to read: {}".format(left_to_read))
         if entry%events_per_partial == 0:
             # new file
             partial += 1
