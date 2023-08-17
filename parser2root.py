@@ -124,6 +124,14 @@ def binfile_converter(output_directory, prefix_name, binary_files, sample_freq, 
             del tfile
             print("Done with file: {}".format(partial_name))
         left_to_read -= sample_freq*event_duration  # no factor of 4 here because this is _samples_ not bytes
+        if (left_to_read < sample_freq*event_duration):
+            # This is just if we are done we should be sure to write what we have
+            tree.Write()
+            tfile.Write()
+            del tree
+            tfile.Close()
+            del tfile
+            print("Done with file: {}".format(partial_name))
     # done with all reading?
     return True
 
