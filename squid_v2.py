@@ -41,7 +41,7 @@ from readROOT import readROOT
 
 eps = np.finfo(float).eps
 ln = np.log
-
+ne = np.exp
 class RingBuffer(object):
 
     def __init__(self, size_max, default_value=0.0, dtype=float):
