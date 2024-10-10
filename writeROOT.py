@@ -111,6 +111,7 @@ def writeTTree(tdata : dict[str, Any]) -> bool:
         for subkey, subvalue in tree_values.items():
             if subkey == 'TBranch':
                 result = writeTBranch(tree, subvalue)
+        tree.Write()
         del tree
     return result
 
@@ -119,6 +120,7 @@ def writeTTree(tdata : dict[str, Any]) -> bool:
 # branch_data['branchC'] = 2d numpy array of numpy arrays
 # branch_data['branchD'] = 2d numpy array of ROOT.RVec objects
 # for now I guess type-hint as Any since pyROOT doesn't play nice
+type d = list[str]
 def writeTBranch(tree : Any, branch_data : dict[str, Sequence[float | int] | dict[int, Any] | npt.NDArray[np.float64] | npt.NDArray[Any]]) -> bool:
     """Create and write branches to the root file in whatever tree.
     Incoming branch_data is a dictionary where the key specifies the branch name and the value is the branch value
