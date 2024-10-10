@@ -177,7 +177,7 @@ def writeTBranch(tree : Any, branch_data : dict[str, Sequence[float | int] | dic
         # Parse the vectors
         for branch_name in vector_branches:
             dloc[branch_name].assign(np.asarray(branch_data[branch_name][event]))
-    tree.Fill()
+        tree.Fill()
     return True
 
 def writeROOT(input_file : str, data : dict[str, Any], mode : str ="RECREATE") -> bool:
