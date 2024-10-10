@@ -145,7 +145,7 @@ def writeTBranch(tree : Any, branch_data : dict[str, Sequence[float | int] | dic
     for branch_key, branch_value in branch_data.items():
         is_vector = isinstance(branch_value, dict) or (
             isinstance(branch_value, np.ndarray) and (
-                len(branch_value.shape) == 2 or isinstance(branch_value[0], rvec)))
+                len(branch_value.shape) == 2 or isinstance(branch_value[0], rvec("double"))))
         # Figure out how many entries we need to write
         # if the branch is a vector we need the length of the container of vectors not the vector
         # if the branch is not a vector the length of the array
