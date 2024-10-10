@@ -110,14 +110,16 @@ def writeTTree(tdata : dict[str, Any]) -> bool:
         tree = TTree(tree_name, tree_name)
         for subkey, subvalue in tree_values.items():
             if subkey == 'TBranch':
-                result = result and writeTBranch(tree, subvalue)
+                result = writeTBranch(tree, subvalue)
         del tree
     return result
 
 # branch_data['branchA'] = some kind of array
 # branch_data['branchB'] = dictionary of arrays
-# branch_data['branchC'] = 2d numpy array
-def writeTBranch(tree : Any, branch_data : dict[str, Sequence[float | int] | dict[int, Any] | npt.NDArray[np.float64]]) -> bool:
+# branch_data['branchC'] = 2d numpy array of numpy arrays
+# branch_data['branchD'] = 2d numpy array of ROOT.RVec objects
+# for now I guess type-hint as Any since pyROOT doesn't play nice
+def writeTBranch(tree : Any, branch_data : dict[str, Sequence[float | int] | dict[int, Any] | npt.NDArray[np.float64] | npt.NDArray[Any]]) -> bool:
     """Create and write branches to the root file in whatever tree.
     Incoming branch_data is a dictionary where the key specifies the branch name and the value is the branch value
     If the incoming branch_data[key] is itself an array (either a dict of arrays or numpy.ndarray, 2D) it will be 
@@ -133,15 +135,20 @@ def writeTBranch(tree : Any, branch_data : dict[str, Sequence[float | int] | dic
     
     # Again because pyROOT objects are made dynamically.
     std_vector = getattr(getattr(rt, 'std'), 'vector')
+    rvec = getattr(rt, "RVec")
     dloc: dict[str, Any] = {}
     scalar_branches: list[str] = []
     vector_branches: list[str] = []
-    nentries = None
+    nentries = -1
     for branch_key, branch_value in branch_data.items():
         is_vector = isinstance(branch_value, dict) or (
-            isinstance(branch_value, np.ndarray) and len(branch_value.shape) == 2)
-        nentries_branch = len(branch_value) if not isinstance(branch_value, dict) else len(branch_value)
-        if nentries is None:
+            isinstance(branch_value, np.ndarray) and (
+                len(branch_value.shape) == 2 or isinstance(branch_value[0], rvec)))
+        # Figure out how many entries we need to write
+        # if the branch is a vector we need the length of the container of vectors not the vector
+        # if the branch is not a vector the length of the array
+        nentries_branch = len(branch_value)
+        if nentries < 0:
             nentries = nentries_branch
         elif nentries_branch != nentries:
             raise ValueError(f"Inconsistent number of entries for branch '{branch_key}'.")        
@@ -157,18 +164,18 @@ def writeTBranch(tree : Any, branch_data : dict[str, Sequence[float | int] | dic
                 dloc[branch_key] = array("d", [0.0])
                 tree.Branch(branch_key, dloc[branch_key], f"{branch_key}/D")
             scalar_branches.append(branch_key)
-        # Branches named and set up -- now fill
-        for event in range(nentries):
-            # Parse the scalars first
-            for branch_name in scalar_branches:
-                if branch_name in ["Timestamp_s", "Timestamp_mus", "NumberOfSamples"]:
-                    dloc[branch_name][0] = int(branch_data[branch_name][event])
-                else:
-                    dloc[branch_name][0] = branch_data[branch_name][event]
-            # Parse the vectors
-            for branch_name in vector_branches:
-                dloc[branch_name].assign(branch_data[branch_name][event])
-        tree.Fill()
+    # Branches named and set up -- now fill
+    for event in range(nentries):
+        # Parse the scalars first
+        for branch_name in scalar_branches:
+            if branch_name in ["Timestamp_s", "Timestamp_mus", "NumberOfSamples"]:
+                dloc[branch_name][0] = int(branch_data[branch_name][event])
+            else:
+                dloc[branch_name][0] = branch_data[branch_name][event]
+        # Parse the vectors
+        for branch_name in vector_branches:
+            dloc[branch_name].assign(np.asarray(branch_data[branch_name][event]))
+    tree.Fill()
     return True
 
 def writeROOT(input_file : str, data : dict[str, Any], mode : str ="RECREATE") -> bool:

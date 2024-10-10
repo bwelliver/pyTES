@@ -129,7 +129,7 @@ def GetROOTData(input_files: str | list[str],
 
 def ReadROOT(input_files: str | list[str], 
              root_dictionary: dict[str, Any], 
-             read_method: str="chain", 
+             read_method: str="", 
              entries: None | int | list[int]=None) -> dict[str, Any]:
     """Primary interface to read data from a ROOT file and output into a pyTES ROOT dictionary format.
 
