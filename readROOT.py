@@ -38,6 +38,20 @@ rt.ROOT.EnableImplicitMT()
 #        return list_of_branch_names
 #
 
+rdf = getattr(rt, "RDataFrame")
+
+def GetRDataFrame(input_files: str | list[str], tree_name: str) -> Any:
+    """Generates and return a RDataFrame
+
+    Arguments:
+        input_files -- file name or list of files
+        tree_name -- tree name to connect to
+
+    Returns:
+        A RDataFrame object to be manipulated elsewhere
+    """
+    df = rdf(tree_name, input_files)
+    return df
 
 def ReadTree(input_files: str | list[str], tree_name: str, branches: list[str], entries: None | int | list[int]=None) -> dict[str, NDArray[Any]]:
     """_summary_
@@ -53,7 +67,6 @@ def ReadTree(input_files: str | list[str], tree_name: str, branches: list[str], 
     Returns:
         _description_
     """
-    rdf = getattr(rt, "RDataFrame")
     df = rdf(tree_name, input_files)
     if entries is not None:
         if isinstance(entries, int):
@@ -129,7 +142,7 @@ def GetROOTData(input_files: str | list[str],
 
 def ReadROOT(input_files: str | list[str], 
              root_dictionary: dict[str, Any], 
-             read_method: str="", 
+             read_method: str, 
              entries: None | int | list[int]=None) -> dict[str, Any]:
     """Primary interface to read data from a ROOT file and output into a pyTES ROOT dictionary format.
 
