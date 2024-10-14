@@ -130,7 +130,7 @@ def GetTempStepsFromPID(config: dict[str, Any], root_data: Any):
         cut = plot_data["step"] == step
         min_time = plot_data["Timestamp"][cut].min()
         max_time = plot_data["Timestamp"][cut].max()
-        mean_T = plot_data[config.get("thermometer", "EPCal")].mean()
+        mean_T = plot_data[config.get("thermometer", "EPCal")][cut].mean()
         step_array.append([min_time, max_time, mean_T])
     ivplt.test_steps(plot_data["Timestamp"]-t0, plot_data[config.get("thermometer", "EPCal")], step_array, t0, 'Time', 'T', config.get("output", "") + '/' + 'test_temperature_steps.png')
     return root_data, min_step
