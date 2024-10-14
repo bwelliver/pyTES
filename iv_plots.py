@@ -1,6 +1,6 @@
-import matplotlib
 from matplotlib import pyplot as plt
 import numpy as np
+from collections.abc import Sequence
 from numpy import square as pow2
 from numpy import power
 from numpy import sqrt as sqrt
@@ -51,24 +51,28 @@ def test_plot(x, y, xlab, ylab, fName):
     return None
 
 
-def test_steps(x, y, v, t0, xlab, ylab, fName):
-    """Create generic plots that may be semilogx (default)"""
-    fName = fName + '.png' if fName.split('.png') != 2 else fName
-    fig = plt.figure(figsize=(8, 6))
-    axes = fig.add_subplot(111)
-    axes.plot(x, y, marker='o', markersize=1, markeredgecolor='black', markeredgewidth=0.0, linestyle='None')
-    # Next add horizontal lines for each step it thinks it found
+def test_steps(x: Sequence[float], y: Sequence[float], v: Sequence[Sequence[float]], t0: float, xlab: str, ylab: str, fName: str) -> None:
+    """Create a generic plot that is semilogx (default)
+
+    Arguments:
+        x -- _description_
+        y -- _description_
+        v -- _description_
+        t0 -- _description_
+        xlab -- _description_
+        ylab -- _description_
+        fName -- _description_
+    """
+    if not fName.endswith(".png"):
+        fName += ".png"
+    fix, ax = plt.subplots(figsize=(8,6))
+    ax.plot(x, y, marker="o", markersize=1, margeredgecolor="black", markeredgewidth=0.0, linestyle=None)
     for item in v:
-        axes.plot([item[0]-t0, item[1]-t0], [item[2], item[2]], marker='.', linestyle='-', color='r')
-    # axes.set_xscale(log)
-    axes.set_xlabel(xlab)
-    axes.set_ylabel(ylab)
-    # axes.set_title(title)
-    axes.grid()
-    fig.savefig(fName, dpi=150, bbox_inches='tight')
-    plt.close('all')
-    # plt.draw()
-    # plt.show()
+        ax.plot([item[0]-t0, item[1]-t0], [item[2], item[2]], marker=".", linestyle="-", color="r")
+    ax.set_xlabel(xlab)
+    ax.set_ylabel(ylab)
+    ax.grid()
+    fig.savefig(fName, dpi=150, bbox_inches="tight")
     return None
 
 
