@@ -121,9 +121,18 @@ def GetTempStepsFromPID(config: dict[str, Any], root_data: Any):
         root_data, min_step = ParseTemperatureSteps(config, root_data)
     # Make diagnostic plot
     t0: float = root_data.Min("Timestamp").GetValue() # type: ignore
-    plot_data: dict[str, Any] = root_data.AsNumpy(columns=[config.get("thermometer", "EPCal"), "Timestamp", "step"])
+    plot_data: dict[str, npt.NDArray[Any]] = root_data.AsNumpy(columns=[config.get("thermometer", "EPCal"), "Timestamp", "step"])
     plot_data = SortRDFNumpy(plot_data, "Timestamp")
-    ivplt.test_steps(plot_data["Timestamp"]-t0, plot_data[config.get("thermometer", "EPCal")], plot_data["step"], t0, 'Time', 'T', config.get("output", "") + '/' + 'test_temperature_steps.png')
+    # step data argument is a set of pairs of start/stop times for temp and then mean temp
+    steps = np.unique(plot_data["step"])
+    step_array = []
+    for step in steps:
+        cut = plot_data["step"] == step
+        min_time = plot_data["Timestamp"][cut].min()
+        max_time = plot_data["Timestamp"][cut].max()
+        mean_T = plot_data[config.get("thermometer", "EPCal")].mean()
+        step_array.append([min_time, max_time, mean_T])
+    ivplt.test_steps(plot_data["Timestamp"]-t0, plot_data[config.get("thermometer", "EPCal")], step_array, t0, 'Time', 'T', config.get("output", "") + '/' + 'test_temperature_steps.png')
     return root_data, min_step
 
 

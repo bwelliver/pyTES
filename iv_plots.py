@@ -1,5 +1,7 @@
 from matplotlib import pyplot as plt
+from typing import Any
 import numpy as np
+import numpy.typing as npt
 from collections.abc import Sequence
 from numpy import square as pow2
 from numpy import power
@@ -51,7 +53,7 @@ def test_plot(x, y, xlab, ylab, fName):
     return None
 
 
-def test_steps(x: Sequence[float], y: Sequence[float], v: Sequence[Sequence[float]], t0: float, xlab: str, ylab: str, fName: str) -> None:
+def test_steps(x: Sequence[float] | npt.NDArray[Any] , y: Sequence[float] | npt.NDArray[Any], v: Sequence[Sequence[float]], t0: float, xlab: str, ylab: str, fName: str) -> None:
     """Create a generic plot that is semilogx (default)
 
     Arguments:
