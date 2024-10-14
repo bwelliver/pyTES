@@ -130,7 +130,7 @@ def GetTempStepsFromPID(config: dict[str, Any], root_data: Any):
 def iv_main(config: dict[str, Any]) -> None:
     rdf = GetRDataFrame(config['inputPath'], "data_tree")
     #  We need to identify the various temperature steps to define filters for specific temperature data
-    rdf = rdf.Define("Timestamp", "Timestamp_s" + "Timestamp_mus/1e6")
+    rdf = rdf.Define("Timestamp", "Timestamp_s + Timestamp_mus/1e6")
     rdf, min_step = GetTempStepsFromPID(config, rdf)
     print(f"The minimum step is located at {step=}")
 
