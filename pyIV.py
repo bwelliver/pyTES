@@ -66,8 +66,8 @@ def ParseTemperatureSteps(config: dict[str, Any], root_data: Any) -> tuple[Any, 
         times.columns = ['start_time', 'power']
         times['duration'] = times['start_time'].shift(-1) - times['start_time']
         times.loc[times.shape[0], 'duration'] = times.loc[times.shape[0]-1, 'duration'] # assume same duration for final step as previous step
-    times['start_time'] = times['start_time'] + getattr(config, "tz_correction", 0) + getattr(config, "step_start_offset", 300) # adjust for any timezone issues and start offset
-    times['end_time'] = times['start_time'] + times['duration'] - getattr(config, "step_stop_offset", 0) # adjust for any stop time offset
+    times['start_time'] = times['start_time'] + config.get("tz_correction", 0) + config.get("step_start_offset", 300) # adjust for any timezone issues and start offset
+    times['end_time'] = times['start_time'] + times['duration'] - config.get("step_stop_offset", 0) # adjust for any stop time offset
     times['step'] = range(0, times.shape[0])
     n_steps = len(times['step']) # type: ignore
     start_times_str = ', '.join(map(str, times['start_time'])) # type: ignore
@@ -99,7 +99,7 @@ def ParseTemperatureSteps(config: dict[str, Any], root_data: Any) -> tuple[Any, 
     rt.gInterpreter.Declare(get_step_str) # type: ignore
     root_data = root_data.Define("step", "get_step(Timestamp)")
     # Find also the step that corresponds to the lowest temperature
-    thermometer: str = getattr(config, "NT", "EPCal")
+    thermometer: str = config.get("NT", "EPCal")
     data: dict[str, npt.NDArray] = rdf.AsNumpy(columns=[thermometer, "step"]) # type: ignore
     df = pan.DataFrame(data)
     mean_per_step = df.groupby("step")[thermometer].mean()
@@ -113,7 +113,7 @@ def GetTempStepsFromPID(config: dict[str, Any], root_data: Any):
     Depending on the value of pid_log we will either parse an existing pid log file or if it is None
     attempt to find the temperature steps
     """
-    if getattr(config, "pid_log", None) is None or config["pid_log"] is None:
+    if config.get("pid_log", None) is None or config["pid_log"] is None:
         print("This is not implemented as yet")
         raise Exception("Unsupported configuration. Please supply a pid_log argument")
         # step_values = find_temperature_steps(output_path, time_values, temperatures, thermometer)
@@ -121,9 +121,9 @@ def GetTempStepsFromPID(config: dict[str, Any], root_data: Any):
         root_data, min_step = ParseTemperatureSteps(config, root_data)
     # Make diagnostic plot
     t0: float = root_data.Min("Timestamp").GetValue() # type: ignore
-    plot_data: dict[str, Any] = root_data.AsNumpy(columns=[getattr(config, "thermometer", "EPCal"), "Timestamp", "step"])
+    plot_data: dict[str, Any] = root_data.AsNumpy(columns=[config.get("thermometer", "EPCal"), "Timestamp", "step"])
     plot_data = SortRDFNumpy(plot_data, "Timestamp")
-    ivplt.test_steps(plot_data["Timestamp"]-t0, plot_data[getattr(config, "thermometer", "EPCal")], plot_data["step"], t0, 'Time', 'T', getattr(config, "output", "") + '/' + 'test_temperature_steps.png')
+    ivplt.test_steps(plot_data["Timestamp"]-t0, plot_data[config.get("thermometer", "EPCal")], plot_data["step"], t0, 'Time', 'T', config.get("output", "") + '/' + 'test_temperature_steps.png')
     return root_data, min_step
 
 
