@@ -100,7 +100,7 @@ def ParseTemperatureSteps(config: dict[str, Any], root_data: Any) -> tuple[Any, 
     root_data = root_data.Define("step", "get_step(Timestamp)")
     # Find also the step that corresponds to the lowest temperature
     thermometer: str = config.get("NT", "EPCal")
-    data: dict[str, npt.NDArray] = rdf.AsNumpy(columns=[thermometer, "step"]) # type: ignore
+    data: dict[str, npt.NDArray] = root_data.AsNumpy(columns=[thermometer, "step"]) # type: ignore
     df = pan.DataFrame(data)
     mean_per_step = df.groupby("step")[thermometer].mean()
     std_per_step = df.groupby("step")[thermometer].std()
