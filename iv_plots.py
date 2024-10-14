@@ -67,7 +67,7 @@ def test_steps(x: Sequence[float] | npt.NDArray[Any] , y: Sequence[float] | npt.
     """
     if not fName.endswith(".png"):
         fName += ".png"
-    fix, ax = plt.subplots(figsize=(8,6))
+    fig, ax = plt.subplots(figsize=(8,6))
     ax.plot(x, y, marker="o", markersize=1, markeredgecolor="black", markeredgewidth=0.0, linestyle=None)
     for item in v:
         ax.plot([item[0]-t0, item[1]-t0], [item[2], item[2]], marker=".", linestyle="-", color="r")
