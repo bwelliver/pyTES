@@ -99,7 +99,7 @@ def ParseTemperatureSteps(config: dict[str, Any], root_data: Any) -> tuple[Any, 
     rt.gInterpreter.Declare(get_step_str) # type: ignore
     root_data = root_data.Define("step", "get_step(Timestamp)")
     # Find also the step that corresponds to the lowest temperature
-    thermometer: str = config.get("NT", "EPCal")
+    thermometer: str = config.get("thermometer", "EPCal")
     data: dict[str, npt.NDArray] = root_data.AsNumpy(columns=[thermometer, "step"]) # type: ignore
     df = pan.DataFrame(data)
     mean_per_step = df.groupby("step")[thermometer].mean()
