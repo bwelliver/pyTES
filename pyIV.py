@@ -125,7 +125,7 @@ def GetTempStepsFromPID(config: dict[str, Any], root_data: Any):
     plot_data = SortRDFNumpy(plot_data, "Timestamp")
     # step data argument is a set of pairs of start/stop times for temp and then mean temp
     steps = np.unique(plot_data["step"])
-    step_array = []
+    step_array: list[list[float]] = []
     for step in steps:
         cut = plot_data["step"] == step
         min_time = plot_data["Timestamp"][cut].min()
@@ -141,7 +141,7 @@ def iv_main(config: dict[str, Any]) -> None:
     #  We need to identify the various temperature steps to define filters for specific temperature data
     rdf = rdf.Define("Timestamp", "Timestamp_s + Timestamp_mus/1e6")
     rdf, min_step = GetTempStepsFromPID(config, rdf)
-    print(f"The minimum step is located at {step=}")
+    print(f"The minimum step is located at {min_step=}")
 
 
 if __name__ == '__main__':
