@@ -66,8 +66,9 @@ def ParseTemperatureSteps(config: dict[str, Any], root_data: Any) -> tuple[Any, 
         times.columns = ['start_time', 'power']
         times['duration'] = times['start_time'].shift(-1) - times['start_time']
         times.loc[times.shape[0], 'duration'] = times.loc[times.shape[0]-1, 'duration'] # assume same duration for final step as previous step
-    times['start_time'] = times['start_time'] + config.get("tz_correction", 0) + config.get("step_start_offset", 300) # adjust for any timezone issues and start offset
+    times['start_time'] = times['start_time'] + config.get("tz_correction", 0) # adjust for any timezone issues
     times['end_time'] = times['start_time'] + times['duration'] - config.get("step_stop_offset", 0) # adjust for any stop time offset
+    times['start_time'] = times['start_time'] + config.get("step_start_offset", 300) # adjust for any start offset
     times['step'] = range(0, times.shape[0])
     n_steps = len(times['step']) # type: ignore
     start_times_str = ', '.join(map(str, times['start_time'])) # type: ignore
@@ -121,7 +122,7 @@ def GetTempStepsFromPID(config: dict[str, Any], root_data: Any):
         root_data, min_step = ParseTemperatureSteps(config, root_data)
     # Make diagnostic plot
     t0: float = root_data.Min("Timestamp").GetValue() # type: ignore
-    plot_data: dict[str, npt.NDArray[Any]] = root_data.AsNumpy(columns=[config.get("thermometer", "EPCal"), "Timestamp", "step"])
+    plot_data: dict[str, npt.NDArray[Any]] = root_data.Filter("step > -1").AsNumpy(columns=[config.get("thermometer", "EPCal"), "Timestamp", "step"])
     plot_data = SortRDFNumpy(plot_data, "Timestamp")
     # step data argument is a set of pairs of start/stop times for temp and then mean temp
     steps = np.unique(plot_data["step"])
